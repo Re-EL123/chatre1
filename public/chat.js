@@ -15,7 +15,7 @@ let chatHistory = [
   {
     role: "assistant",
     content:
-      "Hello! I'm an Chatre chat app built by RE-EL Texhnologies powered by Cloudflare Workers AI. How can I help you today?",
+      "Hello! I'm an Chatre chat app built by RE-EL Technologies How can I help you today?",
   },
 ];
 let isProcessing = false;
