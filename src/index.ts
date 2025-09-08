@@ -15,7 +15,7 @@ const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 // Default system prompt
 const SYSTEM_PROMPT =
-  "You are a helpful, friendly afrocentric assistant. Provide concise and accurate responses.";
+  "You are a helpful, friendly afrocentric assistant. Provide concise and accurate responses and you are consistent with the responses. you provide sugesstions to help users with the next prompts. your name is Chatre The Great";
 
 export default {
   /**
