@@ -4,23 +4,6 @@
  * Handles the chat UI interactions and communication with the backend API.
  */
 
-// Markdown formatting for bold, italic, inline code, and code blocks
-function formatMarkdown(str) {
-  // Code blocks: ```code```
-  str = str.replace(/```([\s\S]+?)```/g, function(match, code) {
-    return '<pre><code>' + code.replace(/</g,"&lt;").replace(/>/g,"&gt;") + '</code></pre>';
-  });
-  // Inline code: `code`
-  str = str.replace(/`([^`]+?)`/g, function(match, code) {
-    return '<code>' + code.replace(/</g,"&lt;").replace(/>/g,"&gt;") + '</code>';
-  });
-  // Bold: **text**
-  str = str.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Italic: *text*
-  str = str.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  return str;
-}
-
 // DOM elements
 const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
@@ -155,13 +138,13 @@ async function sendMessage() {
           if (jsonData.response) {
             // Append new content to existing text
             responseText += jsonData.response;
-            assistantMessageEl.querySelector("p").innerHTML = formatMarkdown(responseText);
+            assistantMessageEl.querySelector("p").textContent = responseText;
 
             // Scroll to bottom
             chatMessages.scrollTop = chatMessages.scrollHeight;
           }
         } catch (e) {
-          // Ignore incomplete lines
+          console.error("Error parsing JSON:", e);
         }
       }
     }
@@ -198,7 +181,7 @@ async function sendMessage() {
 function addMessageToChat(role, content) {
   const messageEl = document.createElement("div");
   messageEl.className = `message ${role}-message`;
-  messageEl.innerHTML = `<p>${formatMarkdown(content)}</p>`;
+  messageEl.innerHTML = `<p>${content}</p>`;
   chatMessages.appendChild(messageEl);
 
   // Scroll to bottom
@@ -215,21 +198,13 @@ function addMessageToChat(role, content) {
  * Typing (thinking) animation
  */
 let thinkingDotsInterval = null;
-const thinkingWords = ["Thinking", "Processing", "Analyzing", "Synthesizing", "Calculating", "Contemplating", "Formulating", "Reasoning"];
-let thinkingWordIdx = 0;
 function startThinkingAnimation() {
   if (!typingIndicator) return;
   let dots = 0;
-  thinkingWordIdx = Math.floor(Math.random() * thinkingWords.length);
-  typingIndicator.innerHTML = `<span class="thinking-word">${thinkingWords[thinkingWordIdx]}</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
+  typingIndicator.innerHTML = `<span>Thinking</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
   const dotEls = typingIndicator.querySelectorAll('.dot');
   thinkingDotsInterval = setInterval(() => {
     dots = (dots + 1) % 4;
-    // Change the "thinking" word randomly every few cycles
-    if (dots === 0) {
-      thinkingWordIdx = (thinkingWordIdx + 1) % thinkingWords.length;
-      typingIndicator.querySelector('.thinking-word').textContent = thinkingWords[thinkingWordIdx];
-    }
     dotEls.forEach((el, i) => {
       el.style.opacity = i < dots ? "1" : "0.5";
       el.style.transform = i < dots ? "scale(1.25)" : "scale(1)";
