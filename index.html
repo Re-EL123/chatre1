@@ -34,9 +34,10 @@ h1{font-size:1.6rem;color:var(--primary-color);letter-spacing:2px;text-shadow:0 
 .message-input{display:flex;padding:0.75rem;border-top:1px solid var(--border-color);background:rgba(15,23,42,0.9);backdrop-filter:blur(2px);}
 #user-input{flex:1;padding:0.75rem;border:1.5px solid var(--border-color);border-radius:8px;font-family:inherit;background:rgba(23,29,43,0.8);color:var(--text-color);resize:none;min-height:44px;outline:none;box-shadow:0 0 8px #7f5af033;transition:border-color 0.2s;}
 #user-input:focus{border-color:var(--primary-color);box-shadow:0 0 8px #7f5af0;}
-#send-button,#generate-button{margin-left:0.5rem;padding:0 1rem;background:linear-gradient(90deg,#7f5af0 70%,#6246ea 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1.02rem;box-shadow:0 0 18px #7f5af055;transition:background 0.2s;}
-#send-button:hover,#generate-button:hover{background:linear-gradient(90deg,#6246ea 60%,#7f5af0 100%);}
-#send-button:disabled,#generate-button:disabled{background:#22223b;color:#7f8fa6;cursor:not-allowed;box-shadow:none;}
+#mode-select{margin-left:0.5rem;padding:0 0.5rem;border-radius:8px;background:rgba(39,56,82,0.85);color:white;border:none;font-weight:600;cursor:pointer;}
+#send-button{margin-left:0.5rem;padding:0 1rem;background:linear-gradient(90deg,#7f5af0 70%,#6246ea 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1.02rem;box-shadow:0 0 18px #7f5af055;transition:background 0.2s;}
+#send-button:hover{background:linear-gradient(90deg,#6246ea 60%,#7f5af0 100%);}
+#send-button:disabled{background:#22223b;color:#7f8fa6;cursor:not-allowed;box-shadow:none;}
 .typing-indicator{display:none;margin-bottom:1rem;font-style:italic;color:var(--primary-color);opacity:0.85;text-shadow:0 0 4px #7f5af0;}
 .typing-indicator.visible{display:flex;align-items:center;}
 .typing-indicator .dot{background:#7f5af0;border-radius:50%;display:inline-block;width:7px;height:7px;margin:0 3px;opacity:0.7;animation:blink 1.2s infinite;}
@@ -48,7 +49,6 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
 .animated-button:active{transform:scale(0.94);}
 .animated-button .ripple{position:absolute;border-radius:50%;transform:scale(0);animation:ripple-effect 0.5s linear;background:rgba(127,90,240,0.2);pointer-events:none;z-index:2;}
 @keyframes ripple-effect{to{transform:scale(2.5);opacity:0;}}
-/* New: Image message styling */
 .image-message img{max-width:100%;border-radius:12px;box-shadow:0 0 15px #7f5af0;}
 #result{display:block;margin:1rem auto;max-width:100%;border:2px solid var(--primary-color);border-radius:12px;box-shadow:0 0 20px #6246ea;}
 </style>
@@ -70,8 +70,11 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
 
       <div class="message-input">
         <textarea id="user-input" placeholder="Type your message here..." rows="1" autofocus></textarea>
+        <select id="mode-select">
+          <option value="chat">Chat</option>
+          <option value="image">Create Image</option>
+        </select>
         <button id="send-button">Send</button>
-        <button id="generate-button">🎨 Generate</button>
       </div>
     </div>
 
@@ -88,61 +91,28 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
 <script>
 /* ================== EXISTING CHAT CODE PRESERVED ================== */
 function formatMarkdown(text){text=text.replace(/```([\s\S]*?)```/g,function(match,code){return `<pre><code>${code.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})}</code></pre>`;});text=text.replace(/`([^`]+)`/g,function(match,code){return `<code>${code.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})}</code>`;});text=text.replace(/\*\*([^\*]+)\*\*/g,'<strong>$1</strong>');text=text.replace(/\*([^\*]+)\*/g,'<em>$1</em>');return text;}
-const chatMessages=document.getElementById("chat-messages");const userInput=document.getElementById("user-input");const sendButton=document.getElementById("send-button");const generateButton=document.getElementById("generate-button");const typingIndicator=document.getElementById("typing-indicator");const resultImg=document.getElementById("result");
-sendButton.classList.add("animated-button");sendButton.addEventListener("click",function(e){const ripple=document.createElement("span");ripple.className="ripple";const size=Math.max(sendButton.offsetWidth,sendButton.offsetHeight);ripple.style.width=ripple.style.height=size+"px";ripple.style.left=(e.offsetX-size/2)+"px";ripple.style.top=(e.offsetY-size/2)+"px";sendButton.appendChild(ripple);setTimeout(()=>ripple.remove(),500);});
-generateButton.classList.add("animated-button");generateButton.addEventListener("click",function(e){const ripple=document.createElement("span");ripple.className="ripple";const size=Math.max(generateButton.offsetWidth,generateButton.offsetHeight);ripple.style.width=ripple.style.height=size+"px";ripple.style.left=(e.offsetX-size/2)+"px";ripple.style.top=(e.offsetY-size/2)+"px";generateButton.appendChild(ripple);setTimeout(()=>ripple.remove(),500);});
+const chatMessages=document.getElementById("chat-messages");
+const userInput=document.getElementById("user-input");
+const sendButton=document.getElementById("send-button");
+const modeSelect=document.getElementById("mode-select");
+const typingIndicator=document.getElementById("typing-indicator");
+const resultImg=document.getElementById("result");
+
+sendButton.classList.add("animated-button");
+sendButton.addEventListener("click",function(e){
+  const ripple=document.createElement("span");
+  ripple.className="ripple";
+  const size=Math.max(sendButton.offsetWidth,sendButton.offsetHeight);
+  ripple.style.width=ripple.style.height=size+"px";
+  ripple.style.left=(e.offsetX-size/2)+"px";
+  ripple.style.top=(e.offsetY-size/2)+"px";
+  sendButton.appendChild(ripple);
+  setTimeout(()=>ripple.remove(),500);
+});
+
 const greetings=["Hey there! 🚀 How can I assist you today?","Hi! Ready to chat? 🌌","Hello! What can I do for you?","Welcome! Ask me anything.","Greetings, human! 🤖","Yo! Need some help?","Hi! How may I make your day better?","Hey! What can I fetch for you?","Hello! I'm here to help.","Hi! Let's get started."];
-let chatHistory=[{role:"assistant",content:greetings[Math.floor(Math.random()*greetings.length)]}];let isProcessing=false;
+let chatHistory=[{role:"assistant",content:greetings[Math.floor(Math.random()*greetings.length)]}];
+let isProcessing=false;
+
 userInput.addEventListener("input",function(){this.style.height="auto";this.style.height=this.scrollHeight+"px";});
-userInput.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}});
-sendButton.addEventListener("click",sendMessage);generateButton.addEventListener("click",generateImage);
-
-async function sendMessage(){const message=userInput.value.trim();if(message===""||isProcessing)return;isProcessing=true;userInput.disabled=true;sendButton.disabled=true;generateButton.disabled=true;addMessageToChat("user",message);userInput.value="";userInput.style.height="auto";typingIndicator.classList.add("visible");startThinkingAnimation();chatHistory.push({role:"user",content:message});try{const assistantMessageEl=document.createElement("div");assistantMessageEl.className="message assistant-message fresh";assistantMessageEl.innerHTML="<p></p>";chatMessages.appendChild(assistantMessageEl);chatMessages.scrollTop=chatMessages.scrollHeight;const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:chatHistory})});if(!response.ok){throw new Error("Failed to get response");}const reader=response.body.getReader();const decoder=new TextDecoder();let responseText="";while(true){const{done,value}=await reader.read();if(done){break;}const chunk=decoder.decode(value,{stream:true});const lines=chunk.split("\n");for(const line of lines){try{const jsonData=JSON.parse(line);if(jsonData.response){responseText+=jsonData.response;assistantMessageEl.querySelector("p").innerHTML=formatMarkdown(responseText);chatMessages.scrollTop=chatMessages.scrollHeight;}}catch(e){}}}chatHistory.push({role:"assistant",content:responseText});assistantMessageEl.classList.add("fresh");setTimeout(()=>assistantMessageEl.classList.remove("fresh"),1300);}catch(error){console.error("Error:",error);addMessageToChat("assistant","Sorry, there was an error processing your request.");}finally{stopThinkingAnimation();typingIndicator.classList.remove("visible");isProcessing=false;userInput.disabled=false;sendButton.disabled=false;generateButton.disabled=false;userInput.focus();}}
-
-function addMessageToChat(role,content){const messageEl=document.createElement("div");messageEl.className=`message ${role}-message`;messageEl.innerHTML=`<p>${formatMarkdown(content)}</p>`;chatMessages.appendChild(messageEl);chatMessages.scrollTop=chatMessages.scrollHeight;if(role==="assistant"){messageEl.classList.add("fresh");setTimeout(()=>messageEl.classList.remove("fresh"),1300);}}
-let thinkingDotsInterval=null;const thinkingWords=["Thinking","Processing","Analyzing","Synthesizing","Calculating","Contemplating","Formulating","Reasoning"];let thinkingWordIdx=0;function startThinkingAnimation(){if(!typingIndicator)return;let dots=0;thinkingWordIdx=Math.floor(Math.random()*thinkingWords.length);typingIndicator.innerHTML=`<span class="thinking-word">${thinkingWords[thinkingWordIdx]}</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;const dotEls=typingIndicator.querySelectorAll('.dot');thinkingDotsInterval=setInterval(()=>{dots=(dots+1)%4;if(dots===0){thinkingWordIdx=(thinkingWordIdx+1)%thinkingWords.length;typingIndicator.querySelector('.thinking-word').textContent=thinkingWords[thinkingWordIdx];}dotEls.forEach((el,i)=>{el.style.opacity=i<dots?"1":"0.5";el.style.transform=i<dots?"scale(1.25)":"scale(1)";});},350);}function stopThinkingAnimation(){if(thinkingDotsInterval)clearInterval(thinkingDotsInterval);if(typingIndicator)typingIndicator.innerHTML="";}
-
-/* ================== NEW IMAGE GENERATION ================== */
-async function generateImage(){
-  const prompt=userInput.value.trim();
-  if(prompt==="") return;
-  isProcessing=true;userInput.disabled=true;sendButton.disabled=true;generateButton.disabled=true;
-  addMessageToChat("user",`[Image request] ${prompt}`);
-  userInput.value="";userInput.style.height="auto";
-  typingIndicator.classList.add("visible");startThinkingAnimation();
-  try{
-    const response=await fetch("/api/generate-image",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        prompt:prompt,
-        width:512,
-        height:512
-      })
-    });
-    if(!response.ok) throw new Error("Image generation failed");
-    const result=await response.json();
-    const base64=result.image_base64;
-    if(base64){
-      const imgSrc="data:image/png;base64,"+base64;
-      resultImg.src=imgSrc;
-      const imgEl=document.createElement("div");
-      imgEl.className="message assistant-message image-message fresh";
-      imgEl.innerHTML=`<p><strong>Generated Image:</strong></p><img src="${imgSrc}" alt="Generated Image">`;
-      chatMessages.appendChild(imgEl);
-      chatMessages.scrollTop=chatMessages.scrollHeight;
-    } else {
-      addMessageToChat("assistant","⚠️ No image data returned.");
-    }
-  }catch(err){
-    console.error(err);
-    addMessageToChat("assistant","⚠️ Sorry, there was an error generating the image.");
-  }finally{
-    stopThinkingAnimation();
-    typingIndicator.classList.remove("visible");
-    isProcessing=false;userInput.disabled=false;sendButton.disabled=false;generateButton.disabled=false;userInput.focus();
-  }
-}
-</script>
-  </body>
-</html>
+userInput.addEventListener("keydown",function(e){if(e.key==="Enter"
