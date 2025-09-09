@@ -79,7 +79,6 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
       </div>
     </div>
 
-    <!-- Example preview section -->
     <section>
       <h3 style="text-align:center;color:var(--primary-color);margin-top:1rem;">Generated Image Preview</h3>
       <img id="result" alt="Generated Image Preview">
@@ -201,7 +200,7 @@ function startThinkingAnimation(){
 }
 function stopThinkingAnimation(){if(thinkingDotsInterval)clearInterval(thinkingDotsInterval);if(typingIndicator)typingIndicator.innerHTML="";}
 
-/* ================== NEW IMAGE GENERATION ================== */
+/* ================== IMAGE GENERATION ================== */
 async function generateImage(){
   const prompt=userInput.value.trim();
   if(prompt==="") return;
