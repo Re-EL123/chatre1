@@ -176,6 +176,29 @@ footer {
   box-shadow: 0 0 20px #7f5af025;
 }
 
+.animated-button {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.18s cubic-bezier(.2,1.5,.6,1);
+}
+.animated-button:active {
+  transform: scale(0.94);
+}
+.animated-button .ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: ripple-effect 0.5s linear;
+  background: rgba(127,90,240,0.2);
+  pointer-events: none;
+  z-index: 2;
+}
+@keyframes ripple-effect {
+  to {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
 </style>
   </head>
   <body>
