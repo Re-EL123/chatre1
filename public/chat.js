@@ -10,12 +10,36 @@ const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
-// Chat state
+// ======= 1. REACT-STYLE BUTTON ANIMATION =======
+sendButton.classList.add("animated-button");
+sendButton.addEventListener("click", function(e) {
+  const ripple = document.createElement("span");
+  ripple.className = "ripple";
+  const size = Math.max(sendButton.offsetWidth, sendButton.offsetHeight);
+  ripple.style.width = ripple.style.height = size + "px";
+  ripple.style.left = (e.offsetX - size / 2) + "px";
+  ripple.style.top = (e.offsetY - size / 2) + "px";
+  sendButton.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 500);
+});
+
+// ======= 2. RANDOM GREETING =======
+const greetings = [
+  "Hey there! 🚀 How can I assist you today?",
+  "Hi! Ready to chat? 🌌",
+  "Hello! What can I do for you?",
+  "Welcome! Ask me anything.",
+  "Greetings, human! 🤖",
+  "Yo! Need some help?",
+  "Hi! How may I make your day better?",
+  "Hey! What can I fetch for you?",
+  "Hello! I'm here to help.",
+  "Hi! Let's get started."
+];
 let chatHistory = [
   {
     role: "assistant",
-    content:
-      "Hello! I'm an Chatre chat app built by RE-EL Technologies How can I help you today?",
+    content: greetings[Math.floor(Math.random() * greetings.length)],
   },
 ];
 let isProcessing = false;
@@ -58,8 +82,9 @@ async function sendMessage() {
   userInput.value = "";
   userInput.style.height = "auto";
 
-  // Show typing indicator
+  // ======= 3. SHOW ANIMATED TYPING INDICATOR =======
   typingIndicator.classList.add("visible");
+  startThinkingAnimation();
 
   // Add message to history
   chatHistory.push({ role: "user", content: message });
@@ -67,7 +92,7 @@ async function sendMessage() {
   try {
     // Create new assistant response element
     const assistantMessageEl = document.createElement("div");
-    assistantMessageEl.className = "message assistant-message";
+    assistantMessageEl.className = "message assistant-message fresh";
     assistantMessageEl.innerHTML = "<p></p>";
     chatMessages.appendChild(assistantMessageEl);
 
@@ -126,6 +151,11 @@ async function sendMessage() {
 
     // Add completed response to chat history
     chatHistory.push({ role: "assistant", content: responseText });
+
+    // ======= 4. RESPONSE ANIMATION =======
+    assistantMessageEl.classList.add("fresh");
+    setTimeout(() => assistantMessageEl.classList.remove("fresh"), 1300);
+
   } catch (error) {
     console.error("Error:", error);
     addMessageToChat(
@@ -134,6 +164,7 @@ async function sendMessage() {
     );
   } finally {
     // Hide typing indicator
+    stopThinkingAnimation();
     typingIndicator.classList.remove("visible");
 
     // Re-enable input
@@ -155,4 +186,32 @@ function addMessageToChat(role, content) {
 
   // Scroll to bottom
   chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  // ======= 5. ANIMATE ASSISTANT MESSAGE =======
+  if (role === "assistant") {
+    messageEl.classList.add("fresh");
+    setTimeout(() => messageEl.classList.remove("fresh"), 1300);
+  }
+}
+
+/**
+ * Typing (thinking) animation
+ */
+let thinkingDotsInterval = null;
+function startThinkingAnimation() {
+  if (!typingIndicator) return;
+  let dots = 0;
+  typingIndicator.innerHTML = `<span>Thinking</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
+  const dotEls = typingIndicator.querySelectorAll('.dot');
+  thinkingDotsInterval = setInterval(() => {
+    dots = (dots + 1) % 4;
+    dotEls.forEach((el, i) => {
+      el.style.opacity = i < dots ? "1" : "0.5";
+      el.style.transform = i < dots ? "scale(1.25)" : "scale(1)";
+    });
+  }, 350);
+}
+function stopThinkingAnimation() {
+  if (thinkingDotsInterval) clearInterval(thinkingDotsInterval);
+  if (typingIndicator) typingIndicator.innerHTML = "";
 }
