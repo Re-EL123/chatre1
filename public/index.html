@@ -282,6 +282,27 @@ footer {
  * Handles the chat UI interactions and communication with the backend API.
  */
 
+// ====== MARKDOWN FORMATTING SUPPORT ======
+function formatMarkdown(text) {
+  // Code blocks (triple backticks)
+  text = text.replace(/```([\s\S]*?)```/g, function(match, code) {
+    return `<pre><code>${code.replace(/[<>&]/g, function(c) {
+      return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];
+    })}</code></pre>`;
+  });
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, function(match, code) {
+    return `<code>${code.replace(/[<>&]/g, function(c) {
+      return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];
+    })}</code>`;
+  });
+  // Bold (**text**)
+  text = text.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>');
+  // Italic (*text*)
+  text = text.replace(/\*([^\*]+)\*/g, '<em>$1</em>');
+  return text;
+}
+
 // DOM elements
 const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
@@ -395,112 +416,3 @@ async function sendMessage() {
 
     // Process streaming response
     const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let responseText = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      // Decode chunk
-      const chunk = decoder.decode(value, { stream: true });
-
-      // Process SSE format
-      const lines = chunk.split("\n");
-      for (const line of lines) {
-        try {
-          const jsonData = JSON.parse(line);
-          if (jsonData.response) {
-            // Append new content to existing text
-            responseText += jsonData.response;
-            assistantMessageEl.querySelector("p").textContent = responseText;
-
-            // Scroll to bottom
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-          }
-        } catch (e) {
-          console.error("Error parsing JSON:", e);
-        }
-      }
-    }
-
-    // Add completed response to chat history
-    chatHistory.push({ role: "assistant", content: responseText });
-
-    // ======= 4. RESPONSE ANIMATION =======
-    assistantMessageEl.classList.add("fresh");
-    setTimeout(() => assistantMessageEl.classList.remove("fresh"), 1300);
-
-  } catch (error) {
-    console.error("Error:", error);
-    addMessageToChat(
-      "assistant",
-      "Sorry, there was an error processing your request.",
-    );
-  } finally {
-    // Hide typing indicator
-    stopThinkingAnimation();
-    typingIndicator.classList.remove("visible");
-
-    // Re-enable input
-    isProcessing = false;
-    userInput.disabled = false;
-    sendButton.disabled = false;
-    userInput.focus();
-  }
-}
-
-/**
- * Helper function to add message to chat
- */
-function addMessageToChat(role, content) {
-  const messageEl = document.createElement("div");
-  messageEl.className = `message ${role}-message`;
-  messageEl.innerHTML = `<p>${content}</p>`;
-  chatMessages.appendChild(messageEl);
-
-  // Scroll to bottom
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-
-  // ======= 5. ANIMATE ASSISTANT MESSAGE =======
-  if (role === "assistant") {
-    messageEl.classList.add("fresh");
-    setTimeout(() => messageEl.classList.remove("fresh"), 1300);
-  }
-}
-
-/**
- * Typing (thinking) animation
- */
-let thinkingDotsInterval = null;
-const thinkingWords = ["Thinking", "Processing", "Analyzing", "Synthesizing", "Calculating", "Contemplating", "Formulating", "Reasoning"];
-let thinkingWordIdx = 0;
-function startThinkingAnimation() {
-  if (!typingIndicator) return;
-  let dots = 0;
-  thinkingWordIdx = Math.floor(Math.random() * thinkingWords.length);
-  typingIndicator.innerHTML = `<span class="thinking-word">${thinkingWords[thinkingWordIdx]}</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
-  const dotEls = typingIndicator.querySelectorAll('.dot');
-  thinkingDotsInterval = setInterval(() => {
-    dots = (dots + 1) % 4;
-    // Change the "thinking" word randomly every few cycles
-    if (dots === 0) {
-      thinkingWordIdx = (thinkingWordIdx + 1) % thinkingWords.length;
-      typingIndicator.querySelector('.thinking-word').textContent = thinkingWords[thinkingWordIdx];
-    }
-    dotEls.forEach((el, i) => {
-      el.style.opacity = i < dots ? "1" : "0.5";
-      el.style.transform = i < dots ? "scale(1.25)" : "scale(1)";
-    });
-  }, 350);
-}
-function stopThinkingAnimation() {
-  if (thinkingDotsInterval) clearInterval(thinkingDotsInterval);
-  if (typingIndicator) typingIndicator.innerHTML = "";
-}
-    </script>
-  </body>
-</html>
