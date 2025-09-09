@@ -50,6 +50,7 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
 @keyframes ripple-effect{to{transform:scale(2.5);opacity:0;}}
 /* New: Image message styling */
 .image-message img{max-width:100%;border-radius:12px;box-shadow:0 0 15px #7f5af0;}
+#result{display:block;margin:1rem auto;max-width:100%;border:2px solid var(--primary-color);border-radius:12px;box-shadow:0 0 20px #6246ea;}
 </style>
   </head>
   <body>
@@ -74,6 +75,12 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
       </div>
     </div>
 
+    <!-- Example preview section -->
+    <section>
+      <h3 style="text-align:center;color:var(--primary-color);margin-top:1rem;">Generated Image Preview</h3>
+      <img id="result" alt="Generated Image Preview">
+    </section>
+
     <footer>
       <p>Re-EL Technologies &copy; 2025</p>
     </footer>
@@ -81,7 +88,7 @@ footer{margin-top:1rem;text-align:center;font-size:0.92rem;color:var(--text-ligh
 <script>
 /* ================== EXISTING CHAT CODE PRESERVED ================== */
 function formatMarkdown(text){text=text.replace(/```([\s\S]*?)```/g,function(match,code){return `<pre><code>${code.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})}</code></pre>`;});text=text.replace(/`([^`]+)`/g,function(match,code){return `<code>${code.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})}</code>`;});text=text.replace(/\*\*([^\*]+)\*\*/g,'<strong>$1</strong>');text=text.replace(/\*([^\*]+)\*/g,'<em>$1</em>');return text;}
-const chatMessages=document.getElementById("chat-messages");const userInput=document.getElementById("user-input");const sendButton=document.getElementById("send-button");const generateButton=document.getElementById("generate-button");const typingIndicator=document.getElementById("typing-indicator");
+const chatMessages=document.getElementById("chat-messages");const userInput=document.getElementById("user-input");const sendButton=document.getElementById("send-button");const generateButton=document.getElementById("generate-button");const typingIndicator=document.getElementById("typing-indicator");const resultImg=document.getElementById("result");
 sendButton.classList.add("animated-button");sendButton.addEventListener("click",function(e){const ripple=document.createElement("span");ripple.className="ripple";const size=Math.max(sendButton.offsetWidth,sendButton.offsetHeight);ripple.style.width=ripple.style.height=size+"px";ripple.style.left=(e.offsetX-size/2)+"px";ripple.style.top=(e.offsetY-size/2)+"px";sendButton.appendChild(ripple);setTimeout(()=>ripple.remove(),500);});
 generateButton.classList.add("animated-button");generateButton.addEventListener("click",function(e){const ripple=document.createElement("span");ripple.className="ripple";const size=Math.max(generateButton.offsetWidth,generateButton.offsetHeight);ripple.style.width=ripple.style.height=size+"px";ripple.style.left=(e.offsetX-size/2)+"px";ripple.style.top=(e.offsetY-size/2)+"px";generateButton.appendChild(ripple);setTimeout(()=>ripple.remove(),500);});
 const greetings=["Hey there! 🚀 How can I assist you today?","Hi! Ready to chat? 🌌","Hello! What can I do for you?","Welcome! Ask me anything.","Greetings, human! 🤖","Yo! Need some help?","Hi! How may I make your day better?","Hey! What can I fetch for you?","Hello! I'm here to help.","Hi! Let's get started."];
@@ -109,20 +116,24 @@ async function generateImage(){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         prompt:prompt,
-        guidance:4.5,
         width:512,
-        height:512,
-        num_steps:20
+        height:512
       })
     });
     if(!response.ok) throw new Error("Image generation failed");
     const result=await response.json();
-    const imgUrl=result.image_url||result.url;
-    const imgEl=document.createElement("div");
-    imgEl.className="message assistant-message image-message fresh";
-    imgEl.innerHTML=`<p><strong>Generated Image:</strong></p><img src="${imgUrl}" alt="Generated Image">`;
-    chatMessages.appendChild(imgEl);
-    chatMessages.scrollTop=chatMessages.scrollHeight;
+    const base64=result.image_base64;
+    if(base64){
+      const imgSrc="data:image/png;base64,"+base64;
+      resultImg.src=imgSrc;
+      const imgEl=document.createElement("div");
+      imgEl.className="message assistant-message image-message fresh";
+      imgEl.innerHTML=`<p><strong>Generated Image:</strong></p><img src="${imgSrc}" alt="Generated Image">`;
+      chatMessages.appendChild(imgEl);
+      chatMessages.scrollTop=chatMessages.scrollHeight;
+    } else {
+      addMessageToChat("assistant","⚠️ No image data returned.");
+    }
   }catch(err){
     console.error(err);
     addMessageToChat("assistant","⚠️ Sorry, there was an error generating the image.");
