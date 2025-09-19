@@ -134,26 +134,43 @@ async function handleImageRequest(request: Request, env: Env) {
     // Run AI
     const aiResponse = await env.AI.run(model, payload);
 
-    if (!(aiResponse instanceof ArrayBuffer)) {
-      console.error("Unexpected AI response format:", aiResponse);
+    console.log("Raw AI response:", aiResponse);
+
+    // Some Workers AI models return { output: [ { base64: "..." } ] }
+    if (aiResponse?.output && Array.isArray(aiResponse.output) && aiResponse.output[0]?.base64) {
       return new Response(
-        JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ image_base64: aiResponse.output[0].base64 }),
+        { headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Convert ArrayBuffer → base64
-    const buffer = new Uint8Array(aiResponse);
-    let binary = "";
-    for (let i = 0; i < buffer.byteLength; i++) {
-      binary += String.fromCharCode(buffer[i]);
+    // Some return { image_base64: "..." }
+    if (aiResponse?.image_base64) {
+      return new Response(
+        JSON.stringify({ image_base64: aiResponse.image_base64 }),
+        { headers: { "Content-Type": "application/json" } }
+      );
     }
-    const base64Image = btoa(binary);
 
-    // Return JSON
+    // If it *is* an ArrayBuffer (unlikely, but handle it)
+    if (aiResponse instanceof ArrayBuffer) {
+      const buffer = new Uint8Array(aiResponse);
+      let binary = "";
+      for (let i = 0; i < buffer.byteLength; i++) {
+        binary += String.fromCharCode(buffer[i]);
+      }
+      const base64Image = btoa(binary);
+
+      return new Response(
+        JSON.stringify({ image_base64: base64Image }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // If none matched
     return new Response(
-      JSON.stringify({ image_base64: base64Image }),
-      { headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
 
   } catch (err: any) {
@@ -164,4 +181,3 @@ async function handleImageRequest(request: Request, env: Env) {
     );
   }
 }
-
