@@ -87,7 +87,20 @@ async function handleChatRequest(request: Request, env: Env) {
  */
 async function handleImageRequest(request: Request, env: Env) {
   try {
-    const { prompt, width = 512, height = 512, type = "txt2img" } = await request.json();
+    const {
+      prompt,
+      negative_prompt,
+      height = 512,
+      width = 512,
+      image,
+      image_b64,
+      mask,
+      num_steps = 20,
+      strength = 1,
+      guidance = 7.5,
+      seed,
+      type = "txt2img"
+    } = await request.json();
 
     if (!prompt || prompt.trim() === "") {
       return new Response(
@@ -96,36 +109,32 @@ async function handleImageRequest(request: Request, env: Env) {
       );
     }
 
+    // Choose model
     const model = type === "img2img" ? IMG_MODEL_IMG2IMG : IMG_MODEL_TXT2IMG;
 
-    const aiResponse = await env.AI.run(model, {
+    // Build payload for model
+    const payload: Record<string, any> = {
       prompt,
+      negative_prompt,
       width,
       height,
-      num_steps: 20,
-      guidance: 7.5
+      num_steps,
+      strength,
+      guidance,
+      seed
+    };
+
+    if (image) payload.image = image;
+    if (image_b64) payload.image_b64 = image_b64;
+    if (mask) payload.mask = mask;
+
+    // Call AI
+    const aiResponse = await env.AI.run(model, payload, { returnRawResponse: true });
+
+    // Return raw PNG
+    return new Response(aiResponse, {
+      headers: { "Content-Type": "image/png" }
     });
-
-    let base64Image;
-
-    if (aiResponse instanceof ArrayBuffer) {
-      const uint8 = new Uint8Array(aiResponse);
-      base64Image = btoa(String.fromCharCode(...uint8));
-    } else if (typeof aiResponse === "string") {
-      base64Image = aiResponse;
-    } else if ("image" in aiResponse) {
-      base64Image = aiResponse.image;
-    } else {
-      return new Response(
-        JSON.stringify({ error: "Invalid AI response" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    return new Response(
-      JSON.stringify({ image_base64: base64Image }),
-      { headers: { "Content-Type": "application/json" } }
-    );
 
   } catch (err) {
     console.error("Image generation failed:", err);
