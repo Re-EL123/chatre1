@@ -2,15 +2,16 @@
  * LLM Chat + Image Application
  *
  * A simple chat + image app using Cloudflare Workers AI.
- * Supports streaming chat responses (SSE) and both txt2img + img2img image generation.
+ * Supports streaming chat responses (SSE) and txt2img image generation.
  *
  * @license MIT
  */
 import { Env, ChatMessage } from "./types";
 
 // Model IDs
-const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-const IMG_MODEL_ID = "@cf/runwayml/stable-diffusion-v1-5-img2img";
+const CHAT_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const IMG_MODEL_TXT2IMG = "@cf/runwayml/stable-diffusion-v1-5-txt2img";
+const IMG_MODEL_IMG2IMG = "@cf/runwayml/stable-diffusion-v1-5-img2img";
 
 // Default system prompt
 const SYSTEM_PROMPT =
@@ -55,9 +56,38 @@ export default {
 /**
  * Handles chat API requests
  */
-async function handleImageRequest(request, env2) {
+async function handleChatRequest(request: Request, env: Env) {
   try {
-    const { prompt, width = 512, height = 512 } = await request.json();
+    const { messages = [] } = await request.json();
+
+    // Ensure system prompt is present
+    if (!messages.some((msg) => msg.role === "system")) {
+      messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+    }
+
+    const response = await env.AI.run(
+      CHAT_MODEL_ID,
+      { messages, max_tokens: 1024 },
+      { returnRawResponse: true }
+    );
+
+    return response;
+
+  } catch (error) {
+    console.error("Error processing chat request:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to process request" }),
+      { status: 500, headers: { "content-type": "application/json" } }
+    );
+  }
+}
+
+/**
+ * Handles image API requests (txt2img)
+ */
+async function handleImageRequest(request: Request, env: Env) {
+  try {
+    const { prompt, width = 512, height = 512, type = "txt2img" } = await request.json();
 
     if (!prompt || prompt.trim() === "") {
       return new Response(
@@ -66,21 +96,18 @@ async function handleImageRequest(request, env2) {
       );
     }
 
-    // Run the txt2img model
-    const aiResponse = await env2.AI.run(
-      "@cf/runwayml/stable-diffusion-v1-5-txt2img",
-      {
-        prompt,
-        width,
-        height,
-        num_steps: 20,       // optional: higher = more detailed
-        guidance: 7.5        // optional: higher = closer to prompt
-      }
-    );
+    const model = type === "img2img" ? IMG_MODEL_IMG2IMG : IMG_MODEL_TXT2IMG;
+
+    const aiResponse = await env.AI.run(model, {
+      prompt,
+      width,
+      height,
+      num_steps: 20,
+      guidance: 7.5
+    });
 
     let base64Image;
 
-    // Handle different response types
     if (aiResponse instanceof ArrayBuffer) {
       const uint8 = new Uint8Array(aiResponse);
       base64Image = btoa(String.fromCharCode(...uint8));
@@ -108,4 +135,3 @@ async function handleImageRequest(request, env2) {
     );
   }
 }
-
