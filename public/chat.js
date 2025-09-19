@@ -12,13 +12,13 @@ const typingIndicator = document.getElementById("typing-indicator");
 
 // ======= 1. REACT-STYLE BUTTON ANIMATION =======
 sendButton.classList.add("animated-button");
-sendButton.addEventListener("click", function(e) {
+sendButton.addEventListener("click", function (e) {
   const ripple = document.createElement("span");
   ripple.className = "ripple";
   const size = Math.max(sendButton.offsetWidth, sendButton.offsetHeight);
   ripple.style.width = ripple.style.height = size + "px";
-  ripple.style.left = (e.offsetX - size / 2) + "px";
-  ripple.style.top = (e.offsetY - size / 2) + "px";
+  ripple.style.left = e.offsetX - size / 2 + "px";
+  ripple.style.top = e.offsetY - size / 2 + "px";
   sendButton.appendChild(ripple);
   setTimeout(() => ripple.remove(), 500);
 });
@@ -69,6 +69,17 @@ async function sendMessage() {
 
   // Don't send empty messages
   if (message === "" || isProcessing) return;
+
+  // If it's an image request, route to image generator
+  const lower = message.toLowerCase();
+  if (
+    lower.startsWith("draw") ||
+    lower.startsWith("create image") ||
+    lower.startsWith("generate image") ||
+    lower.startsWith("show me")
+  ) {
+    return generateImage(message);
+  }
 
   // Disable input while processing
   isProcessing = true;
@@ -155,12 +166,11 @@ async function sendMessage() {
     // ======= 4. RESPONSE ANIMATION =======
     assistantMessageEl.classList.add("fresh");
     setTimeout(() => assistantMessageEl.classList.remove("fresh"), 1300);
-
   } catch (error) {
     console.error("Error:", error);
     addMessageToChat(
       "assistant",
-      "Sorry, there was an error processing your request.",
+      "Sorry, there was an error processing your request."
     );
   } finally {
     // Hide typing indicator
@@ -202,7 +212,7 @@ function startThinkingAnimation() {
   if (!typingIndicator) return;
   let dots = 0;
   typingIndicator.innerHTML = `<span>Thinking</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
-  const dotEls = typingIndicator.querySelectorAll('.dot');
+  const dotEls = typingIndicator.querySelectorAll(".dot");
   thinkingDotsInterval = setInterval(() => {
     dots = (dots + 1) % 4;
     dotEls.forEach((el, i) => {
@@ -214,4 +224,52 @@ function startThinkingAnimation() {
 function stopThinkingAnimation() {
   if (thinkingDotsInterval) clearInterval(thinkingDotsInterval);
   if (typingIndicator) typingIndicator.innerHTML = "";
+}
+
+/**
+ * ================= IMAGE GENERATION =================
+ */
+async function generateImage(prompt) {
+  isProcessing = true;
+  userInput.disabled = true;
+  sendButton.disabled = true;
+
+  addMessageToChat("user", "[Image Request] " + prompt);
+
+  // Clear input
+  userInput.value = "";
+  userInput.style.height = "auto";
+
+  typingIndicator.classList.add("visible");
+  startThinkingAnimation();
+
+  try {
+    const response = await fetch("/api/generate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (!response.ok) throw new Error("Image API failed");
+
+    // Convert response to blob
+    const blob = await response.blob();
+    const imageUrl = URL.createObjectURL(blob);
+
+    // Add image to chat
+    addMessageToChat(
+      "assistant",
+      `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2">`
+    );
+  } catch (err) {
+    console.error("⚠️ Image generation failed:", err);
+    addMessageToChat("assistant", "⚠️ Image generation failed.");
+  } finally {
+    stopThinkingAnimation();
+    typingIndicator.classList.remove("visible");
+    isProcessing = false;
+    userInput.disabled = false;
+    sendButton.disabled = false;
+    userInput.focus();
+  }
 }
