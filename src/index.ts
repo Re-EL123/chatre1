@@ -55,63 +55,57 @@ export default {
 /**
  * Handles chat API requests
  */
-async function handleImageRequest(
-  request: Request,
-  env: Env,
-): Promise<Response> {
+async function handleImageRequest(request, env2) {
   try {
-    const {
-      prompt,
-      width = 512,
-      height = 512,
-      image_b64,
-      strength = 0.75,
-      guidance = 7.5,
-      num_steps = 20,
-      seed,
-      negative_prompt
-    } = await request.json();
+    const { prompt, width = 512, height = 512 } = await request.json();
 
     if (!prompt || prompt.trim() === "") {
       return new Response(
         JSON.stringify({ error: "Prompt cannot be empty" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Build model input
-    const modelInput: Record<string, any> = { prompt, width, height, num_steps, guidance };
-    if (image_b64) modelInput.image_b64 = image_b64; // img2img
-    if (strength) modelInput.strength = strength;
-    if (negative_prompt) modelInput.negative_prompt = negative_prompt;
-    if (seed !== undefined) modelInput.seed = seed;
+    // Run the txt2img model
+    const aiResponse = await env2.AI.run(
+      "@cf/runwayml/stable-diffusion-v1-5-txt2img",
+      {
+        prompt,
+        width,
+        height,
+        num_steps: 20,       // optional: higher = more detailed
+        guidance: 7.5        // optional: higher = closer to prompt
+      }
+    );
 
-    // Call the model
-    const aiResponse = await env.AI.run(IMG_MODEL_ID, modelInput);
+    let base64Image;
 
-    // Convert ArrayBuffer (binary PNG) to base64
-    let base64: string;
+    // Handle different response types
     if (aiResponse instanceof ArrayBuffer) {
       const uint8 = new Uint8Array(aiResponse);
-      base64 = btoa(String.fromCharCode(...uint8));
+      base64Image = btoa(String.fromCharCode(...uint8));
+    } else if (typeof aiResponse === "string") {
+      base64Image = aiResponse;
+    } else if ("image" in aiResponse) {
+      base64Image = aiResponse.image;
     } else {
       return new Response(
-        JSON.stringify({ error: "Unexpected AI response format", details: aiResponse }),
+        JSON.stringify({ error: "Invalid AI response" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
     return new Response(
-      JSON.stringify({ image_base64: base64 }),
+      JSON.stringify({ image_base64: base64Image }),
       { headers: { "Content-Type": "application/json" } }
     );
+
   } catch (err) {
     console.error("Image generation failed:", err);
     return new Response(
-      JSON.stringify({ error: "Image generation failed", details: String(err) }),
+      JSON.stringify({ error: "Image generation failed" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
-
 
