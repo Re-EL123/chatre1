@@ -110,10 +110,10 @@ async function handleImageRequest(request: Request, env: Env) {
       );
     }
 
-    // Choose model
+    // Pick model
     const model = type === "img2img" ? IMG_MODEL_IMG2IMG : IMG_MODEL_TXT2IMG;
 
-    // Build payload based on schema
+    // Build payload
     const payload: Record<string, any> = {
       prompt,
       negative_prompt,
@@ -122,31 +122,46 @@ async function handleImageRequest(request: Request, env: Env) {
       num_steps,
       strength,
       guidance,
-      seed
+      seed,
     };
 
     if (image) payload.image = image;
     if (image_b64) payload.image_b64 = image_b64;
     if (mask) payload.mask = mask;
 
-    // Run AI → Cloudflare Workers AI returns ArrayBuffer for images
+    console.log("Sending payload to Workers AI:", JSON.stringify(payload));
+
+    // Run AI
     const aiResponse = await env.AI.run(model, payload);
 
     if (!(aiResponse instanceof ArrayBuffer)) {
-      console.error("Unexpected AI response:", aiResponse);
+      console.error("Unexpected AI response format:", aiResponse);
       return new Response(
-        JSON.stringify({ error: "Invalid AI response format" }),
+        JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Return raw PNG
-    return new Response(aiResponse, {
-      headers: { "Content-Type": "image/png" }
-    });
+    // Convert ArrayBuffer → base64
+    const buffer = new Uint8Array(aiResponse);
+    let binary = "";
+    for (let i = 0; i < buffer.byteLength; i++) {
+      binary += String.fromCharCode(buffer[i]);
+    }
+    const base64Image = btoa(binary);
 
-  } catch (err) {
-    console.error("Image generation failed:", err);
+    // Return JSON
     return new Response(
-      JS
+      JSON.stringify({ image_base64: base64Image }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+  } catch (err: any) {
+    console.error("Image generation failed:", err.message || err);
+    return new Response(
+      JSON.stringify({ error: "Image generation failed", details: err.message || String(err) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
 
