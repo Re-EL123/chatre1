@@ -1,16 +1,16 @@
 /**
- * LLM Chat Application Template
+ * LLM Chat + Image Application
  *
- * A simple chat application using Cloudflare Workers AI.
- * This template demonstrates how to implement an LLM-powered chat interface with
- * streaming responses using Server-Sent Events (SSE) and image generation.
+ * A simple chat + image app using Cloudflare Workers AI.
+ * Supports streaming chat responses (SSE) and both txt2img + img2img image generation.
  *
  * @license MIT
  */
 import { Env, ChatMessage } from "./types";
 
-// Model ID for Workers AI model
+// Model IDs
 const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const IMG_MODEL_ID = "@cf/runwayml/stable-diffusion-v1-5-img2img";
 
 // Default system prompt
 const SYSTEM_PROMPT =
@@ -95,13 +95,24 @@ async function handleChatRequest(
 
 /**
  * Handles image generation API requests
+ * Supports both txt2img (if no image_b64) and img2img (if image_b64 provided)
  */
 async function handleImageRequest(
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const { prompt, width = 512, height = 512 } = await request.json();
+    const {
+      prompt,
+      width = 512,
+      height = 512,
+      image_b64,
+      negative_prompt,
+      num_steps = 20,
+      strength = 0.8,
+      guidance = 7.5,
+      seed,
+    } = await request.json();
 
     if (!prompt || prompt.trim() === "") {
       return new Response(
@@ -110,14 +121,27 @@ async function handleImageRequest(
       );
     }
 
-    const aiResponse = await env.AI.run(
-      "@cf/runwayml/stable-diffusion-v1-5-img2img",
-      { prompt, width, height },
-    );
+    // Build payload
+    const payload: Record<string, unknown> = {
+      prompt,
+      width,
+      height,
+      negative_prompt,
+      num_steps,
+      guidance,
+      seed,
+    };
 
-    // Convert AI response to base64
+    // If image_b64 provided → img2img
+    if (image_b64) {
+      payload.image_b64 = image_b64;
+      payload.strength = strength;
+    }
+
+    const aiResponse = await env.AI.run(IMG_MODEL_ID, payload);
+
+    // Normalize AI response → base64 string
     let base64: string;
-
     if (aiResponse instanceof ArrayBuffer) {
       const uint8 = new Uint8Array(aiResponse);
       base64 = btoa(String.fromCharCode(...uint8));
