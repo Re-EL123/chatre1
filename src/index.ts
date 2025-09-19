@@ -82,8 +82,9 @@ async function handleChatRequest(request: Request, env: Env) {
   }
 }
 
+
 /**
- * Handles image API requests (txt2img)
+ * Handles image API requests (txt2img / img2img)
  */
 async function handleImageRequest(request: Request, env: Env) {
   try {
@@ -128,11 +129,21 @@ async function handleImageRequest(request: Request, env: Env) {
     if (image_b64) payload.image_b64 = image_b64;
     if (mask) payload.mask = mask;
 
-    // Call AI
-    const aiResponse = await env.AI.run(model, payload, { returnRawResponse: true });
+    // Run AI
+    const aiResponse: any = await env.AI.run(model, payload);
 
-    // Return raw PNG
-    return new Response(aiResponse, {
+    if (!aiResponse || !aiResponse.images || aiResponse.images.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "No image returned from model" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Convert base64 to Uint8Array
+    const imageBase64 = aiResponse.images[0];
+    const imageBuffer = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
+
+    return new Response(imageBuffer, {
       headers: { "Content-Type": "image/png" }
     });
 
