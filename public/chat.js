@@ -252,15 +252,21 @@ async function generateImage(prompt) {
 
     if (!response.ok) throw new Error("Image API failed");
 
-    // Convert response to blob
-    const blob = await response.blob();
-    const imageUrl = URL.createObjectURL(blob);
+    // Parse JSON
+    const data = await response.json();
 
-    // Add image to chat
-    addMessageToChat(
-      "assistant",
-      `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2">`
-    );
+    if (data.image_base64) {
+      // Build data URL from base64
+      const imageUrl = `data:image/png;base64,${data.image_base64}`;
+
+      addMessageToChat(
+        "assistant",
+        `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2 max-w-xs">`
+      );
+    } else {
+      addMessageToChat("assistant", "⚠️ No image returned.");
+      console.error("No image in response:", data);
+    }
   } catch (err) {
     console.error("⚠️ Image generation failed:", err);
     addMessageToChat("assistant", "⚠️ Image generation failed.");
