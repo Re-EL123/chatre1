@@ -102,17 +102,8 @@ async function handleImageRequest(
   env: Env,
 ): Promise<Response> {
   try {
-    const {
-      prompt,
-      width = 512,
-      height = 512,
-      image_b64,
-      negative_prompt,
-      num_steps = 20,
-      strength = 0.8,
-      guidance = 7.5,
-      seed,
-    } = await request.json();
+    const { prompt, width = 512, height = 512, image_b64, strength = 0.75 } =
+      await request.json();
 
     if (!prompt || prompt.trim() === "") {
       return new Response(
@@ -121,50 +112,29 @@ async function handleImageRequest(
       );
     }
 
-    // Build payload
-    const payload: Record<string, unknown> = {
-      prompt,
-      width,
-      height,
-      negative_prompt,
-      num_steps,
-      guidance,
-      seed,
-    };
+    const aiResponse = await env.AI.run(
+      "@cf/runwayml/stable-diffusion-v1-5-img2img",
+      { prompt, width, height, image_b64, strength },
+    );
 
-    // If image_b64 provided → img2img
-    if (image_b64) {
-      payload.image_b64 = image_b64;
-      payload.strength = strength;
-    }
-
-    const aiResponse = await env.AI.run(IMG_MODEL_ID, payload);
-
-    // Normalize AI response → base64 string
-    let base64: string;
-    if (aiResponse instanceof ArrayBuffer) {
-      const uint8 = new Uint8Array(aiResponse);
-      base64 = btoa(String.fromCharCode(...uint8));
-    } else if (typeof aiResponse === "string") {
-      base64 = aiResponse;
-    } else if ("image" in aiResponse) {
-      base64 = aiResponse.image;
-    } else {
+    // Cloudflare AI returns { image_base64 }
+    if (aiResponse && "image_base64" in aiResponse) {
       return new Response(
-        JSON.stringify({ error: "Invalid AI response" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
+        JSON.stringify({ image_base64: aiResponse.image_base64 }),
+        { headers: { "Content-Type": "application/json" } },
       );
     }
 
     return new Response(
-      JSON.stringify({ image_base64: base64 }),
-      { headers: { "Content-Type": "application/json" } },
+      JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("Image generation failed:", err);
     return new Response(
-      JSON.stringify({ error: "Image generation failed" }),
+      JSON.stringify({ error: "Image generation failed", details: String(err) }),
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }
+
