@@ -111,7 +111,7 @@ async function handleImageRequest(
     }
 
     const aiResponse = await env.AI.run(
-      "@cf/bytedance/stable-diffusion-xl-lightning",
+      "@cf/runwayml/stable-diffusion-v1-5-img2img",
       { prompt, width, height },
     );
 
