@@ -113,7 +113,7 @@ async function handleImageRequest(request: Request, env: Env) {
     // Choose model
     const model = type === "img2img" ? IMG_MODEL_IMG2IMG : IMG_MODEL_TXT2IMG;
 
-    // Build payload for model
+    // Build payload based on schema
     const payload: Record<string, any> = {
       prompt,
       negative_prompt,
@@ -129,29 +129,24 @@ async function handleImageRequest(request: Request, env: Env) {
     if (image_b64) payload.image_b64 = image_b64;
     if (mask) payload.mask = mask;
 
-    // Run AI
-    const aiResponse: any = await env.AI.run(model, payload);
+    // Run AI → Cloudflare Workers AI returns ArrayBuffer for images
+    const aiResponse = await env.AI.run(model, payload);
 
-    if (!aiResponse || !aiResponse.images || aiResponse.images.length === 0) {
+    if (!(aiResponse instanceof ArrayBuffer)) {
+      console.error("Unexpected AI response:", aiResponse);
       return new Response(
-        JSON.stringify({ error: "No image returned from model" }),
+        JSON.stringify({ error: "Invalid AI response format" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Convert base64 to Uint8Array
-    const imageBase64 = aiResponse.images[0];
-    const imageBuffer = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
-
-    return new Response(imageBuffer, {
+    // Return raw PNG
+    return new Response(aiResponse, {
       headers: { "Content-Type": "image/png" }
     });
 
   } catch (err) {
     console.error("Image generation failed:", err);
     return new Response(
-      JSON.stringify({ error: "Image generation failed" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-}
+      JS
+
