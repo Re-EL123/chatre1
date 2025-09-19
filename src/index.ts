@@ -125,53 +125,30 @@ async function handleImageRequest(request: Request, env: Env) {
       seed,
     };
 
-    if (image) payload.image = image;
-    if (image_b64) payload.image_b64 = image_b64;
-    if (mask) payload.mask = mask;
+    if (type === "img2img") {
+      if (image) payload.image = image;
+      else if (image_b64) payload.image_b64 = image_b64;
+      if (mask) payload.mask = mask;
+    }
 
     console.log("Sending payload to Workers AI:", JSON.stringify(payload));
 
     // Run AI
     const aiResponse = await env.AI.run(model, payload);
 
-    console.log("Raw AI response:", aiResponse);
-
-    // Some Workers AI models return { output: [ { base64: "..." } ] }
-    if (aiResponse?.output && Array.isArray(aiResponse.output) && aiResponse.output[0]?.base64) {
+    // aiResponse is ArrayBuffer (raw image)
+    if (!(aiResponse instanceof ArrayBuffer)) {
+      console.error("Unexpected AI response format:", aiResponse);
       return new Response(
-        JSON.stringify({ image_base64: aiResponse.output[0].base64 }),
-        { headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Some return { image_base64: "..." }
-    if (aiResponse?.image_base64) {
-      return new Response(
-        JSON.stringify({ image_base64: aiResponse.image_base64 }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // If it *is* an ArrayBuffer (unlikely, but handle it)
-    if (aiResponse instanceof ArrayBuffer) {
-      const buffer = new Uint8Array(aiResponse);
-      let binary = "";
-      for (let i = 0; i < buffer.byteLength; i++) {
-        binary += String.fromCharCode(buffer[i]);
-      }
-      const base64Image = btoa(binary);
-
-      return new Response(
-        JSON.stringify({ image_base64: base64Image }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // If none matched
-    return new Response(
-      JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    // Return raw image as PNG
+    return new Response(aiResponse, {
+      headers: { "Content-Type": "image/png" },
+    });
 
   } catch (err: any) {
     console.error("Image generation failed:", err.message || err);
