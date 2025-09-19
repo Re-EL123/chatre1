@@ -55,55 +55,22 @@ export default {
 /**
  * Handles chat API requests
  */
-async function handleChatRequest(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  try {
-    const { messages = [] } = (await request.json()) as {
-      messages: ChatMessage[];
-    };
-
-    // Add system prompt if missing
-    if (!messages.some((msg) => msg.role === "system")) {
-      messages.unshift({ role: "system", content: SYSTEM_PROMPT });
-    }
-
-    const response = await env.AI.run(
-      MODEL_ID,
-      {
-        messages,
-        max_tokens: 1024,
-      },
-      {
-        returnRawResponse: true, // streaming
-      },
-    );
-
-    return response;
-  } catch (error) {
-    console.error("Error processing chat request:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to process request" }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      },
-    );
-  }
-}
-
-/**
- * Handles image generation API requests
- * Supports both txt2img (if no image_b64) and img2img (if image_b64 provided)
- */
 async function handleImageRequest(
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const { prompt, width = 512, height = 512, image_b64, strength = 0.75 } =
-      await request.json();
+    const {
+      prompt,
+      width = 512,
+      height = 512,
+      image_b64,
+      strength = 0.75,
+      guidance = 7.5,
+      num_steps = 20,
+      seed,
+      negative_prompt
+    } = await request.json();
 
     if (!prompt || prompt.trim() === "") {
       return new Response(
@@ -112,29 +79,39 @@ async function handleImageRequest(
       );
     }
 
-    const aiResponse = await env.AI.run(
-      "@cf/runwayml/stable-diffusion-v1-5-img2img",
-      { prompt, width, height, image_b64, strength },
-    );
+    // Build model input
+    const modelInput: Record<string, any> = { prompt, width, height, num_steps, guidance };
+    if (image_b64) modelInput.image_b64 = image_b64; // img2img
+    if (strength) modelInput.strength = strength;
+    if (negative_prompt) modelInput.negative_prompt = negative_prompt;
+    if (seed !== undefined) modelInput.seed = seed;
 
-    // Cloudflare AI returns { image_base64 }
-    if (aiResponse && "image_base64" in aiResponse) {
+    // Call the model
+    const aiResponse = await env.AI.run(IMG_MODEL_ID, modelInput);
+
+    // Convert ArrayBuffer (binary PNG) to base64
+    let base64: string;
+    if (aiResponse instanceof ArrayBuffer) {
+      const uint8 = new Uint8Array(aiResponse);
+      base64 = btoa(String.fromCharCode(...uint8));
+    } else {
       return new Response(
-        JSON.stringify({ image_base64: aiResponse.image_base64 }),
-        { headers: { "Content-Type": "application/json" } },
+        JSON.stringify({ error: "Unexpected AI response format", details: aiResponse }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
     return new Response(
-      JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      JSON.stringify({ image_base64: base64 }),
+      { headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Image generation failed:", err);
     return new Response(
       JSON.stringify({ error: "Image generation failed", details: String(err) }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
+
 
