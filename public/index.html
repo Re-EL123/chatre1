@@ -68,6 +68,8 @@ h1 {
   overflow-y:auto;
   padding:1rem;
   background:linear-gradient(120deg,#000 60%,#111 100%);
+  display: flex;
+  flex-direction: column;
 }
 .message {
   margin-bottom:1rem;
@@ -206,6 +208,7 @@ const imagePreview=document.getElementById("image-preview");
 
 let chatHistory=[];
 let isProcessing=false;
+let animationInterval;
 
 userInput.addEventListener("keydown",e=>{
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendButton.click();}
@@ -234,9 +237,11 @@ async function sendMessage(){
   isProcessing=true;
   userInput.value="";
   addMessage("user",message);
+  chatHistory.push({role:"user",content:message});
+  typingIndicator.innerText = "Chatre is typing...";
   typingIndicator.classList.add("visible");
   try{
-    const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[...chatHistory,{role:"user",content:message}]})});
+    const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[...chatHistory]})});
     const data=await res.json();
     addMessage("assistant",data.response||"...");
     chatHistory.push({role:"assistant",content:data.response});
@@ -244,6 +249,7 @@ async function sendMessage(){
     addMessage("assistant","⚠️ Error getting response.");
   }finally{
     typingIndicator.classList.remove("visible");
+    typingIndicator.innerText = "";
     isProcessing=false;
   }
 }
@@ -257,7 +263,8 @@ async function generateImage(prompt) {
   userInput.disabled = true;
   sendButton.disabled = true;
 
-  addMessageToChat("user", "[Image Request] " + prompt);
+  addMessage("user", "[Image Request] " + prompt);
+  chatHistory.push({role:"user",content:"[Image Request] " + prompt});
 
   userInput.value = "";
   userInput.style.height = "auto";
@@ -279,13 +286,14 @@ async function generateImage(prompt) {
     const blob = await response.blob();
     const imageUrl = URL.createObjectURL(blob);
 
-    addMessageToChat(
+    addMessage(
       "assistant",
       `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2 max-w-xs shadow-md fade-in">`
     );
+    chatHistory.push({role:"assistant",content:"Generated image for: " + prompt});
   } catch (err) {
     console.error("⚠️ Image generation failed:", err);
-    addMessageToChat("assistant", "⚠️ Image generation failed.");
+    addMessage("assistant", "⚠️ Image generation failed.");
   } finally {
     stopThinkingAnimation();
     typingIndicator.classList.remove("visible");
@@ -294,6 +302,20 @@ async function generateImage(prompt) {
     sendButton.disabled = false;
     userInput.focus();
   }
+}
+
+function startThinkingAnimation() {
+  typingIndicator.innerText = "Chatre is thinking";
+  let dots = '';
+  animationInterval = setInterval(() => {
+    dots = dots.length < 3 ? dots + '.' : '';
+    typingIndicator.innerText = `Chatre is thinking${dots}`;
+  }, 500);
+}
+
+function stopThinkingAnimation() {
+  clearInterval(animationInterval);
+  typingIndicator.innerText = '';
 }
 </script>
   </body>
