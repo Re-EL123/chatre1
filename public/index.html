@@ -248,29 +248,51 @@ async function sendMessage(){
   }
 }
 
-/* ================== IMAGE GENERATION ================== */
-async function generateImage(prompt){
-  isProcessing=true;
-  userInput.value="";
-  addMessage("user","[Image Request] "+prompt);
+
+/**
+ * ================= IMAGE GENERATION =================
+ */
+async function generateImage(prompt) {
+  isProcessing = true;
+  userInput.disabled = true;
+  sendButton.disabled = true;
+
+  addMessageToChat("user", "[Image Request] " + prompt);
+
+  userInput.value = "";
+  userInput.style.height = "auto";
+
   typingIndicator.classList.add("visible");
-  try{
-    const res=await fetch("/api/generate-image",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt})});
-    const data=await res.json();
-    if(data.image_base64){
-      const src="data:image/png;base64,"+data.image_base64;
-      resultImg.src=src;
-      resultImg.style.display="block";
-      imagePreview.style.display="block";
-      addMessage("assistant",`Here is your generated image:<br><img src="${src}" alt="Generated Image">`);
-    }else{
-      addMessage("assistant","⚠️ No image returned.");
-    }
-  }catch(e){
-    addMessage("assistant","⚠️ Image generation failed.");
-  }finally{
+  startThinkingAnimation();
+
+  try {
+    // === Call your Cloudflare Worker directly ===
+    const response = await fetch("https://chatre-image-build.akanishibiri4422.workers.dev/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (!response.ok) throw new Error("Image API failed");
+
+    // Get raw image blob
+    const blob = await response.blob();
+    const imageUrl = URL.createObjectURL(blob);
+
+    addMessageToChat(
+      "assistant",
+      `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2 max-w-xs shadow-md fade-in">`
+    );
+  } catch (err) {
+    console.error("⚠️ Image generation failed:", err);
+    addMessageToChat("assistant", "⚠️ Image generation failed.");
+  } finally {
+    stopThinkingAnimation();
     typingIndicator.classList.remove("visible");
-    isProcessing=false;
+    isProcessing = false;
+    userInput.disabled = false;
+    sendButton.disabled = false;
+    userInput.focus();
   }
 }
 </script>
