@@ -227,7 +227,7 @@ async function sendMessage(){
   if(!message||isProcessing)return;
   // detect if it's an image request
   const lower=message.toLowerCase();
-  if(lower.startsWith("draw")||lower.startsWith("create image")||lower.startsWith("generate image")||lower.startsWith("show me")){
+  if(lower.startsWith("draw")||lower.startsWith("create image")||lower.startsWith("generate image")||lower.startsWith("show me")||lower.startsWith("create an image")||lower.startsWith("generate an image")){
     return generateImage(message);
   }
   // else: normal chat
