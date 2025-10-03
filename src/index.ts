@@ -1,160 +1,236 @@
 /**
- * LLM Chat + Image Application
+ * LLM Chat App Frontend
  *
- * A simple chat + image app using Cloudflare Workers AI.
- * Supports streaming chat responses (SSE) and txt2img image generation.
- *
- * @license MIT
+ * Handles the chat UI interactions and communication with the backend API.
  */
-import { Env, ChatMessage } from "./types";
 
-// Model IDs
-const CHAT_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-const IMG_MODEL_TXT2IMG = "@cf/runwayml/stable-diffusion-v1-5-txt2img";
-const IMG_MODEL_IMG2IMG = "@cf/runwayml/stable-diffusion-v1-5-img2img";
+// DOM elements
+const chatMessages = document.getElementById("chat-messages");
+const userInput = document.getElementById("user-input");
+const sendButton = document.getElementById("send-button");
+const typingIndicator = document.getElementById("typing-indicator");
 
-// Default system prompt
-const SYSTEM_PROMPT =
-  "You are a helpful, friendly assistant. You think like an African, the most intelligent. Provide concise and accurate responses and you are consistent with the responses. You provide suggestions to help users with the next prompts. Your name is Chatre";
+// ======= 1. REACT-STYLE BUTTON ANIMATION =======
+sendButton.classList.add("animated-button");
+sendButton.addEventListener("click", function (e) {
+  const ripple = document.createElement("span");
+  ripple.className = "ripple";
+  const size = Math.max(sendButton.offsetWidth, sendButton.offsetHeight);
+  ripple.style.width = ripple.style.height = size + "px";
+  ripple.style.left = e.offsetX - size / 2 + "px";
+  ripple.style.top = e.offsetY - size / 2 + "px";
+  sendButton.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 500);
+});
 
-export default {
-  /**
-   * Main request handler for the Worker
-   */
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
-    const url = new URL(request.url);
-
-    // Serve static assets (frontend)
-    if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
-      return env.ASSETS.fetch(request);
-    }
-
-    // Chat endpoint
-    if (url.pathname === "/api/chat") {
-      if (request.method === "POST") {
-        return handleChatRequest(request, env);
-      }
-      return new Response("Method not allowed", { status: 405 });
-    }
-
-    // Image generation endpoint
-    if (url.pathname === "/api/generate-image") {
-      if (request.method === "POST") {
-        return handleImageRequest(request, env);
-      }
-      return new Response("Method not allowed", { status: 405 });
-    }
-
-    return new Response("Not found", { status: 404 });
+// ======= 2. RANDOM GREETING =======
+const greetings = [
+  "Hey there! 🚀 How can I assist you today?",
+  "Hi! Ready to chat? 🌌",
+  "Hello! What can I do for you?",
+  "Welcome! Ask me anything.",
+  "Greetings, human! 🤖",
+  "Yo! Need some help?",
+  "Hi! How may I make your day better?",
+  "Hey! What can I fetch for you?",
+  "Hello! I'm here to help.",
+  "Hi! Let's get started."
+];
+let chatHistory = [
+  {
+    role: "assistant",
+    content: greetings[Math.floor(Math.random() * greetings.length)],
   },
-} satisfies ExportedHandler<Env>;
+];
+let isProcessing = false;
+
+// Auto-resize textarea
+userInput.addEventListener("input", function () {
+  this.style.height = "auto";
+  this.style.height = this.scrollHeight + "px";
+});
+
+// Send on Enter
+userInput.addEventListener("keydown", function (e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+// Send button click handler
+sendButton.addEventListener("click", sendMessage);
 
 /**
- * Handles chat API requests
+ * Sends a message to the chat API and processes the response
  */
-async function handleChatRequest(request: Request, env: Env) {
-  try {
-    const { messages = [] } = await request.json();
+async function sendMessage() {
+  const message = userInput.value.trim();
+  if (message === "" || isProcessing) return;
 
-    // Ensure system prompt is present
-    if (!messages.some((msg) => msg.role === "system")) {
-      messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+  const lower = message.toLowerCase();
+  if (
+    lower.startsWith("draw") ||
+    lower.startsWith("create image") ||
+    lower.startsWith("generate image") ||
+    lower.startsWith("show me")
+  ) {
+    return generateImage(message);
+  }
+
+  isProcessing = true;
+  userInput.disabled = true;
+  sendButton.disabled = true;
+
+  addMessageToChat("user", message);
+
+  userInput.value = "";
+  userInput.style.height = "auto";
+
+  typingIndicator.classList.add("visible");
+  startThinkingAnimation();
+
+  chatHistory.push({ role: "user", content: message });
+
+  try {
+    const assistantMessageEl = document.createElement("div");
+    assistantMessageEl.className = "message assistant-message fresh";
+    assistantMessageEl.innerHTML = "<p></p>";
+    chatMessages.appendChild(assistantMessageEl);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: chatHistory }),
+    });
+
+    if (!response.ok) throw new Error("Failed to get response");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let responseText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        try {
+          const jsonData = JSON.parse(line);
+          if (jsonData.response) {
+            responseText += jsonData.response;
+            assistantMessageEl.querySelector("p").textContent = responseText;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+        } catch (e) {
+          console.error("Error parsing JSON:", e);
+        }
+      }
     }
 
-    const response = await env.AI.run(
-      CHAT_MODEL_ID,
-      { messages, max_tokens: 1024 },
-      { returnRawResponse: true }
-    );
+    chatHistory.push({ role: "assistant", content: responseText });
 
-    return response;
-
+    assistantMessageEl.classList.add("fresh");
+    setTimeout(() => assistantMessageEl.classList.remove("fresh"), 1300);
   } catch (error) {
-    console.error("Error processing chat request:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to process request" }),
-      { status: 500, headers: { "content-type": "application/json" } }
+    console.error("Error:", error);
+    addMessageToChat(
+      "assistant",
+      "Sorry, there was an error processing your request."
     );
+  } finally {
+    stopThinkingAnimation();
+    typingIndicator.classList.remove("visible");
+    isProcessing = false;
+    userInput.disabled = false;
+    sendButton.disabled = false;
+    userInput.focus();
   }
 }
 
+/**
+ * Helper: Add message to chat
+ */
+function addMessageToChat(role, content) {
+  const messageEl = document.createElement("div");
+  messageEl.className = `message ${role}-message`;
+  messageEl.innerHTML = `<p>${content}</p>`;
+  chatMessages.appendChild(messageEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  if (role === "assistant") {
+    messageEl.classList.add("fresh");
+    setTimeout(() => messageEl.classList.remove("fresh"), 1300);
+  }
+}
 
 /**
- * Handles image API requests (txt2img / img2img)
+ * Typing animation
  */
-async function handleImageRequest(request: Request, env: Env) {
+let thinkingDotsInterval = null;
+function startThinkingAnimation() {
+  if (!typingIndicator) return;
+  let dots = 0;
+  typingIndicator.innerHTML = `<span>Thinking</span><span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
+  const dotEls = typingIndicator.querySelectorAll(".dot");
+  thinkingDotsInterval = setInterval(() => {
+    dots = (dots + 1) % 4;
+    dotEls.forEach((el, i) => {
+      el.style.opacity = i < dots ? "1" : "0.5";
+      el.style.transform = i < dots ? "scale(1.25)" : "scale(1)";
+    });
+  }, 350);
+}
+function stopThinkingAnimation() {
+  if (thinkingDotsInterval) clearInterval(thinkingDotsInterval);
+  if (typingIndicator) typingIndicator.innerHTML = "";
+}
+
+/**
+ * ================= IMAGE GENERATION =================
+ */
+async function generateImage(prompt) {
+  isProcessing = true;
+  userInput.disabled = true;
+  sendButton.disabled = true;
+
+  addMessageToChat("user", "[Image Request] " + prompt);
+
+  userInput.value = "";
+  userInput.style.height = "auto";
+
+  typingIndicator.classList.add("visible");
+  startThinkingAnimation();
+
   try {
-    const {
-      prompt,
-      negative_prompt,
-      height = 512,
-      width = 512,
-      image,
-      image_b64,
-      mask,
-      num_steps = 20,
-      strength = 1,
-      guidance = 7.5,
-      seed,
-      type = "txt2img"
-    } = await request.json();
-
-    if (!prompt || prompt.trim() === "") {
-      return new Response(
-        JSON.stringify({ error: "Prompt cannot be empty" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Pick model
-    const model = type === "img2img" ? IMG_MODEL_IMG2IMG : IMG_MODEL_TXT2IMG;
-
-    // Build payload
-    const payload: Record<string, any> = {
-      prompt,
-      negative_prompt,
-      width,
-      height,
-      num_steps,
-      strength,
-      guidance,
-      seed,
-    };
-
-    if (type === "img2img") {
-      if (image) payload.image = image;
-      else if (image_b64) payload.image_b64 = image_b64;
-      if (mask) payload.mask = mask;
-    }
-
-    console.log("Sending payload to Workers AI:", JSON.stringify(payload));
-
-    // Run AI
-    const aiResponse = await env.AI.run(model, payload);
-
-    // aiResponse is ArrayBuffer (raw image)
-    if (!(aiResponse instanceof ArrayBuffer)) {
-      console.error("Unexpected AI response format:", aiResponse);
-      return new Response(
-        JSON.stringify({ error: "Invalid AI response format", details: aiResponse }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Return raw image as PNG
-    return new Response(aiResponse, {
-      headers: { "Content-Type": "image/png" },
+    // === Call your Cloudflare Worker directly ===
+    const response = await fetch("https://chatre-image-build.akanishibiri4422.workers.dev/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
     });
 
-  } catch (err: any) {
-    console.error("Image generation failed:", err.message || err);
-    return new Response(
-      JSON.stringify({ error: "Image generation failed", details: err.message || String(err) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+    if (!response.ok) throw new Error("Image API failed");
+
+    // Get raw image blob
+    const blob = await response.blob();
+    const imageUrl = URL.createObjectURL(blob);
+
+    addMessageToChat(
+      "assistant",
+      `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2 max-w-xs shadow-md fade-in">`
     );
+  } catch (err) {
+    console.error("⚠️ Image generation failed:", err);
+    addMessageToChat("assistant", "⚠️ Image generation failed.");
+  } finally {
+    stopThinkingAnimation();
+    typingIndicator.classList.remove("visible");
+    isProcessing = false;
+    userInput.disabled = false;
+    sendButton.disabled = false;
+    userInput.focus();
   }
 }
