@@ -206,7 +206,7 @@ async function generateImage(prompt) {
 
   try {
     // === Call your Cloudflare Worker endpoint ===
-    const response = await fetch("/api/generate-image", {
+    const response = await fetch("https://chatre-image-build.akanishibiri4422.workers.dev/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
