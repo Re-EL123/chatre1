@@ -205,14 +205,17 @@ async function generateImage(prompt) {
   startThinkingAnimation();
 
   try {
-    // === Call your Cloudflare Worker directly ===
-    const response = await fetch("https://chatre-image-build.akanishibiri4422.workers.dev/", {
+    // === Call your Cloudflare Worker endpoint ===
+    const response = await fetch("/api/generate-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
 
-    if (!response.ok) throw new Error("Image API failed");
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error("Image API failed: " + errorText);
+    }
 
     // Get raw image blob
     const blob = await response.blob();
