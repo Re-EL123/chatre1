@@ -44,13 +44,13 @@ let chatHistory = [
 ];
 let isProcessing = false;
 
-// Auto-resize textarea as user types
+// Auto-resize textarea
 userInput.addEventListener("input", function () {
   this.style.height = "auto";
   this.style.height = this.scrollHeight + "px";
 });
 
-// Send message on Enter (without Shift)
+// Send on Enter
 userInput.addEventListener("keydown", function (e) {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -66,11 +66,8 @@ sendButton.addEventListener("click", sendMessage);
  */
 async function sendMessage() {
   const message = userInput.value.trim();
-
-  // Don't send empty messages
   if (message === "" || isProcessing) return;
 
-  // If it's an image request, route to image generator
   const lower = message.toLowerCase();
   if (
     lower.startsWith("draw") ||
@@ -81,77 +78,50 @@ async function sendMessage() {
     return generateImage(message);
   }
 
-  // Disable input while processing
   isProcessing = true;
   userInput.disabled = true;
   sendButton.disabled = true;
 
-  // Add user message to chat
   addMessageToChat("user", message);
 
-  // Clear input
   userInput.value = "";
   userInput.style.height = "auto";
 
-  // ======= 3. SHOW ANIMATED TYPING INDICATOR =======
   typingIndicator.classList.add("visible");
   startThinkingAnimation();
 
-  // Add message to history
   chatHistory.push({ role: "user", content: message });
 
   try {
-    // Create new assistant response element
     const assistantMessageEl = document.createElement("div");
     assistantMessageEl.className = "message assistant-message fresh";
     assistantMessageEl.innerHTML = "<p></p>";
     chatMessages.appendChild(assistantMessageEl);
-
-    // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    // Send request to API
     const response = await fetch("/api/chat", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages: chatHistory,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: chatHistory }),
     });
 
-    // Handle errors
-    if (!response.ok) {
-      throw new Error("Failed to get response");
-    }
+    if (!response.ok) throw new Error("Failed to get response");
 
-    // Process streaming response
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let responseText = "";
 
     while (true) {
       const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      // Decode chunk
+      if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-
-      // Process SSE format
       const lines = chunk.split("\n");
       for (const line of lines) {
         try {
           const jsonData = JSON.parse(line);
           if (jsonData.response) {
-            // Append new content to existing text
             responseText += jsonData.response;
             assistantMessageEl.querySelector("p").textContent = responseText;
-
-            // Scroll to bottom
             chatMessages.scrollTop = chatMessages.scrollHeight;
           }
         } catch (e) {
@@ -160,10 +130,8 @@ async function sendMessage() {
       }
     }
 
-    // Add completed response to chat history
     chatHistory.push({ role: "assistant", content: responseText });
 
-    // ======= 4. RESPONSE ANIMATION =======
     assistantMessageEl.classList.add("fresh");
     setTimeout(() => assistantMessageEl.classList.remove("fresh"), 1300);
   } catch (error) {
@@ -173,11 +141,8 @@ async function sendMessage() {
       "Sorry, there was an error processing your request."
     );
   } finally {
-    // Hide typing indicator
     stopThinkingAnimation();
     typingIndicator.classList.remove("visible");
-
-    // Re-enable input
     isProcessing = false;
     userInput.disabled = false;
     sendButton.disabled = false;
@@ -186,18 +151,15 @@ async function sendMessage() {
 }
 
 /**
- * Helper function to add message to chat
+ * Helper: Add message to chat
  */
 function addMessageToChat(role, content) {
   const messageEl = document.createElement("div");
   messageEl.className = `message ${role}-message`;
   messageEl.innerHTML = `<p>${content}</p>`;
   chatMessages.appendChild(messageEl);
-
-  // Scroll to bottom
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
-  // ======= 5. ANIMATE ASSISTANT MESSAGE =======
   if (role === "assistant") {
     messageEl.classList.add("fresh");
     setTimeout(() => messageEl.classList.remove("fresh"), 1300);
@@ -205,7 +167,7 @@ function addMessageToChat(role, content) {
 }
 
 /**
- * Typing (thinking) animation
+ * Typing animation
  */
 let thinkingDotsInterval = null;
 function startThinkingAnimation() {
@@ -236,7 +198,6 @@ async function generateImage(prompt) {
 
   addMessageToChat("user", "[Image Request] " + prompt);
 
-  // Clear input
   userInput.value = "";
   userInput.style.height = "auto";
 
@@ -244,7 +205,8 @@ async function generateImage(prompt) {
   startThinkingAnimation();
 
   try {
-    const response = await fetch("/api/generate-image", {
+    // === Call your Cloudflare Worker directly ===
+    const response = await fetch("https://chatre-image-build.akanishibiri4422.workers.dev/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
@@ -252,21 +214,14 @@ async function generateImage(prompt) {
 
     if (!response.ok) throw new Error("Image API failed");
 
-    // Parse JSON
-    const data = await response.json();
+    // Get raw image blob
+    const blob = await response.blob();
+    const imageUrl = URL.createObjectURL(blob);
 
-    if (data.image_base64) {
-      // Build data URL from base64
-      const imageUrl = `data:image/png;base64,${data.image_base64}`;
-
-      addMessageToChat(
-        "assistant",
-        `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2 max-w-xs">`
-      );
-    } else {
-      addMessageToChat("assistant", "⚠️ No image returned.");
-      console.error("No image in response:", data);
-    }
+    addMessageToChat(
+      "assistant",
+      `Here is your generated image:<br><img src="${imageUrl}" alt="Generated Image" class="rounded-lg mt-2 max-w-xs shadow-md fade-in">`
+    );
   } catch (err) {
     console.error("⚠️ Image generation failed:", err);
     addMessageToChat("assistant", "⚠️ Image generation failed.");
