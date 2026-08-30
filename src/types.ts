@@ -13,7 +13,12 @@ export interface Env {
   /**
    * Binding for static assets.
    */
-  ASSETS: { fetch: (request: Request) => Promise<Response> };
+  /**
+   * Optional shared secret. When set, POST /api/chat must send
+   * Authorization: Bearer <secret> or x-chatre-key: <secret>.
+   * Leave unset for the public Chatre UI; set it for Brandon Holdings.
+   */
+  CHATRE_SECRET?: string;
 }
 
 /**

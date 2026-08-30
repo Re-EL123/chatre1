@@ -9,12 +9,26 @@
  */
 import { Env, ChatMessage } from "./types";
 
-// Model ID for Workers AI model
 const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
-// Default system prompt
+const ALLOWED_MODELS = new Set([
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/meta/llama-3.1-8b-instruct",
+  "@cf/meta/llama-3.1-8b-instruct-fp8-fast",
+  "@cf/meta/llama-3.2-3b-instruct",
+]);
+
 const SYSTEM_PROMPT =
   "You are a helpful, friendly assistant. You think like an African, the most intelligent. Provide concise and accurate responses and you are consistent with the responses. You provide suggestions to help users with the next prompts. Your name is Chatre";
+
+function authorized(request: Request, env: Env): boolean {
+  const secret = env.CHATRE_SECRET;
+  if (!secret) return true;
+  const header = request.headers.get("authorization") || "";
+  if (header === "Bearer " + secret) return true;
+  if (request.headers.get("x-chatre-key") === secret) return true;
+  return false;
+}
 
 export default {
   /**
@@ -34,6 +48,16 @@ export default {
 
     // Chat endpoint
     if (url.pathname === "/api/chat") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, x-chatre-key",
+          },
+        });
+      }
       if (request.method === "POST") {
         return handleChatRequest(request, env);
       }
@@ -60,23 +84,49 @@ async function handleChatRequest(
   env: Env,
 ): Promise<Response> {
   try {
-    const { messages = [] } = (await request.json()) as {
-      messages: ChatMessage[];
-    };
+    if (!authorized(request, env)) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
-    // Add system prompt if missing
+    const body = (await request.json()) as {
+      messages?: ChatMessage[];
+      stream?: boolean;
+      model?: string;
+    };
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+
     if (!messages.some((msg) => msg.role === "system")) {
       messages.unshift({ role: "system", content: SYSTEM_PROMPT });
     }
 
+    const modelId = body.model && ALLOWED_MODELS.has(body.model) ? body.model : MODEL_ID;
+    const wantStream = body.stream !== false;
+
+    if (!wantStream) {
+      const result = (await env.AI.run(modelId, {
+        messages,
+        max_tokens: 1024,
+      })) as { response?: string } | string;
+      const text = typeof result === "string" ? result : String((result && result.response) || "");
+      return new Response(JSON.stringify({ response: text }), {
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
     const response = await env.AI.run(
-      MODEL_ID,
+      modelId,
       {
         messages,
         max_tokens: 1024,
       },
       {
-        returnRawResponse: true, // streaming
+        returnRawResponse: true,
       },
     );
 
