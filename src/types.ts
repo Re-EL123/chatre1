@@ -6,41 +6,36 @@
  * Environment bindings for Cloudflare Worker.
  */
 export interface Env {
-  /**
-   * Binding for the Workers AI API.
-   */
+  /** Workers AI binding */
   AI: Ai;
+  /** Static assets (public/) */
+  ASSETS: Fetcher;
   /**
-   * Binding for static assets.
-   */
-  /**
-   * Optional shared secret. When set, POST /api/chat must send
+   * Optional shared secret. When set, API POSTs must send
    * Authorization: Bearer <secret> or x-chatre-key: <secret>.
-   * Leave unset for the public Chatre UI; set it for Brandon Holdings.
+   * Leave unset for the public Chatre UI.
    */
   CHATRE_SECRET?: string;
 }
 
-/**
- * Represents a chat message.
- */
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-/**
- * Represents a request for image generation.
- */
+export interface ChatRequestBody {
+  messages?: ChatMessage[];
+  stream?: boolean;
+  model?: string;
+  max_tokens?: number;
+}
+
 export interface ImageRequest {
   prompt: string;
   width?: number;
   height?: number;
 }
 
-/**
- * Represents the response from the image generation endpoint.
- */
 export interface ImageResponse {
   image_base64: string;
 }

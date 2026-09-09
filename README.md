@@ -10,20 +10,22 @@ A simple, ready-to-deploy chat application template powered by Cloudflare Worker
 
 This template demonstrates how to build an AI-powered chat interface using Cloudflare Workers AI with streaming responses. It features:
 
-- Real-time streaming of AI responses using Server-Sent Events (SSE)
-- Easy customization of models and system prompts
-- Support for AI Gateway integration
+- Real-time streaming of AI responses (Workers AI NDJSON / SSE-style chunks)
+- Abort / Stop to cancel in-flight generation
+- Markdown rendering with sanitized HTML and copyable code blocks
+- Image generation via `/api/generate-image` (`/image …` or Image mode)
+- Optional API secret, rate limiting, model picker, history trimming
 - Clean, responsive UI that works on mobile and desktop
 
 ## Features
 
-- 💬 Simple and responsive chat interface
-- ⚡ Server-Sent Events (SSE) for streaming responses
-- 🧠 Powered by Cloudflare Workers AI LLMs
-- 🛠️ Built with TypeScript and Cloudflare Workers
-- 📱 Mobile-friendly design
-- 🔄 Maintains chat history on the client
-- 🔎 Built-in Observability logging
+- Streaming chat with Stop
+- Server-side history trim (last 20 non-system messages)
+- Configurable `max_tokens` (default 2048, hard max 4096)
+- Optional `CHATRE_SECRET` auth on chat + image APIs
+- Best-effort rate limit (30 req/min per IP per isolate)
+- Structured observability logs
+- Markdown via marked + DOMPurify
 <!-- dash-content-end -->
 
 ## Getting Started
@@ -36,39 +38,28 @@ This template demonstrates how to build an AI-powered chat interface using Cloud
 
 ### Installation
 
-1. Clone this repository:
-
-   ```bash
-   git clone https://github.com/cloudflare/templates.git
-   cd templates/llm-chat-app
-   ```
-
-2. Install dependencies:
+1. Clone this repository and install dependencies:
 
    ```bash
    npm install
    ```
 
-3. Generate Worker type definitions:
+2. Generate Worker type definitions:
    ```bash
    npm run cf-typegen
    ```
 
 ### Development
 
-Start a local development server:
-
 ```bash
 npm run dev
 ```
 
-This will start a local server at http://localhost:8787.
+Local server: http://localhost:8787
 
-Note: Using Workers AI accesses your Cloudflare account even during local development, which will incur usage charges.
+Note: Workers AI uses your Cloudflare account even during local development and may incur usage charges.
 
 ### Deployment
-
-Deploy to Cloudflare Workers:
 
 ```bash
 npm run deploy
@@ -76,10 +67,8 @@ npm run deploy
 
 ### Monitor
 
-View real-time logs associated with any deployed Worker:
-
 ```bash
-npm wrangler tail
+npx wrangler tail
 ```
 
 ## Project Structure
@@ -87,64 +76,54 @@ npm wrangler tail
 ```
 /
 ├── public/             # Static assets
-│   ├── index.html      # Chat UI HTML
-│   └── chat.js         # Chat UI frontend script
+│   ├── index.html      # Chat UI shell + styles
+│   └── chat.js         # Chat UI (stream, abort, markdown, images)
 ├── src/
-│   ├── index.ts        # Main Worker entry point
+│   ├── index.ts        # Worker entry (chat + image APIs)
 │   └── types.ts        # TypeScript type definitions
-├── test/               # Test files
 ├── wrangler.jsonc      # Cloudflare Worker configuration
-├── tsconfig.json       # TypeScript configuration
-└── README.md           # This documentation
+├── tsconfig.json
+└── README.md
 ```
 
 ## How It Works
 
 ### Backend
 
-The backend is built with Cloudflare Workers and uses the Workers AI platform to generate responses. The main components are:
-
-1. **API Endpoint** (`/api/chat`): Accepts POST requests with chat messages and streams responses
-2. **Streaming**: Uses Server-Sent Events (SSE) for real-time streaming of AI responses
-3. **Workers AI Binding**: Connects to Cloudflare's AI service via the Workers AI binding
+1. **`POST /api/chat`** — chat messages; streams by default (`stream: false` for JSON)
+2. **`POST /api/generate-image`** — Stable Diffusion XL Lightning; returns PNG bytes (or JSON base64)
+3. **`GET /api/models`** — allowed models and token limits
+4. Auth (optional): `Authorization: Bearer <CHATRE_SECRET>` or `x-chatre-key`
+5. Rate limit: 30 requests/minute per client IP (per isolate)
 
 ### Frontend
 
-The frontend is a simple HTML/CSS/JavaScript application that:
-
-1. Presents a chat interface
-2. Sends user messages to the API
-3. Processes streaming responses in real-time
-4. Maintains chat history on the client side
+1. Streams tokens into the assistant bubble; **Stop** aborts the fetch
+2. Renders Markdown (GFM) through marked, sanitized with DOMPurify
+3. Images: Image mode toggle or `/image your prompt`
+4. Optional key: `localStorage.chatre_key` or `window.CHATRE_KEY`
 
 ## Customization
 
 ### Changing the Model
 
-To use a different AI model, update the `MODEL_ID` constant in `src/index.ts`. You can find available models in the [Cloudflare Workers AI documentation](https://developers.cloudflare.com/workers-ai/models/).
+Update `MODEL_ID` / `ALLOWED_MODELS` in `src/index.ts`, or use the UI model picker.
 
 ### Using AI Gateway
 
-The template includes commented code for AI Gateway integration, which provides additional capabilities like rate limiting, caching, and analytics.
+Uncomment / add gateway options in `env.AI.run` calls as described in the [AI Gateway docs](https://developers.cloudflare.com/ai-gateway/) for production caching and stricter rate limits.
 
-To enable AI Gateway:
+### System Prompt
 
-1. [Create an AI Gateway](https://dash.cloudflare.com/?to=/:account/ai/ai-gateway) in your Cloudflare dashboard
-2. Uncomment the gateway configuration in `src/index.ts`
-3. Replace `YOUR_GATEWAY_ID` with your actual AI Gateway ID
-4. Configure other gateway options as needed:
-   - `skipCache`: Set to `true` to bypass gateway caching
-   - `cacheTtl`: Set the cache time-to-live in seconds
+Edit `SYSTEM_PROMPT` in `src/index.ts`.
 
-Learn more about [AI Gateway](https://developers.cloudflare.com/ai-gateway/).
+### Auth for embeds
 
-### Modifying the System Prompt
+Set Worker secret `CHATRE_SECRET`, then in the page:
 
-The default system prompt can be changed by updating the `SYSTEM_PROMPT` constant in `src/index.ts`.
-
-### Styling
-
-The UI styling is contained in the `<style>` section of `public/index.html`. You can modify the CSS variables at the top to quickly change the color scheme.
+```js
+localStorage.setItem("chatre_key", "your-secret");
+```
 
 ## Resources
 
