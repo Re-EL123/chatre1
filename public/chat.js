@@ -77,7 +77,8 @@
       const html = marked.parse(raw);
       return DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
-        ADD_ATTR: ["target", "rel", "class", "src", "alt", "width", "height"],
+        ADD_TAGS: ["img", "a"],
+        ADD_ATTR: ["target", "rel", "class", "src", "alt", "width", "height", "href", "download"],
         ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|file|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
       });
     }
@@ -194,8 +195,8 @@
       el.innerHTML = DOMPurify
         ? DOMPurify.sanitize(content, {
             USE_PROFILES: { html: true },
-            ADD_TAGS: ["img"],
-            ADD_ATTR: ["src", "alt", "class", "width", "height"],
+            ADD_TAGS: ["img", "a"],
+            ADD_ATTR: ["src", "alt", "class", "width", "height", "href", "download"],
             ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|file|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
           })
         : content;
@@ -246,6 +247,21 @@
     const match = trimmed.match(/^\/image\s+([\s\S]+)$/i);
     if (match) return match[1].trim();
     if (imageMode) return trimmed;
+
+    const nlPatterns = [
+      /^(?:please\s+)?(?:generate|create|make|render)\s+(?:an?\s+)?image\s+(?:of\s+)?([\s\S]+)$/i,
+      /^(?:please\s+)?draw\s+(?:an?\s+)?([\s\S]+)$/i,
+      /^(?:please\s+)?paint\s+(?:an?\s+)?([\s\S]+)$/i,
+      /^(?:please\s+)?show\s+me\s+(?:an?\s+)?(?:picture|image)\s+of\s+([\s\S]+)$/i,
+    ];
+
+    for (const pattern of nlPatterns) {
+      const m = trimmed.match(pattern);
+      if (m && m[1]) {
+        return m[1].trim();
+      }
+    }
+
     return null;
   }
 
@@ -500,7 +516,10 @@
         "<p>Here is your generated image:</p>" +
         '<img class="generated-image" src="' +
         imageUrl +
-        '" alt="Generated image">';
+        '" alt="Generated image"><br>' +
+        '<a href="' +
+        imageUrl +
+        '" download="chatre-generated-image.png" class="download-btn">Download Image</a>';
       addMessage("assistant", html, { html: true });
       chatHistory.push({
         role: "assistant",
