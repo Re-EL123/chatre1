@@ -1,11 +1,11 @@
 /**
- * Chatre frontend — streaming chat, abort, markdown, image via /api/generate-image.
+ * Chatre frontend — streaming chat, abort, markdown, image via /api/generate-image, slash suggestions, highlight.js, token trimming, chips.
  */
 
 (function () {
   "use strict";
 
-  const MAX_HISTORY = 20;
+  const MAX_CONTEXT_TOKENS = 6000;
   const DEFAULT_MAX_TOKENS = 2048;
 
   const chatMessages = document.getElementById("chat-messages");
@@ -15,6 +15,8 @@
   const typingIndicator = document.getElementById("typing-indicator");
   const modelSelect = document.getElementById("model-select");
   const imageModeButton = document.getElementById("image-mode-button");
+  const slashSuggestions = document.getElementById("slash-suggestions");
+  const chatContainer = document.querySelector(".chat-container");
 
   const greetings = [
     "Hey there! How can I assist you today?",
@@ -24,6 +26,13 @@
     "Greetings! I'm Chatre.",
   ];
 
+  const SLASH_COMMANDS = [
+    { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
+    { cmd: "/clear", desc: "Clear chat history", action: () => { chatHistory = []; chatMessages.innerHTML = ""; showGreeting(); } },
+    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model") },
+    { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`") },
+  ];
+
   /** @type {{ role: string, content: string }[]} */
   let chatHistory = [];
   let isProcessing = false;
@@ -31,6 +40,7 @@
   /** @type {AbortController | null} */
   let activeAbort = null;
   let thinkingTimer = null;
+  let selectedSlashIndex = 0;
 
   if (window.marked) {
     marked.setOptions({
@@ -67,7 +77,8 @@
       const html = marked.parse(raw);
       return DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
-        ADD_ATTR: ["target", "rel", "class"],
+        ADD_ATTR: ["target", "rel", "class", "src", "alt", "width", "height"],
+        ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|file|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
       });
     }
     return "<p>" + escapeHtml(raw).replace(/\n/g, "<br>") + "</p>";
@@ -75,16 +86,23 @@
 
   function enhanceCodeBlocks(root) {
     root.querySelectorAll("pre").forEach((pre) => {
+      const code = pre.querySelector("code");
+      if (code && window.hljs) {
+        try {
+          hljs.highlightElement(code);
+        } catch {
+          /* ignore */
+        }
+      }
       if (pre.querySelector(".code-copy")) return;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "code-copy";
       btn.textContent = "Copy";
       btn.addEventListener("click", async () => {
-        const code = pre.querySelector("code");
-        const value = code ? code.textContent : pre.textContent;
+        const val = code ? code.textContent : pre.textContent;
         try {
-          await navigator.clipboard.writeText(value || "");
+          await navigator.clipboard.writeText(val || "");
           btn.textContent = "Copied";
           setTimeout(() => {
             btn.textContent = "Copy";
@@ -100,10 +118,41 @@
     });
   }
 
+  function appendSuggestionChips(container, text) {
+    if (container.querySelector(".suggestion-chips")) return;
+    const chipsDiv = document.createElement("div");
+    chipsDiv.className = "suggestion-chips";
+
+    let suggestions = ["Can you elaborate?", "Give a practical example", "Summarize key points", "Generate an image"];
+    const lower = text.toLowerCase();
+    if (lower.includes("code") || lower.includes("function") || lower.includes("script")) {
+      suggestions = ["Explain how this code works", "Write unit tests for this", "Optimize this code", "Suggest alternative approach"];
+    } else if (lower.includes("error") || lower.includes("issue")) {
+      suggestions = ["How do I fix this error?", "Show debugging steps", "Explain why this happens"];
+    }
+
+    suggestions.forEach((s) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "suggestion-chip";
+      chip.textContent = s;
+      chip.addEventListener("click", () => {
+        userInput.value = s;
+        sendMessage();
+      });
+      chipsDiv.appendChild(chip);
+    });
+
+    container.appendChild(chipsDiv);
+  }
+
   function setBusy(busy) {
     isProcessing = busy;
     sendButton.disabled = busy;
     userInput.disabled = busy;
+    if (chatContainer) {
+      chatContainer.classList.toggle("processing", busy);
+    }
     if (busy) {
       stopButton.classList.add("visible");
     } else {
@@ -113,13 +162,13 @@
   }
 
   function startThinking(label) {
-    typingIndicator.textContent = label || "Chatre is thinking…";
+    typingIndicator.innerHTML = '<span class="spinner"></span>' + escapeHtml(label || "Chatre is thinking…");
     typingIndicator.classList.add("visible");
     let dots = "";
     clearInterval(thinkingTimer);
     thinkingTimer = setInterval(() => {
       dots = dots.length >= 3 ? "" : dots + ".";
-      typingIndicator.textContent = (label || "Chatre is thinking") + dots;
+      typingIndicator.innerHTML = '<span class="spinner"></span>' + escapeHtml((label || "Chatre is thinking") + dots);
     }, 450);
   }
 
@@ -141,11 +190,17 @@
 
     if (options.html) {
       el.innerHTML = DOMPurify
-        ? DOMPurify.sanitize(content, { USE_PROFILES: { html: true }, ADD_TAGS: ["img"], ADD_ATTR: ["src", "alt", "class"] })
+        ? DOMPurify.sanitize(content, {
+            USE_PROFILES: { html: true },
+            ADD_TAGS: ["img"],
+            ADD_ATTR: ["src", "alt", "class", "width", "height"],
+            ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|file|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+          })
         : content;
     } else if (role === "assistant") {
       el.innerHTML = renderMarkdown(content);
       enhanceCodeBlocks(el);
+      appendSuggestionChips(el, content);
     } else {
       el.innerHTML = "<p>" + escapeHtml(content) + "</p>";
     }
@@ -159,13 +214,29 @@
     el.innerHTML = renderMarkdown(text);
     enhanceCodeBlocks(el);
     el.classList.toggle("streaming", !!streaming);
+    if (!streaming && text) {
+      appendSuggestionChips(el, text);
+    }
     scrollToBottom();
   }
 
+  function estimateTokens(text) {
+    return Math.ceil(String(text || "").length / 4);
+  }
+
   function trimHistory() {
-    if (chatHistory.length > MAX_HISTORY) {
-      chatHistory = chatHistory.slice(-MAX_HISTORY);
+    let total = 0;
+    const kept = [];
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      const msg = chatHistory[i];
+      const t = estimateTokens(msg.content) + 4;
+      if (total + t > MAX_CONTEXT_TOKENS && kept.length > 0) {
+        break;
+      }
+      total += t;
+      kept.unshift(msg);
     }
+    chatHistory = kept;
   }
 
   function parseImageCommand(message) {
@@ -181,9 +252,6 @@
     addMessage("assistant", text);
   }
 
-  /**
-   * Parse Workers AI stream chunks (SSE `data:` or NDJSON lines).
-   */
   function extractStreamTokens(chunk, carry) {
     const combined = carry + chunk;
     const lines = combined.split("\n");
@@ -203,16 +271,73 @@
         else if (typeof json.text === "string") text += json.text;
         else if (typeof json.token === "string") text += json.token;
       } catch {
-        // ignore partial / non-JSON noise
+        // ignore
       }
     }
 
     return { text, carry: nextCarry };
   }
 
+  function updateSlashSuggestions(val) {
+    if (!val.startsWith("/") || isProcessing) {
+      slashSuggestions.style.display = "none";
+      return;
+    }
+
+    const query = val.toLowerCase();
+    const filtered = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(query) || query === "/");
+
+    if (filtered.length === 0) {
+      slashSuggestions.style.display = "none";
+      return;
+    }
+
+    selectedSlashIndex = Math.min(selectedSlashIndex, filtered.length - 1);
+    slashSuggestions.innerHTML = "";
+
+    filtered.forEach((item, idx) => {
+      const div = document.createElement("div");
+      div.className = "slash-suggestion-item" + (idx === selectedSlashIndex ? " active" : "");
+      div.innerHTML = `<code>${escapeHtml(item.cmd)}</code><span>${escapeHtml(item.desc)}</span>`;
+      div.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        selectSlashCommand(item);
+      });
+      slashSuggestions.appendChild(div);
+    });
+
+    slashSuggestions.style.display = "block";
+  }
+
+  function selectSlashCommand(item) {
+    slashSuggestions.style.display = "none";
+    userInput.value = item.cmd + " ";
+    userInput.style.height = "auto";
+    userInput.style.height = Math.min(userInput.scrollHeight, 160) + "px";
+    userInput.focus();
+    if (item.cmd === "/clear" || item.cmd === "/help" || item.cmd === "/model") {
+      item.action();
+      userInput.value = "";
+    }
+  }
+
   async function sendMessage() {
     const message = userInput.value.trim();
     if (!message || isProcessing) return;
+
+    slashSuggestions.style.display = "none";
+
+    const slashMatch = SLASH_COMMANDS.find((c) => message === c.cmd || message.startsWith(c.cmd + " "));
+    if (slashMatch) {
+      const arg = message.slice(slashMatch.cmd.length).trim();
+      userInput.value = "";
+      userInput.style.height = "auto";
+      if (slashMatch.cmd === "/image") {
+        return generateImage(arg || "A futuristic city skyline");
+      }
+      slashMatch.action(arg);
+      return;
+    }
 
     const imagePrompt = parseImageCommand(message);
     if (imagePrompt) {
@@ -259,7 +384,6 @@
         throw new Error(errMsg);
       }
 
-      // Prefer streaming parse (Workers AI returns NDJSON / SSE-style chunks).
       if (!response.body) {
         throw new Error("Empty response");
       }
@@ -281,7 +405,6 @@
       }
 
       if (carry.trim()) {
-        // Final line without trailing newline, or a one-shot JSON body
         try {
           const maybe = JSON.parse(carry.trim());
           if (typeof maybe.response === "string" && !responseText) {
@@ -409,13 +532,55 @@
   userInput.addEventListener("input", function () {
     this.style.height = "auto";
     this.style.height = Math.min(this.scrollHeight, 160) + "px";
+    updateSlashSuggestions(this.value);
   });
 
   userInput.addEventListener("keydown", function (e) {
+    const visible = slashSuggestions.style.display === "block";
+    const items = slashSuggestions.querySelectorAll(".slash-suggestion-item");
+
+    if (visible && items.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        selectedSlashIndex = (selectedSlashIndex + 1) % items.length;
+        items.forEach((el, idx) => el.classList.toggle("active", idx === selectedSlashIndex));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        selectedSlashIndex = (selectedSlashIndex - 1 + items.length) % items.length;
+        items.forEach((el, idx) => el.classList.toggle("active", idx === selectedSlashIndex));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const activeItem = items[selectedSlashIndex];
+        if (activeItem) {
+          const cmdCode = activeItem.querySelector("code").textContent;
+          const match = SLASH_COMMANDS.find((c) => c.cmd === cmdCode);
+          if (match) {
+            selectSlashCommand(match);
+          }
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        slashSuggestions.style.display = "none";
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
+  });
+
+  userInput.addEventListener("blur", () => {
+    setTimeout(() => {
+      slashSuggestions.style.display = "none";
+    }, 200);
   });
 
   sendButton.addEventListener("click", sendMessage);

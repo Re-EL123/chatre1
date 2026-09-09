@@ -100,13 +100,33 @@ function optionsResponse(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
+const MAX_CONTEXT_TOKENS = 6000;
+
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
 function trimMessages(messages: ChatMessage[]): ChatMessage[] {
   const system = messages.filter((m) => m.role === "system");
   const rest = messages.filter((m) => m.role !== "system");
-  const kept = rest.slice(-MAX_HISTORY_MESSAGES);
   const systemMsg =
     system[0] ??
     ({ role: "system", content: SYSTEM_PROMPT } satisfies ChatMessage);
+
+  let totalTokens = estimateTokens(systemMsg.content);
+  const kept: ChatMessage[] = [];
+
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const msg = rest[i];
+    const msgTokens = estimateTokens(msg.content) + 4;
+    if (totalTokens + msgTokens > MAX_CONTEXT_TOKENS && kept.length > 0) {
+      break;
+    }
+    totalTokens += msgTokens;
+    kept.unshift(msg);
+  }
+
   return [systemMsg, ...kept];
 }
 
