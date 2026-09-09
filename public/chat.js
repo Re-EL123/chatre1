@@ -138,7 +138,9 @@
       chip.textContent = s;
       chip.addEventListener("click", () => {
         userInput.value = s;
-        sendMessage();
+        userInput.style.height = "auto";
+        userInput.style.height = Math.min(userInput.scrollHeight, 160) + "px";
+        userInput.focus();
       });
       chipsDiv.appendChild(chip);
     });
