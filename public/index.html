@@ -787,6 +787,214 @@
         color: #ff6b6b;
       }
 
+      .app-shell {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr) 260px;
+        gap: 0.75rem;
+        align-items: stretch;
+      }
+
+      .side-panel {
+        background: rgba(20, 22, 44, 0.55);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 0.65rem;
+        max-height: calc(100vh - 220px);
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+
+      .side-panel h2 {
+        margin: 0;
+        font-size: 0.85rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-light);
+      }
+
+      .panel-actions {
+        display: flex;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+      }
+
+      .panel-actions .btn {
+        min-height: 32px;
+        padding: 0 0.65rem;
+        font-size: 0.8rem;
+        background: #12121c;
+        color: var(--text-light);
+        border: 1px solid var(--border-color);
+      }
+
+      .panel-empty {
+        color: var(--text-light);
+        font-size: 0.85rem;
+        margin: 0.4rem 0;
+      }
+
+      .thread-item,
+      .file-item {
+        display: flex;
+        gap: 0.25rem;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        color: inherit;
+        padding: 0.35rem;
+      }
+
+      .thread-item {
+        flex-direction: column;
+        cursor: pointer;
+      }
+
+      .thread-item strong {
+        font-size: 0.88rem;
+      }
+
+      .thread-item span {
+        font-size: 0.72rem;
+        color: var(--text-light);
+      }
+
+      .thread-item:hover,
+      .thread-item.active,
+      .file-item.active {
+        border-color: #3a6a9a;
+        background: #0e1a28;
+      }
+
+      .file-item .file-open {
+        flex: 1;
+        background: none;
+        border: none;
+        color: #c9d4f0;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.78rem;
+        word-break: break-all;
+      }
+
+      .file-item .file-diff,
+      .file-item .file-dl {
+        background: #12121c;
+        border: 1px solid var(--border-color);
+        color: var(--text-light);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.75rem;
+      }
+
+      #file-viewer-path {
+        font-size: 0.75rem;
+        color: var(--text-light);
+        word-break: break-all;
+      }
+
+      #file-viewer {
+        flex: 1;
+        min-height: 120px;
+        max-height: 280px;
+        overflow: auto;
+        background: #0a0a12;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.5rem;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+      }
+
+      .api-status {
+        font-size: 0.78rem;
+        padding: 0.35rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        color: var(--text-light);
+        white-space: nowrap;
+      }
+      .api-status.ok {
+        color: #9dffb0;
+        border-color: #3a9a5a;
+        background: #0e2818;
+      }
+      .api-status.bad {
+        color: #ffb4c0;
+        border-color: #6a2a3a;
+        background: #2a1218;
+      }
+      .api-status.pending {
+        color: #ffd78a;
+        border-color: #6a5a2a;
+      }
+      .api-status.off {
+        color: var(--text-light);
+      }
+
+      #usage-meter {
+        font-size: 0.78rem;
+        color: #9fd4ff;
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      .main-column {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .diff-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.65);
+        z-index: 200;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+      }
+      .diff-modal.open {
+        display: flex;
+      }
+      .diff-modal-card {
+        width: min(900px, 100%);
+        max-height: 80vh;
+        overflow: auto;
+        background: #101018;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1rem;
+      }
+      .diff-modal-card pre {
+        white-space: pre-wrap;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.8rem;
+      }
+
+      .token-stream {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.85rem;
+        color: #a8b4d4;
+        white-space: pre-wrap;
+        min-height: 1.2em;
+      }
+
+      @media (max-width: 960px) {
+        .app-shell {
+          grid-template-columns: 1fr;
+        }
+        .side-panel {
+          max-height: 220px;
+        }
+      }
+
       @media (max-width: 560px) {
         .message {
           max-width: 95%;
@@ -836,34 +1044,69 @@
         placeholder="CHATRE_API_TOKEN"
         title="Same value as Vercel CHATRE_API_TOKEN"
       />
+      <span id="api-status" class="api-status off" aria-live="polite">Local</span>
+      <span id="usage-meter" hidden></span>
       <p class="hint">
-        Agent uses <code>https://chatre-api.vercel.app</code> when configured.
-        Paste your Vercel <code>CHATRE_API_TOKEN</code> in API key (saved in this browser).
-        <code>/image</code>, <code>/skills</code>, <code>/terminal</code>. Stop aborts.
+        Remote API: <code>https://chatre-api.vercel.app</code>. Status shows Connected/Unauthorized.
+        Threads &amp; files sync from Firestore when authorized.
       </p>
     </div>
 
-    <div class="chat-container">
-      <div class="work-bar" aria-hidden="true"></div>
-      <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
-      <div class="typing-indicator" id="typing-indicator" aria-hidden="true"></div>
-      <div class="message-input" style="position: relative;">
-        <div id="slash-suggestions" class="slash-suggestions" role="listbox" aria-label="Slash commands"></div>
-        <textarea
-          id="user-input"
-          placeholder="Type a message… or /image a sunset over Cape Town"
-          rows="1"
-          autofocus
-        ></textarea>
-        <button type="button" class="btn" id="stop-button">Stop</button>
-        <button type="button" class="btn" id="send-button">Send</button>
-      </div>
-      <div class="terminal-panel" id="terminal-panel" style="display: none;">
-        <div class="terminal-header">
-          <span>Terminal</span>
-          <button class="terminal-close" id="terminal-close">&times;</button>
+    <div class="app-shell">
+      <aside class="side-panel" id="threads-panel" aria-label="Threads">
+        <h2>Threads</h2>
+        <div class="panel-actions">
+          <button type="button" class="btn" id="threads-new">New</button>
+          <button type="button" class="btn" id="threads-refresh">Refresh</button>
         </div>
-        <div id="terminal-container"></div>
+        <div id="thread-list"></div>
+      </aside>
+
+      <div class="main-column">
+        <div class="chat-container">
+          <div class="work-bar" aria-hidden="true"></div>
+          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+          <div class="typing-indicator" id="typing-indicator" aria-hidden="true"></div>
+          <div class="message-input" style="position: relative;">
+            <div id="slash-suggestions" class="slash-suggestions" role="listbox" aria-label="Slash commands"></div>
+            <textarea
+              id="user-input"
+              placeholder="Type a message… or /image a sunset over Cape Town"
+              rows="1"
+              autofocus
+            ></textarea>
+            <button type="button" class="btn" id="stop-button">Stop</button>
+            <button type="button" class="btn" id="send-button">Send</button>
+          </div>
+          <div class="terminal-panel" id="terminal-panel" style="display: none;">
+            <div class="terminal-header">
+              <span>Terminal</span>
+              <button class="terminal-close" id="terminal-close">&times;</button>
+            </div>
+            <div id="terminal-container"></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side-panel" id="files-panel" aria-label="Files">
+        <h2>Workspace</h2>
+        <div class="panel-actions">
+          <button type="button" class="btn" id="files-refresh">Refresh</button>
+          <button type="button" class="btn" id="files-export-zip">Export ZIP</button>
+        </div>
+        <div id="file-tree"></div>
+        <div id="file-viewer-path"></div>
+        <pre id="file-viewer"></pre>
+      </aside>
+    </div>
+
+    <div class="diff-modal" id="diff-modal" role="dialog" aria-modal="true">
+      <div class="diff-modal-card">
+        <div class="panel-actions" style="justify-content: space-between;">
+          <h2 id="diff-modal-title">Diff</h2>
+          <button type="button" class="btn" id="diff-modal-close">Close</button>
+        </div>
+        <pre id="diff-modal-body"></pre>
       </div>
     </div>
 
@@ -876,11 +1119,13 @@
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="/config.js"></script>
     <script src="/skills.js"></script>
     <script src="/tools.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
+    <script src="/panels.js"></script>
     <script src="/chat.js" defer></script>
   </body>
 </html>

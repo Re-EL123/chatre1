@@ -83,6 +83,51 @@
     },
   };
 
+  /**
+   * Auto-pick skills from the user prompt (no explicit use_skill needed).
+   */
+  function detectSkills(text) {
+    const t = String(text || "").toLowerCase();
+    const found = new Set();
+    if (
+      /\b(build|code|implement|scaffold|app|website|script|function|api|refactor|fix)\b/.test(
+        t,
+      )
+    ) {
+      found.add("coding");
+    }
+    if (/\b(document|readme|markdown|docs|write.?up|spec)\b/.test(t)) {
+      found.add("documents");
+    }
+    if (/\b(git|commit|push|repo|repository|version control)\b/.test(t)) {
+      found.add("git");
+    }
+    if (/\b(debug|error|bug|failing|stack.?trace)\b/.test(t)) {
+      found.add("debugging");
+    }
+    if (/\b(explore|inspect|search|find files|research)\b/.test(t)) {
+      found.add("research");
+    }
+    if (found.has("coding") && (found.has("documents") || found.has("git"))) {
+      found.add("project");
+    }
+    if (!found.size && /\b(create|make|write|plan)\b/.test(t)) {
+      found.add("coding");
+    }
+    return [...found];
+  }
+
+  function skillBrief(names) {
+    return (names || [])
+      .map((n) => {
+        const s = getSkill(n);
+        return s
+          ? "Skill " + s.name + ": " + s.summary + " → " + s.steps.slice(0, 3).join("; ")
+          : n;
+      })
+      .join("\n");
+  }
+
   function listSkills() {
     return Object.values(SKILLS).map((s) => ({
       name: s.name,
@@ -115,5 +160,7 @@
     listSkills,
     getSkill,
     formatSkill,
+    detectSkills,
+    skillBrief,
   };
 })();

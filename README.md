@@ -27,6 +27,8 @@ This template demonstrates how to build an AI-powered chat interface using Cloud
 - Structured observability logs
 - Markdown via marked + DOMPurify
 - Optional **chatre-api** (Vercel + Firestore): persisted threads, sandbox exec, SSE agent
+- Auth status badge (Connected / Unauthorized), thread sidebar, file explorer + ZIP export, usage meter
+- Agent: streamed tokens per step, auto skill routing, tool-result summarization
 <!-- dash-content-end -->
 
 ## Remote API (Firestore + sandbox)
@@ -36,10 +38,12 @@ The sibling repo lives at **`/home/akani/Documents/chatre-api`** ([github.com/Re
 ```bash
 cd /home/akani/Documents/chatre-api
 cp .env.example .env.local   # set FIREBASE_SERVICE_ACCOUNT, CHATRE_API_TOKEN, CHATRE_WORKER_URL
-npm install && npm start     # http://localhost:8080
+npm install
+npm run check-env            # pre-deploy checklist
+npm start                    # http://localhost:8080
 ```
 
-In the Chatre UI:
+In the Chatre UI paste your `CHATRE_API_TOKEN` into the toolbar — status shows **Connected** or **Unauthorized**. Or:
 
 ```js
 localStorage.setItem("chatre_api_base", "http://localhost:8080");
@@ -47,7 +51,9 @@ localStorage.setItem("chatre_api_key", "YOUR_CHATRE_API_TOKEN");
 location.reload();
 ```
 
-Deploy with `npx vercel` from that folder and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
+Publish `firestore.rules` from chatre-api in Firebase Console (deny-all for `sites/chatre/**`, Admin SDK only).
+
+Deploy API with `npx vercel` and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
 
 ## Getting Started
 

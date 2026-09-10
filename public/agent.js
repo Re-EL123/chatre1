@@ -47,18 +47,36 @@
         .filter((m) => m && m.role !== "system")
         .map((m) => ({ role: m.role, content: m.content }));
 
+      const lastUser =
+        [...messages].reverse().find((m) => m.role === "user") || null;
+      const autoSkills =
+        (window.ChatreSkills &&
+          window.ChatreSkills.detectSkills &&
+          window.ChatreSkills.detectSkills(
+            (lastUser && lastUser.content) || "",
+          )) ||
+        [];
+
       // Kick off with an explicit agent brief so the model plans thoroughly.
       if (forcePlan) {
+        const skillBlock =
+          autoSkills.length && window.ChatreSkills.skillBrief
+            ? "Auto-selected skills (no use_skill needed):\n" +
+              window.ChatreSkills.skillBrief(autoSkills) +
+              "\n"
+            : "";
         messages.push({
           role: "user",
           content:
             "AGENT BRIEF: You are in full agent mode. Be skilled and thorough.\n" +
-            "1) Call list_skills or use_skill if helpful.\n" +
+            skillBlock +
+            "1) Skills are already selected above — skip use_skill unless you need another.\n" +
             "2) Call plan with concrete steps.\n" +
             "3) Inspect the workspace before writing files.\n" +
             "4) Implement completely, verify, document, and commit/push when asked.\n" +
             "Use ```tool JSON blocks for every tool. Begin now.",
         });
+        callbacks.onSkills && callbacks.onSkills(autoSkills);
       }
 
       let fullAssistantText = "";
@@ -79,13 +97,14 @@
 
           const payloadMessages = trimAgentMessages(messages);
 
+          let text = "";
           const response = await fetch("/api/chat", {
             method: "POST",
             headers: window.ChatreCore.authHeaders(),
             signal,
             body: JSON.stringify({
               messages: payloadMessages,
-              stream: false,
+              stream: true,
               agent: true,
               model,
               max_tokens: maxTokens,
@@ -103,8 +122,17 @@
             throw new Error(errMsg);
           }
 
-          const data = await response.json();
-          const text = data.response || "";
+          const ct = response.headers.get("content-type") || "";
+          if (ct.includes("text/event-stream") || ct.includes("stream")) {
+            text = await readWorkerStream(response, signal, (delta) => {
+              callbacks.onToken && callbacks.onToken(delta, i + 1);
+            });
+          } else {
+            const data = await response.json();
+            text = data.response || "";
+            if (text && callbacks.onToken) callbacks.onToken(text, i + 1);
+          }
+
           if (signal.aborted) {
             cancelled = true;
             break;
@@ -191,7 +219,7 @@
           messages.push({
             role: "user",
             content:
-              "Tool execution results:\n" +
+              "Tool execution results (summarized if large):\n" +
               JSON.stringify(results, null, 2) +
               "\n\nContinue thoroughly. If more work remains, use tools. " +
               "When the task is complete: verify if needed, then give a final summary WITHOUT tool blocks.",
@@ -278,6 +306,45 @@
     }
   }
 
+  async function readWorkerStream(response, signal, onToken) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let carry = "";
+    let full = "";
+    while (true) {
+      if (signal && signal.aborted) break;
+      const { done, value } = await reader.read();
+      if (done) break;
+      carry += decoder.decode(value, { stream: true });
+      const lines = carry.split("\n");
+      carry = lines.pop() || "";
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || line === "data: [DONE]" || line === "[DONE]") continue;
+        if (line.startsWith("data:")) line = line.slice(5).trim();
+        if (!line || line === "[DONE]") continue;
+        try {
+          const json = JSON.parse(line);
+          const delta =
+            typeof json.response === "string"
+              ? json.response
+              : typeof json.text === "string"
+                ? json.text
+                : typeof json.token === "string"
+                  ? json.token
+                  : "";
+          if (delta) {
+            full += delta;
+            onToken && onToken(delta);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return full;
+  }
+
   function estimateTokens(text) {
     return Math.ceil(String(text || "").length / 4);
   }
@@ -288,9 +355,18 @@
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       const t = estimateTokens(msg.content) + 4;
-      if (total + t > MAX_CONTEXT_TOKENS && kept.length > 2) break;
+      if (total + t > MAX_CONTEXT_TOKENS && kept.length > 2) {
+        break;
+      }
       total += t;
       kept.unshift(msg);
+    }
+    if (kept.length < messages.length) {
+      kept.unshift({
+        role: "user",
+        content:
+          "[Context compressed: earlier tool transcripts were summarized/truncated. Continue from latest files and goals.]",
+      });
     }
     return kept;
   }
@@ -312,23 +388,16 @@
   function serializeResult(result) {
     if (!result) return "null";
     const clone = Object.assign({}, result);
-    if (
-      result.output !== undefined &&
-      typeof result.output === "string" &&
-      result.output.length > 2500
-    ) {
-      clone.output = result.output.slice(0, 2500) + "\n...[truncated]";
-    }
-    if (
-      result.content !== undefined &&
-      typeof result.content === "string" &&
-      result.content.length > 2500
-    ) {
-      clone.content = result.content.slice(0, 2500) + "\n...[truncated]";
-    }
-    if (result.guide && typeof result.guide === "string" && result.guide.length > 2000) {
-      clone.guide = result.guide.slice(0, 2000) + "\n...[truncated]";
-    }
+    const soft = 1800;
+    ["output", "content", "text", "guide"].forEach((key) => {
+      if (typeof clone[key] === "string" && clone[key].length > soft) {
+        clone[key] =
+          clone[key].slice(0, soft) +
+          "\n…[truncated " +
+          result[key].length +
+          " chars]";
+      }
+    });
     if (result.ok === false && result.error) {
       clone.error = String(result.error).slice(0, 1000);
     }

@@ -76,6 +76,39 @@
     return request("/api/health", { method: "GET" });
   }
 
+  /** Authenticated ping for Connected / Unauthorized status */
+  async function pingAuth() {
+    const base = apiBase();
+    if (!base) {
+      return { ok: false, connected: false, status: "no-base", error: "No API base" };
+    }
+    syncKeyFromUi();
+    try {
+      const res = await fetch(base + "/api/health?auth=1", {
+        method: "GET",
+        headers: headers(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          ok: false,
+          connected: false,
+          status: "unauthorized",
+          error: data.error || "Unauthorized",
+          ...data,
+        };
+      }
+      return { ok: true, connected: true, status: "connected", ...data };
+    } catch (e) {
+      return {
+        ok: false,
+        connected: false,
+        status: "error",
+        error: e.message || String(e),
+      };
+    }
+  }
+
   async function createThread(title, model) {
     return request("/api/threads", {
       method: "POST",
@@ -85,6 +118,12 @@
 
   async function listThreads() {
     return request("/api/threads", { method: "GET" });
+  }
+
+  async function getThread(threadId) {
+    return request("/api/threads?id=" + encodeURIComponent(threadId), {
+      method: "GET",
+    });
   }
 
   async function getMessages(threadId) {
@@ -99,6 +138,22 @@
     return request("/api/workspace" + q, { method: "GET" });
   }
 
+  async function exportWorkspace(id) {
+    const q =
+      "?action=export" + (id ? "&id=" + encodeURIComponent(id) : "");
+    return request("/api/workspace" + q, { method: "GET" });
+  }
+
+  async function getFile(workspaceId, filePath) {
+    return request(
+      "/api/workspace?id=" +
+        encodeURIComponent(workspaceId) +
+        "&path=" +
+        encodeURIComponent(filePath),
+      { method: "GET" },
+    );
+  }
+
   async function exec(cmd, workspaceId, cwd) {
     return request("/api/exec", {
       method: "POST",
@@ -106,9 +161,6 @@
     });
   }
 
-  /**
-   * Stream agent run via SSE.
-   */
   async function runAgentStream({
     message,
     threadId,
@@ -162,6 +214,7 @@
       threadId: threadId || null,
       workspaceId: workspaceId || null,
       response: "",
+      usage: null,
     };
 
     while (true) {
@@ -182,8 +235,12 @@
             meta.threadId = ev.threadId || meta.threadId;
             meta.workspaceId = ev.workspaceId || meta.workspaceId;
           }
-          if (ev.type === "done") meta.response = ev.response || meta.response;
+          if (ev.type === "done") {
+            meta.response = ev.response || meta.response;
+            meta.usage = ev.usage || meta.usage;
+          }
           if (ev.type === "text" && ev.final) meta.response = ev.text;
+          if (ev.usage) meta.usage = ev.usage;
           onEvent && onEvent(ev);
         } catch {
           /* ignore */
@@ -199,10 +256,14 @@
     apiKey,
     syncKeyFromUi,
     health,
+    pingAuth,
     createThread,
     listThreads,
+    getThread,
     getMessages,
     getWorkspace,
+    exportWorkspace,
+    getFile,
     exec,
     runAgentStream,
   };

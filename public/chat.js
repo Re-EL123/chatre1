@@ -893,6 +893,7 @@
       // Prefer remote Vercel+Firestore agent when configured
       if (window.ChatreRemote && window.ChatreRemote.enabled()) {
         const remoteState = window.__chatreRemote || {};
+        let tokenEl = null;
         await window.ChatreRemote.runAgentStream({
           message,
           threadId: remoteState.threadId || null,
@@ -906,43 +907,133 @@
                 workspaceId: ev.workspaceId,
               };
               startThinking("Remote agent connected");
+              if (window.ChatrePanels) {
+                window.ChatrePanels.refreshThreads();
+                window.ChatrePanels.refreshFiles();
+                window.ChatrePanels.refreshAuthStatus();
+              }
+            } else if (ev.type === "skills") {
+              showStep(
+                "Skills: " + ((ev.skills && ev.skills.join(", ")) || "none"),
+                false,
+              );
             } else if (ev.type === "thinking") {
               startThinking("Agent step " + ev.step + "/" + ev.max);
+              if (ev.usage && window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  ...ev.usage,
+                  model: modelSelect.value,
+                });
+              }
+            } else if (ev.type === "token") {
+              stopThinking();
+              if (!tokenEl) {
+                tokenEl = document.createElement("div");
+                tokenEl.className = "token-stream";
+                agentBody.appendChild(tokenEl);
+              }
+              tokenEl.textContent += ev.delta || "";
+              scrollToBottom();
             } else if (ev.type === "text") {
               stopThinking();
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
               showStep(ev.text, !!ev.final);
+              if (ev.usage && window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  ...ev.usage,
+                  model: modelSelect.value,
+                });
+              }
               if (ev.final) {
                 chatHistory.push({ role: "assistant", content: ev.text });
                 trimHistory();
               }
             } else if (ev.type === "tool_start") {
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
               const card = showTool(ev);
               toolCards[ev.id || ev.tool] = card;
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
+              if (
+                ev.result &&
+                ev.result.path &&
+                window.ChatrePanels &&
+                window.ChatrePanels.rememberWrite
+              ) {
+                window.ChatrePanels.rememberWrite(
+                  ev.result.path,
+                  ev.result.previous,
+                  ev.result.content,
+                );
+              }
+              if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
             } else if (ev.type === "error") {
               showStep("Agent error: " + (ev.error || "unknown"), true);
             } else if (ev.type === "done") {
+              if (ev.usage && window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  ...ev.usage,
+                  model: modelSelect.value,
+                });
+              }
               if (ev.response && !finalText) {
                 showStep(ev.response, true);
                 chatHistory.push({ role: "assistant", content: ev.response });
                 trimHistory();
               }
+              if (window.ChatrePanels) {
+                window.ChatrePanels.refreshThreads();
+                window.ChatrePanels.refreshFiles();
+              }
             }
           },
         });
       } else if (window.ChatreAgent && window.ChatreTools) {
+        let tokenEl = null;
         await window.ChatreAgent.run([...chatHistory], {
           model: modelSelect.value,
           maxTokens: 3072,
           forcePlan: true,
           callbacks: {
+            onSkills: (skills) => {
+              if (skills && skills.length) {
+                showStep("Skills: " + skills.join(", "), false);
+              }
+            },
             onThinking: (iter, max) => {
               startThinking("Agent step " + iter + "/" + max);
+              if (window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  model: modelSelect.value,
+                  steps: iter,
+                  toolsUsed: Object.keys(toolCards).length,
+                  totalTokensEst: 0,
+                });
+              }
+            },
+            onToken: (delta) => {
+              stopThinking();
+              if (!tokenEl) {
+                tokenEl = document.createElement("div");
+                tokenEl.className = "token-stream";
+                agentBody.appendChild(tokenEl);
+              }
+              tokenEl.textContent += delta || "";
+              scrollToBottom();
             },
             onStepText: (text, isFinal) => {
               stopThinking();
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
               showStep(text, isFinal);
               if (isFinal) {
                 chatHistory.push({ role: "assistant", content: text });
@@ -950,6 +1041,10 @@
               }
             },
             onToolStart: (call) => {
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
               const card = showTool(call);
               toolCards[call.id] = card;
             },
@@ -958,6 +1053,16 @@
               if (card) updateTool(card, result);
             },
             onDone: (res) => {
+              if (window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  model: modelSelect.value,
+                  steps: res.iterations || 0,
+                  toolsUsed: res.toolsUsed || 0,
+                  totalTokensEst: Math.ceil(
+                    String(res.response || "").length / 4,
+                  ),
+                });
+              }
               if (res.cancelled && !finalText) {
                 showStep(res.response || "(stopped)", true);
               }
@@ -1518,4 +1623,28 @@
   };
 
   showGreeting();
+
+  window.ChatreUI = {
+    resetChat: function (messages) {
+      chatHistory = [];
+      chatMessages.innerHTML = "";
+      const list = Array.isArray(messages) ? messages : [];
+      if (!list.length) {
+        showGreeting();
+        return;
+      }
+      list.forEach((m) => {
+        if (!m || !m.role) return;
+        if (m.role === "system") return;
+        addMessage(m.role === "assistant" ? "assistant" : "user", m.content || "");
+        if (m.role === "user" || m.role === "assistant") {
+          chatHistory.push({ role: m.role, content: m.content || "" });
+        }
+      });
+      trimHistory();
+    },
+    getHistory: function () {
+      return chatHistory.slice();
+    },
+  };
 })();
