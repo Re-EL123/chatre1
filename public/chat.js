@@ -29,13 +29,18 @@
   const SLASH_COMMANDS = [
     { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
     { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
-    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle agent mode (plan, build, code, commit)") },
-    { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`") },
+    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle agent mode (ON by default — plan, build, code, commit, documents)") },
+    { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`\nAgent mode: **" + (agentMode ? "ON" : "OFF") + "**") },
     { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
     { cmd: "/run", desc: "Run a shell command", action: (arg) => runShellCommand(arg) },
     { cmd: "/exec", desc: "Execute JavaScript code", action: (arg) => execJS(arg) },
     { cmd: "/python", desc: "Execute Python code", action: (arg) => execPython(arg) },
-    { cmd: "/agent", desc: "Toggle agent mode (plan, build, code, commit)", action: () => { agentMode = !agentMode; addMessage("assistant", agentMode ? "Agent mode ON: I can plan, build, write code, create documents, run commands, and handle git." : "Agent mode OFF: normal chat mode."); userInput.focus(); } },
+    { cmd: "/agent", desc: "Toggle agent mode (plan, build, code, commit)", action: () => toggleAgentMode() },
+    { cmd: "/skills", desc: "List agent skills", action: () => {
+      if (!window.ChatreSkills) return addMessage("assistant", "Skills module not loaded.");
+      const list = window.ChatreSkills.listSkills().map((s) => "- **" + s.name + "**: " + s.summary).join("\n");
+      addMessage("assistant", "Available skills:\n" + list);
+    } },
   ];
 
   /** @type {{ role: string, content: string }[]} */
@@ -46,7 +51,7 @@
   let activeAbort = null;
   let thinkingTimer = null;
   let selectedSlashIndex = 0;
-  let agentMode = false;
+  let agentMode = true;
 
   // Agent workspace / git state
   const gitState = { initialized: false, branch: "main", staged: new Set(), commits: [] };
@@ -188,6 +193,7 @@
     if (chatContainer) {
       chatContainer.classList.toggle("processing", busy);
       chatContainer.classList.toggle("imaging", busy && mode === "image");
+      chatContainer.classList.toggle("agenting", busy && mode === "agent");
     }
     if (busy) {
       stopButton.classList.add("visible");
@@ -296,11 +302,6 @@
     }
 
     return null;
-  }
-
-  function showGreeting() {
-    const text = greetings[Math.floor(Math.random() * greetings.length)];
-    addMessage("assistant", text);
   }
 
   function extractStreamTokens(chunk, carry) {
@@ -681,7 +682,26 @@
     });
   }
 
+  function toggleAgentMode(force) {
+    agentMode = typeof force === "boolean" ? force : !agentMode;
+    const btn = document.getElementById("agent-mode-button");
+    if (btn) {
+      btn.classList.toggle("active", agentMode);
+      btn.setAttribute("aria-pressed", agentMode ? "true" : "false");
+    }
+    addMessage(
+      "assistant",
+      agentMode
+        ? "Agent mode **ON**. I will plan, use skills, build code, create documents, run commands, verify, and commit/push when needed."
+        : "Agent mode **OFF**. Normal chat — I still auto-activate for build/code tasks.",
+    );
+    userInput.focus();
+  }
+
   function stopGeneration() {
+    if (window.ChatreAgent && window.ChatreAgent.isRunning()) {
+      window.ChatreAgent.stop();
+    }
     if (activeAbort) {
       activeAbort.abort();
       activeAbort = null;
@@ -755,21 +775,37 @@
     userInput.focus();
   });
 
+  const agentModeButton = document.getElementById("agent-mode-button");
+  if (agentModeButton) {
+    agentModeButton.classList.toggle("active", agentMode);
+    agentModeButton.setAttribute("aria-pressed", agentMode ? "true" : "false");
+    agentModeButton.addEventListener("click", () => {
+      // Toggle silently without double message from toggleAgentMode's addMessage when using button — still fine
+      toggleAgentMode();
+    });
+  }
+
+  function showGreeting() {
+    const text = agentMode
+      ? "Hello! I'm Chatre — agent mode is on. Ask me to plan, build code, create documents, run commands, or commit. Try: “Build a todo app with HTML/CSS/JS, then commit it.”"
+      : greetings[Math.floor(Math.random() * greetings.length)];
+    addMessage("assistant", text);
+  }
+
   // ── Agentic mode ──────────────────────────────────────────────────
 
   async function runAgentTask(message) {
-    setBusy(true);
+    setBusy(true, "agent");
     addMessage("user", message);
     chatHistory.push({ role: "user", content: message });
     trimHistory();
 
     startThinking("Chatre is planning");
 
-    // Single agent container to hold plan + tool cards + final result
     const agentBody = document.createElement("div");
     agentBody.className = "agent-body";
     const agentEl = document.createElement("div");
-    agentEl.className = "message assistant-message";
+    agentEl.className = "message assistant-message agent-run";
     agentEl.appendChild(agentBody);
     chatMessages.appendChild(agentEl);
     scrollToBottom();
@@ -778,14 +814,12 @@
 
     const showStep = (text, isFinal) => {
       const p = document.createElement("div");
-      p.className = "agent-text";
+      p.className = "agent-text" + (isFinal ? " agent-final" : "");
       p.innerHTML = renderMarkdown(text);
       enhanceCodeBlocks(p);
       agentBody.appendChild(p);
       scrollToBottom();
-      if (isFinal) {
-        finalText = text;
-      }
+      if (isFinal) finalText = text;
     };
 
     const showTool = (call) => {
@@ -797,9 +831,13 @@
       card.innerHTML =
         '<div class="tool-call-header">' +
         '<span class="tool-icon">⚒</span>' +
-        '<span class="tool-name">' + escapeHtml(call.tool) + "</span>" +
+        '<span class="tool-name">' +
+        escapeHtml(call.tool) +
+        "</span>" +
         '<span class="tool-status running">running…</span>' +
-        '</div><div class="tool-call-detail">' + escapeHtml(detail) + '</div>' +
+        '</div><div class="tool-call-detail">' +
+        escapeHtml(detail) +
+        '</div>' +
         '<div class="tool-call-result"></div>';
       agentBody.appendChild(card);
       scrollToBottom();
@@ -817,12 +855,22 @@
       } else {
         status.textContent = "done";
         status.className = "tool-status done";
-        const outText = result.output !== undefined && result.output !== ""
-          ? result.output
-          : (result.text || "ok");
-        resultDiv.textContent = typeof outText === "string" && outText.length > 400
-          ? outText.slice(0, 400) + "\n…(truncated)"
-          : outText;
+        const outText =
+          result.guide ||
+          result.text ||
+          (result.output !== undefined && result.output !== ""
+            ? result.output
+            : result.content || "ok");
+        resultDiv.textContent =
+          typeof outText === "string" && outText.length > 500
+            ? outText.slice(0, 500) + "\n…(truncated)"
+            : outText;
+        if (result && result.downloaded) {
+          const note = document.createElement("div");
+          note.className = "doc-download-note";
+          note.textContent = "Document download started.";
+          card.appendChild(note);
+        }
       }
       scrollToBottom();
     };
@@ -830,12 +878,13 @@
     activeAbort = new AbortController();
 
     try {
-      const result = await window.ChatreAgent.run([...chatHistory], {
+      await window.ChatreAgent.run([...chatHistory], {
         model: modelSelect.value,
-        maxTokens: 1500,
+        maxTokens: 3072,
+        forcePlan: true,
         callbacks: {
-          onThinking: (iter) => {
-            startThinking("Agent: step " + iter);
+          onThinking: (iter, max) => {
+            startThinking("Agent step " + iter + "/" + max);
           },
           onStepText: (text, isFinal) => {
             stopThinking();
@@ -854,10 +903,12 @@
             const card = showTool._cards && showTool._cards[call.id];
             if (card) updateTool(card, result);
           },
+          onDocument: () => {
+            /* download already triggered by tools */
+          },
           onDone: (res) => {
             if (res.cancelled && !finalText) {
-              const partial = res.response || "(stopped)";
-              showStep(partial, true);
+              showStep(res.response || "(stopped)", true);
             }
           },
           onError: (err) => {
@@ -871,27 +922,44 @@
       stopThinking();
       const p = document.createElement("div");
       p.className = "agent-text";
-      p.innerHTML = "<p>Agent failed: " + escapeHtml(e.message || String(e)) + "</p>";
+      p.innerHTML =
+        "<p>Agent failed: " + escapeHtml(e.message || String(e)) + "</p>";
       agentBody.appendChild(p);
       scrollToBottom();
     } finally {
       stopThinking();
       setBusy(false);
       userInput.focus();
-      appendSuggestionChips(agentEl, finalText);
+      appendSuggestionChips(agentEl, finalText || "project");
     }
   }
 
   function formatToolParams(tool, params) {
     if (!params) return "";
     if (tool === "write_file" || tool === "append_file") {
-      return "path: " + (params.path || "?") + "  (" + String(params.content || "").length + " chars)";
+      return (
+        "path: " +
+        (params.path || "?") +
+        "  (" +
+        String(params.content || "").length +
+        " chars)"
+      );
     }
     if (tool === "execute_command") return "$ " + (params.cmd || "");
     if (tool === "create_document") return "title: " + (params.title || "document");
+    if (tool === "export_document") return "path: " + (params.path || "");
+    if (tool === "use_skill") return "skill: " + (params.name || "");
     if (tool === "git_commit") return "message: " + (params.message || "");
-    if (tool === "plan") return "steps: " + String(params.steps || "").slice(0, 100);
-    const entries = Object.entries(params).filter(([k, v]) => v !== undefined && v !== null && v !== "");
+    if (tool === "git_push") {
+      return (
+        (params.remote || "origin") + "/" + (params.branch || "main")
+      );
+    }
+    if (tool === "plan") return "steps: " + String(params.steps || "").slice(0, 120);
+    if (tool === "verify_project") return "path: " + (params.path || ".");
+    const entries = Object.entries(params).filter(
+      ([, v]) => v !== undefined && v !== null && v !== "",
+    );
     return entries.map(([k, v]) => k + ": " + String(v)).join("  ") || "(no params)";
   }
 

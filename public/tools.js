@@ -7,6 +7,8 @@
 
   const TOOL_DEFINITIONS = [
     { name: "plan", desc: "Create a step-by-step plan before executing", params: { steps: "string" } },
+    { name: "list_skills", desc: "List available agent skills", params: {} },
+    { name: "use_skill", desc: "Load a skill playbook (coding|documents|git|debugging|research|project)", params: { name: "string" } },
     { name: "execute_command", desc: "Run a shell command in the workspace", params: { cmd: "string", cwd: "string" } },
     { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
     { name: "write_file", desc: "Create or overwrite a file", params: { path: "string", content: "string" } },
@@ -19,13 +21,16 @@
     { name: "search_code", desc: "Search file contents for text", params: { pattern: "string", path: "string" } },
     { name: "run_javascript", desc: "Execute JavaScript code", params: { code: "string" } },
     { name: "run_python", desc: "Execute Python code", params: { code: "string" } },
-    { name: "create_document", desc: "Create a markdown text document", params: { title: "string", content: "string" } },
+    { name: "create_document", desc: "Create a markdown document (saved + downloadable)", params: { title: "string", content: "string" } },
+    { name: "export_document", desc: "Download an existing workspace file", params: { path: "string" } },
+    { name: "verify_project", desc: "Sanity-check a project directory", params: { path: "string" } },
     { name: "view_tree", desc: "Show the workspace file tree", params: { path: "string" } },
     { name: "git_init", desc: "Initialize a git repository", params: {} },
     { name: "git_add", desc: "Stage a file for commit", params: { path: "string" } },
     { name: "git_commit", desc: "Commit staged changes", params: { message: "string" } },
     { name: "git_status", desc: "Show git status", params: {} },
     { name: "git_log", desc: "Show commit history", params: {} },
+    { name: "git_push", desc: "Push commits to the simulated remote", params: { remote: "string", branch: "string" } },
   ];
 
   function core() {
@@ -122,6 +127,12 @@
       case "plan":
         return { ok: true, tool, type: "plan", text: "Plan recorded: " + String(p.steps || "") };
 
+      case "list_skills":
+        return listSkillsTool();
+
+      case "use_skill":
+        return useSkillTool(p.name);
+
       case "execute_command":
         return executeCommand(p.cmd, common);
 
@@ -161,6 +172,12 @@
       case "create_document":
         return createDocTool(p.title, p.content, common);
 
+      case "export_document":
+        return exportDocTool(p.path, common);
+
+      case "verify_project":
+        return verifyProjectTool(p.path);
+
       case "view_tree":
         return viewTreeTool(p.path);
 
@@ -178,6 +195,9 @@
 
       case "git_log":
         return gitTool("log", p, common);
+
+      case "git_push":
+        return gitTool("push", p, common);
 
       default:
         return { ok: false, tool, error: "Unknown tool: " + tool };
@@ -454,13 +474,11 @@
   function writeFileTool(path, content, common) {
     const target = resolve(path);
     const parent = target.replace(/\/[^/]+$/, "") || "/";
-    if (!fs()[parent] || fs()[parent].type !== "dir") {
-      fs()[parent] = { type: "dir", children: [] };
-      fs()[parent === "/" ? "/" : parent].children = fs()[parent].children || [];
-    }
-    fs()[parent] = fs()[parent];
+    ensureDir(parent);
     const name = target.split("/").pop();
-    if (!fs()[parent].children.includes(name)) fs()[parent].children.push(name);
+    if (fs()[parent] && fs()[parent].type === "dir" && !fs()[parent].children.includes(name)) {
+      fs()[parent].children.push(name);
+    }
     const existed = !!fs()[target];
     fs()[target] = { type: "file", content: String(content || "") };
     if (common && common.onWrite) common.onWrite(target, String(content || ""));
@@ -468,6 +486,7 @@
       ok: true,
       tool: "write_file",
       path: target,
+      bytes: String(content || "").length,
       text: (existed ? "Overwrote" : "Created") + " " + target,
     };
   }
@@ -606,9 +625,138 @@
 
   function createDocTool(title, content, common) {
     const safeTitle = String(title || "document").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document";
+    ensureDir("/home/user/documents");
     const path = "/home/user/documents/" + safeTitle + ".md";
     const md = "# " + (title || "Document") + "\n\n" + String(content || "");
-    return writeFileTool(path, md, common);
+    const result = writeFileTool(path, md, common);
+    triggerDownload(safeTitle + ".md", md, "text/markdown");
+    if (common && common.onDocument) common.onDocument(path, md, title);
+    return Object.assign({}, result, {
+      tool: "create_document",
+      downloaded: true,
+      text: "Created and downloaded document: " + path,
+    });
+  }
+
+  function exportDocTool(path, common) {
+    const target = resolve(path);
+    const entry = fs()[target];
+    if (!entry || entry.type !== "file") {
+      return { ok: false, tool: "export_document", error: "No such file: " + path };
+    }
+    const name = target.split("/").pop() || "export.txt";
+    const content = entry.content || "";
+    const mime = name.endsWith(".md")
+      ? "text/markdown"
+      : name.endsWith(".html")
+        ? "text/html"
+        : name.endsWith(".json")
+          ? "application/json"
+          : "text/plain";
+    triggerDownload(name, content, mime);
+    if (common && common.onDocument) common.onDocument(target, content, name);
+    return { ok: true, tool: "export_document", path: target, downloaded: true, text: "Downloaded " + target };
+  }
+
+  function verifyProjectTool(path) {
+    const target = resolve(path || cwd());
+    const entry = fs()[target];
+    if (!entry) return { ok: false, tool: "verify_project", error: "Path not found: " + (path || ".") };
+    const files = [];
+    const walk = (dirPath) => {
+      const dir = fs()[dirPath];
+      if (!dir) return;
+      if (dir.type === "file") {
+        files.push({ path: dirPath, bytes: (dir.content || "").length });
+        return;
+      }
+      (dir.children || []).forEach((child) => {
+        const childPath = dirPath === "/" ? "/" + child : dirPath + "/" + child;
+        walk(childPath);
+      });
+    };
+    walk(target);
+    const empty = files.filter((f) => f.bytes === 0);
+    const readme = files.find((f) => /readme/i.test(f.path));
+    const issues = [];
+    if (files.length === 0) issues.push("No files found under " + target);
+    if (empty.length) issues.push(empty.length + " empty file(s): " + empty.map((f) => f.path).slice(0, 5).join(", "));
+    if (!readme && files.length > 2) issues.push("No README found — consider adding one");
+    return {
+      ok: issues.length === 0,
+      tool: "verify_project",
+      path: target,
+      fileCount: files.length,
+      totalBytes: files.reduce((n, f) => n + f.bytes, 0),
+      issues,
+      text: issues.length
+        ? "Verification warnings:\n- " + issues.join("\n- ")
+        : "Project looks healthy (" + files.length + " files).",
+    };
+  }
+
+  function listSkillsTool() {
+    const skills = window.ChatreSkills
+      ? window.ChatreSkills.listSkills()
+      : [];
+    return {
+      ok: true,
+      tool: "list_skills",
+      skills,
+      text: skills.map((s) => s.name + ": " + s.summary).join("\n") || "(no skills loaded)",
+    };
+  }
+
+  function useSkillTool(name) {
+    if (!window.ChatreSkills) {
+      return { ok: false, tool: "use_skill", error: "Skills module not loaded" };
+    }
+    const skill = window.ChatreSkills.getSkill(name);
+    if (!skill) {
+      return {
+        ok: false,
+        tool: "use_skill",
+        error: "Unknown skill: " + name + ". Try list_skills.",
+      };
+    }
+    const guide = window.ChatreSkills.formatSkill(skill);
+    return { ok: true, tool: "use_skill", skill: skill.name, guide, text: guide };
+  }
+
+  function ensureDir(path) {
+    const target = resolve(path);
+    if (fs()[target] && fs()[target].type === "dir") return;
+    const parts = target.split("/").filter(Boolean);
+    let cur = "";
+    for (const part of parts) {
+      const parent = cur || "/";
+      cur = cur + "/" + part;
+      if (!fs()[cur]) {
+        fs()[cur] = { type: "dir", children: [] };
+        if (fs()[parent] && fs()[parent].type === "dir" && !fs()[parent].children.includes(part)) {
+          fs()[parent].children.push(part);
+        }
+      }
+    }
+  }
+
+  function triggerDownload(filename, content, mime) {
+    try {
+      const blob = new Blob([content], { type: mime || "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 1000);
+    } catch (e) {
+      console.warn("Download failed", e);
+    }
   }
 
   function viewTreeTool(path) {
@@ -672,6 +820,25 @@
           return "commit " + cm.hash + "\nAuthor: Chatre <chatre@localhost>\nDate: " + cm.date + "\n\n    " + cm.message + "\n";
         });
         return { ok: true, tool: "git_log", output: lines.join("\n"), text: "Commit history" };
+      }
+      case "push": {
+        if (!git.initialized) return { ok: false, tool: "git_push", error: "Not a git repository" };
+        if (git.commits.length === 0) return { ok: false, tool: "git_push", error: "Nothing to push" };
+        const remote = params.remote || "origin";
+        const branch = params.branch || git.branch || "main";
+        git.remotes = git.remotes || {};
+        git.remotes[remote] = {
+          branch,
+          tip: git.commits[git.commits.length - 1].hash,
+          pushedAt: new Date().toISOString(),
+          commitCount: git.commits.length,
+        };
+        return {
+          ok: true,
+          tool: "git_push",
+          text: "Pushed " + git.commits.length + " commit(s) to " + remote + "/" + branch + " (" + git.remotes[remote].tip + ")",
+          remote: git.remotes[remote],
+        };
       }
       default:
         return { ok: false, tool: "git_" + op, error: "Unknown git op: " + op };

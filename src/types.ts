@@ -2,18 +2,12 @@
  * Type definitions for the LLM chat application.
  */
 
-/**
- * Environment bindings for Cloudflare Worker.
- */
 export interface Env {
-  /** Workers AI binding */
   AI: Ai;
-  /** Static assets (public/) */
   ASSETS: Fetcher;
   /**
    * Optional shared secret. When set, API POSTs must send
    * Authorization: Bearer <secret> or x-chatre-key: <secret>.
-   * Leave unset for the public Chatre UI.
    */
   CHATRE_SECRET?: string;
 }
@@ -28,6 +22,8 @@ export interface ChatRequestBody {
   stream?: boolean;
   model?: string;
   max_tokens?: number;
+  /** Use the thorough agent system prompt and ignore client system messages. */
+  agent?: boolean;
 }
 
 export interface ImageRequest {

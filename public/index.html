@@ -470,6 +470,35 @@
         border-color: rgba(232, 168, 76, 0.55);
       }
 
+      .chat-container.processing.agenting {
+        box-shadow: 0 0 28px rgba(76, 175, 80, 0.25), 0 8px 40px #16161a;
+        border-color: rgba(76, 175, 80, 0.55);
+      }
+
+      #agent-mode-button {
+        background: #12121c;
+        color: var(--text-light);
+        border: 1px solid var(--border-color);
+      }
+
+      #agent-mode-button.active {
+        color: #9dffb0;
+        border-color: #3a9a5a;
+        background: #0e2818;
+      }
+
+      .agent-final {
+        border-top: 1px solid var(--border-color);
+        padding-top: 0.65rem;
+        margin-top: 0.35rem;
+      }
+
+      .doc-download-note {
+        padding: 0.35rem 0.7rem 0.55rem;
+        font-size: 0.78rem;
+        color: #9dffb0;
+      }
+
       body.is-working .spectrum-strip {
         animation-duration: 1.6s;
         height: 5px;
@@ -771,12 +800,15 @@
       <button type="button" class="btn" id="image-mode-button" title="Toggle image mode">
         Image
       </button>
+      <button type="button" class="btn active" id="agent-mode-button" title="Toggle agent mode" aria-pressed="true">
+        Agent
+      </button>
       <button type="button" class="btn" id="terminal-toggle" title="Toggle terminal">
         Terminal
       </button>
       <p class="hint">
-        Chat streams by default. Use <code>/image</code> for pictures, <code>/terminal</code> for shell.
-        <code>/run</code>, <code>/exec</code>, <code>/python</code> to run code. Press Stop to abort.
+        Agent mode is ON by default — plan, build, verify, document, commit.
+        Use <code>/image</code>, <code>/skills</code>, <code>/terminal</code>. Press Stop to abort.
       </p>
     </div>
 
@@ -813,6 +845,7 @@
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <script src="/skills.js"></script>
     <script src="/tools.js"></script>
     <script src="/agent.js"></script>
     <script src="/chat.js" defer></script>
