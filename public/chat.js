@@ -825,7 +825,7 @@
     const showTool = (call) => {
       const card = document.createElement("div");
       card.className = "tool-call";
-      card.dataset.toolId = call.id;
+      card.dataset.toolId = call.id || call.tool;
       const params = call.params || {};
       const detail = formatToolParams(call.tool, params);
       card.innerHTML =
@@ -856,76 +856,108 @@
         status.textContent = "done";
         status.className = "tool-status done";
         const outText =
-          result.guide ||
-          result.text ||
-          (result.output !== undefined && result.output !== ""
-            ? result.output
-            : result.content || "ok");
+          (result && (result.guide || result.text || result.output || result.content)) ||
+          "ok";
         resultDiv.textContent =
           typeof outText === "string" && outText.length > 500
             ? outText.slice(0, 500) + "\n…(truncated)"
             : outText;
-        if (result && result.downloaded) {
-          const note = document.createElement("div");
-          note.className = "doc-download-note";
-          note.textContent = "Document download started.";
-          card.appendChild(note);
-        }
       }
       scrollToBottom();
     };
 
     activeAbort = new AbortController();
+    const toolCards = {};
 
     try {
-      await window.ChatreAgent.run([...chatHistory], {
-        model: modelSelect.value,
-        maxTokens: 3072,
-        forcePlan: true,
-        callbacks: {
-          onThinking: (iter, max) => {
-            startThinking("Agent step " + iter + "/" + max);
-          },
-          onStepText: (text, isFinal) => {
-            stopThinking();
-            showStep(text, isFinal);
-            if (isFinal) {
-              chatHistory.push({ role: "assistant", content: text });
-              trimHistory();
+      // Prefer remote Vercel+Firestore agent when configured
+      if (window.ChatreRemote && window.ChatreRemote.enabled()) {
+        const remoteState = window.__chatreRemote || {};
+        await window.ChatreRemote.runAgentStream({
+          message,
+          threadId: remoteState.threadId || null,
+          workspaceId: remoteState.workspaceId || null,
+          model: modelSelect.value,
+          signal: activeAbort.signal,
+          onEvent: (ev) => {
+            if (ev.type === "start") {
+              window.__chatreRemote = {
+                threadId: ev.threadId,
+                workspaceId: ev.workspaceId,
+              };
+              startThinking("Remote agent connected");
+            } else if (ev.type === "thinking") {
+              startThinking("Agent step " + ev.step + "/" + ev.max);
+            } else if (ev.type === "text") {
+              stopThinking();
+              showStep(ev.text, !!ev.final);
+              if (ev.final) {
+                chatHistory.push({ role: "assistant", content: ev.text });
+                trimHistory();
+              }
+            } else if (ev.type === "tool_start") {
+              const card = showTool(ev);
+              toolCards[ev.id || ev.tool] = card;
+            } else if (ev.type === "tool_result") {
+              const card = toolCards[ev.id || ev.tool];
+              if (card) updateTool(card, ev.result);
+            } else if (ev.type === "error") {
+              showStep("Agent error: " + (ev.error || "unknown"), true);
+            } else if (ev.type === "done") {
+              if (ev.response && !finalText) {
+                showStep(ev.response, true);
+                chatHistory.push({ role: "assistant", content: ev.response });
+                trimHistory();
+              }
             }
           },
-          onToolStart: (call) => {
-            const card = showTool(call);
-            showTool._cards = showTool._cards || {};
-            showTool._cards[call.id] = card;
+        });
+      } else if (window.ChatreAgent && window.ChatreTools) {
+        await window.ChatreAgent.run([...chatHistory], {
+          model: modelSelect.value,
+          maxTokens: 3072,
+          forcePlan: true,
+          callbacks: {
+            onThinking: (iter, max) => {
+              startThinking("Agent step " + iter + "/" + max);
+            },
+            onStepText: (text, isFinal) => {
+              stopThinking();
+              showStep(text, isFinal);
+              if (isFinal) {
+                chatHistory.push({ role: "assistant", content: text });
+                trimHistory();
+              }
+            },
+            onToolStart: (call) => {
+              const card = showTool(call);
+              toolCards[call.id] = card;
+            },
+            onToolResult: (call, result) => {
+              const card = toolCards[call.id];
+              if (card) updateTool(card, result);
+            },
+            onDone: (res) => {
+              if (res.cancelled && !finalText) {
+                showStep(res.response || "(stopped)", true);
+              }
+            },
+            onError: (err) => {
+              stopThinking();
+              showStep("Agent error: " + (err.message || String(err)), true);
+            },
           },
-          onToolResult: (call, result) => {
-            const card = showTool._cards && showTool._cards[call.id];
-            if (card) updateTool(card, result);
-          },
-          onDocument: () => {
-            /* download already triggered by tools */
-          },
-          onDone: (res) => {
-            if (res.cancelled && !finalText) {
-              showStep(res.response || "(stopped)", true);
-            }
-          },
-          onError: (err) => {
-            stopThinking();
-            showStep("Agent error: " + (err.message || String(err)), true);
-          },
-        },
-      });
+        });
+      } else {
+        showStep("Agent runtime not loaded.", true);
+      }
     } catch (e) {
-      console.error(e);
-      stopThinking();
-      const p = document.createElement("div");
-      p.className = "agent-text";
-      p.innerHTML =
-        "<p>Agent failed: " + escapeHtml(e.message || String(e)) + "</p>";
-      agentBody.appendChild(p);
-      scrollToBottom();
+      if (e && e.name === "AbortError") {
+        showStep("*(agent stopped)*", true);
+      } else {
+        console.error(e);
+        showStep("Agent failed: " + (e.message || String(e)), true);
+      }
     } finally {
       stopThinking();
       setBusy(false);

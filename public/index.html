@@ -807,8 +807,9 @@
         Terminal
       </button>
       <p class="hint">
-        Agent mode is ON by default — plan, build, verify, document, commit.
-        Use <code>/image</code>, <code>/skills</code>, <code>/terminal</code>. Press Stop to abort.
+        Agent mode ON — plan, build, verify, document, commit.
+        Set <code>CHATRE_API_BASE</code> to your Vercel API for Firestore persistence + streaming.
+        <code>/image</code>, <code>/skills</code>, <code>/terminal</code>. Stop aborts.
       </p>
     </div>
 
@@ -848,6 +849,7 @@
     <script src="/skills.js"></script>
     <script src="/tools.js"></script>
     <script src="/agent.js"></script>
+    <script src="/remote.js"></script>
     <script src="/chat.js" defer></script>
   </body>
 </html>

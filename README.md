@@ -26,7 +26,28 @@ This template demonstrates how to build an AI-powered chat interface using Cloud
 - Best-effort rate limit (30 req/min per IP per isolate)
 - Structured observability logs
 - Markdown via marked + DOMPurify
+- Optional **chatre-api** (Vercel + Firestore): persisted threads, sandbox exec, SSE agent
 <!-- dash-content-end -->
+
+## Remote API (Firestore + sandbox)
+
+The sibling folder `chatre-api/` is a separate Vercel project. It stores threads/workspaces in Firestore (`re-el-eed0d`) and streams agent runs over SSE.
+
+```bash
+cd chatre-api
+cp .env.example .env.local   # set FIREBASE_SERVICE_ACCOUNT, CHATRE_API_TOKEN, CHATRE_WORKER_URL
+npm install && npm start     # http://localhost:8080
+```
+
+In the Chatre UI:
+
+```js
+localStorage.setItem("chatre_api_base", "http://localhost:8080");
+localStorage.setItem("chatre_api_key", "YOUR_CHATRE_API_TOKEN");
+location.reload();
+```
+
+Deploy `chatre-api` with `npx vercel` and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
 
 ## Getting Started
 
