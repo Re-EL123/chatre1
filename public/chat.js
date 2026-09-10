@@ -28,9 +28,13 @@
 
   const SLASH_COMMANDS = [
     { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
-    { cmd: "/clear", desc: "Clear chat history", action: () => { chatHistory = []; chatMessages.innerHTML = ""; showGreeting(); } },
-    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model") },
+    { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
+    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python") },
     { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`") },
+    { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
+    { cmd: "/run", desc: "Run a shell command", action: (arg) => runShellCommand(arg) },
+    { cmd: "/exec", desc: "Execute JavaScript code", action: (arg) => execJS(arg) },
+    { cmd: "/python", desc: "Execute Python code", action: (arg) => execPython(arg) },
   ];
 
   /** @type {{ role: string, content: string }[]} */
@@ -41,6 +45,28 @@
   let activeAbort = null;
   let thinkingTimer = null;
   let selectedSlashIndex = 0;
+
+  // Terminal state
+  let terminalReady = false;
+  let xtermTerminal = null;
+  let fitAddon = null;
+  let currentDir = "/home/user";
+  let pyodide = null;
+  let pyodideLoading = false;
+
+  // Virtual filesystem
+  const fileSystem = {
+    "/": { type: "dir", children: ["home", "tmp", "etc"] },
+    "/home": { type: "dir", children: ["user"] },
+    "/home/user": { type: "dir", children: ["documents", "scripts", "readme.txt"] },
+    "/home/user/documents": { type: "dir", children: [] },
+    "/home/user/scripts": { type: "dir", children: ["hello.js", "hello.py"] },
+    "/home/user/readme.txt": { type: "file", content: "Welcome to Chatre Terminal!\nThis is a virtual filesystem.\nType 'help' for available commands." },
+    "/home/user/scripts/hello.js": { type: "file", content: 'console.log("Hello from Chatre!");' },
+    "/home/user/scripts/hello.py": { type: "file", content: 'print("Hello from Chatre!")' },
+    "/tmp": { type: "dir", children: [] },
+    "/etc": { type: "dir", children: [] },
+  };
 
   if (window.marked) {
     marked.setOptions({
@@ -616,6 +642,467 @@
       : "Type a message… or /image a sunset over Cape Town";
     userInput.focus();
   });
+
+  // ── Terminal ──────────────────────────────────────────────────────
+
+  function toggleTerminal() {
+    const panel = document.getElementById("terminal-panel");
+    const btn = document.getElementById("terminal-toggle");
+    const visible = panel.style.display !== "none";
+    panel.style.display = visible ? "none" : "flex";
+    btn.classList.toggle("active", !visible);
+    if (!visible && !terminalReady) {
+      initTerminal();
+    }
+    if (!visible && xtermTerminal && fitAddon) {
+      setTimeout(() => fitAddon.fit(), 50);
+    }
+  }
+
+  function initTerminal() {
+    if (terminalReady || !window.Terminal) return;
+    const container = document.getElementById("terminal-container");
+    xtermTerminal = new Terminal({
+      theme: {
+        background: "#0a0a12",
+        foreground: "#f2f2f5",
+        cursor: "#6c8cff",
+        selectionBackground: "rgba(108,140,255,0.3)",
+      },
+      fontFamily: '"IBM Plex Mono", monospace',
+      fontSize: 14,
+      cursorBlink: true,
+      convertEol: true,
+    });
+    fitAddon = new FitAddon.FitAddon();
+    xtermTerminal.loadAddon(fitAddon);
+    xtermTerminal.open(container);
+    fitAddon.fit();
+
+    xtermTerminal.writeln("\x1b[1;36mChatre Terminal\x1b[0m v1.0");
+    xtermTerminal.writeln("Type \x1b[1mhelp\x1b[0m for commands. Shell, JS, and Python.\n");
+    writePrompt();
+
+    let currentLine = "";
+    xtermTerminal.onData((data) => {
+      if (data === "\r") {
+        xtermTerminal.writeln("");
+        const cmd = currentLine.trim();
+        currentLine = "";
+        if (cmd) processCommand(cmd);
+        writePrompt();
+      } else if (data === "\x7f") {
+        if (currentLine.length > 0) {
+          currentLine = currentLine.slice(0, -1);
+          xtermTerminal.write("\b \b");
+        }
+      } else if (data === "\t") {
+        const matches = getCompletions(currentLine);
+        if (matches.length === 1) {
+          const rest = matches[0].slice(currentLine.length);
+          currentLine += rest;
+          xtermTerminal.write(rest);
+        } else if (matches.length > 1) {
+          xtermTerminal.writeln("");
+          xtermTerminal.writeln(matches.join("  "));
+          writePrompt();
+          xtermTerminal.write(currentLine);
+        }
+      } else if (data === "\x03") {
+        xtermTerminal.writeln("^C");
+        currentLine = "";
+        writePrompt();
+      } else if (data >= " " && data.length === 1) {
+        currentLine += data;
+        xtermTerminal.write(data);
+      }
+    });
+
+    terminalReady = true;
+    window.addEventListener("resize", () => {
+      if (fitAddon) fitAddon.fit();
+    });
+  }
+
+  function writePrompt() {
+    const dir = currentDir === "/home/user" ? "~" : currentDir.replace("/home/user", "~");
+    xtermTerminal.write("\x1b[36mchatre\x1b[0m:\x1b[33m" + dir + "\x1b[0m$ ");
+  }
+
+  function getCompletions(partial) {
+    const parts = partial.split(/\s+/);
+    const commands = ["help", "ls", "cd", "pwd", "cat", "echo", "touch", "mkdir", "rm", "clear", "js", "py", "whoami"];
+    if (parts.length <= 1) {
+      return commands.filter((c) => c.startsWith(parts[0]));
+    }
+    const dirEntries = fileSystem[currentDir];
+    if (dirEntries && dirEntries.type === "dir") {
+      return dirEntries.children.filter((c) => c.startsWith(parts[parts.length - 1]));
+    }
+    return [];
+  }
+
+  function processCommand(cmd) {
+    const parts = cmd.split(/\s+/);
+    const command = parts[0];
+    const args = parts.slice(1).join(" ");
+
+    switch (command) {
+      case "help":
+        xtermTerminal.writeln("Available commands:");
+        xtermTerminal.writeln("  help              Show this help");
+        xtermTerminal.writeln("  ls [dir]          List directory contents");
+        xtermTerminal.writeln("  cd <dir>          Change directory");
+        xtermTerminal.writeln("  pwd               Print working directory");
+        xtermTerminal.writeln("  cat <file>        Display file contents");
+        xtermTerminal.writeln("  echo <text>       Print text");
+        xtermTerminal.writeln("  touch <file>      Create an empty file");
+        xtermTerminal.writeln("  mkdir <dir>       Create a directory");
+        xtermTerminal.writeln("  rm <file>         Remove a file");
+        xtermTerminal.writeln("  js <code>         Execute JavaScript");
+        xtermTerminal.writeln("  py <code>         Execute Python (loads Pyodide)");
+        xtermTerminal.writeln("  clear             Clear terminal");
+        xtermTerminal.writeln("  whoami            Print current user");
+        break;
+
+      case "clear":
+        xtermTerminal.clear();
+        break;
+
+      case "whoami":
+        xtermTerminal.writeln("chatre");
+        break;
+
+      case "pwd":
+        xtermTerminal.writeln(currentDir);
+        break;
+
+      case "ls": {
+        const target = resolvePath(args || currentDir);
+        const entry = fileSystem[target];
+        if (!entry) {
+          xtermTerminal.writeln("ls: cannot access '" + (args || ".") + "': No such file or directory");
+        } else if (entry.type !== "dir") {
+          xtermTerminal.writeln(target.split("/").pop());
+        } else {
+          const items = entry.children.map((name) => {
+            const childPath = target === "/" ? "/" + name : target + "/" + name;
+            const child = fileSystem[childPath];
+            if (child && child.type === "dir") return "\x1b[1;34m" + name + "/\x1b[0m";
+            if (name.endsWith(".js") || name.endsWith(".py")) return "\x1b[1;32m" + name + "\x1b[0m";
+            return name;
+          });
+          xtermTerminal.writeln(items.join("  "));
+        }
+        break;
+      }
+
+      case "cd": {
+        if (!args || args === "~") {
+          currentDir = "/home/user";
+        } else if (args === "..") {
+          currentDir = currentDir === "/" ? "/" : currentDir.replace(/\/[^/]+$/, "") || "/";
+        } else if (args === "/") {
+          currentDir = "/";
+        } else {
+          const target = resolvePath(args);
+          const entry = fileSystem[target];
+          if (!entry) {
+            xtermTerminal.writeln("cd: no such file or directory: " + args);
+          } else if (entry.type !== "dir") {
+            xtermTerminal.writeln("cd: not a directory: " + args);
+          } else {
+            currentDir = target;
+          }
+        }
+        break;
+      }
+
+      case "cat": {
+        if (!args) {
+          xtermTerminal.writeln("cat: missing file operand");
+        } else {
+          const target = resolvePath(args);
+          const entry = fileSystem[target];
+          if (!entry) {
+            xtermTerminal.writeln("cat: " + args + ": No such file or directory");
+          } else if (entry.type === "dir") {
+            xtermTerminal.writeln("cat: " + args + ": Is a directory");
+          } else {
+            xtermTerminal.writeln(entry.content || "");
+          }
+        }
+        break;
+      }
+
+      case "echo":
+        xtermTerminal.writeln(args);
+        break;
+
+      case "touch": {
+        if (!args) {
+          xtermTerminal.writeln("touch: missing file operand");
+        } else {
+          const target = resolvePath(args);
+          const parent = target.replace(/\/[^/]+$/, "") || "/";
+          const name = target.split("/").pop();
+          if (!fileSystem[parent] || fileSystem[parent].type !== "dir") {
+            xtermTerminal.writeln("touch: cannot create file: parent directory does not exist");
+          } else if (!fileSystem[target]) {
+            fileSystem[target] = { type: "file", content: "" };
+            if (!fileSystem[parent].children.includes(name)) {
+              fileSystem[parent].children.push(name);
+            }
+          }
+        }
+        break;
+      }
+
+      case "mkdir": {
+        if (!args) {
+          xtermTerminal.writeln("mkdir: missing directory operand");
+        } else {
+          const target = resolvePath(args);
+          const parent = target.replace(/\/[^/]+$/, "") || "/";
+          const name = target.split("/").pop();
+          if (!fileSystem[parent] || fileSystem[parent].type !== "dir") {
+            xtermTerminal.writeln("mkdir: cannot create directory: parent does not exist");
+          } else if (fileSystem[target]) {
+            xtermTerminal.writeln("mkdir: cannot create directory '" + args + "': File exists");
+          } else {
+            fileSystem[target] = { type: "dir", children: [] };
+            if (!fileSystem[parent].children.includes(name)) {
+              fileSystem[parent].children.push(name);
+            }
+          }
+        }
+        break;
+      }
+
+      case "rm": {
+        if (!args) {
+          xtermTerminal.writeln("rm: missing file operand");
+        } else {
+          const target = resolvePath(args);
+          const parent = target.replace(/\/[^/]+$/, "") || "/";
+          const name = target.split("/").pop();
+          if (!fileSystem[target]) {
+            xtermTerminal.writeln("rm: cannot remove '" + args + "': No such file or directory");
+          } else if (fileSystem[target].type === "dir" && fileSystem[target].children.length > 0) {
+            xtermTerminal.writeln("rm: cannot remove '" + args + "': Directory not empty");
+          } else {
+            delete fileSystem[target];
+            if (fileSystem[parent]) {
+              fileSystem[parent].children = fileSystem[parent].children.filter((c) => c !== name);
+            }
+          }
+        }
+        break;
+      }
+
+      case "js": {
+        if (!args) {
+          xtermTerminal.writeln("js: usage: js <code>");
+        } else {
+          try {
+            const result = new Function("return (" + args + ")")();
+            if (result !== undefined) xtermTerminal.writeln(String(result));
+          } catch (e) {
+            xtermTerminal.writeln("\x1b[31m" + (e.message || String(e)) + "\x1b[0m");
+          }
+        }
+        break;
+      }
+
+      case "py": {
+        if (!args) {
+          xtermTerminal.writeln("py: usage: py <python_code>");
+        } else {
+          runPyodide(args);
+        }
+        break;
+      }
+
+      default:
+        xtermTerminal.writeln("command not found: " + command);
+        break;
+    }
+  }
+
+  function resolvePath(path) {
+    if (!path) return currentDir;
+    if (path === "~") return "/home/user";
+    if (path.startsWith("~/")) path = "/home/user/" + path.slice(2);
+    if (!path.startsWith("/")) path = currentDir + "/" + path;
+    const pathParts = path.split("/").filter(Boolean);
+    const resolved = [];
+    for (const p of pathParts) {
+      if (p === ".") continue;
+      if (p === "..") resolved.pop();
+      else resolved.push(p);
+    }
+    return "/" + resolved.join("/") || "/";
+  }
+
+  async function runPyodide(code) {
+    if (!pyodide && !pyodideLoading) {
+      pyodideLoading = true;
+      xtermTerminal.writeln("Loading Python runtime (Pyodide)...");
+      try {
+        if (!window.loadPyodide) {
+          await loadScript("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+        }
+        pyodide = await window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
+        xtermTerminal.writeln("Python ready.\n");
+      } catch (e) {
+        xtermTerminal.writeln("\x1b[31mFailed to load Pyodide: " + (e.message || e) + "\x1b[0m");
+        pyodideLoading = false;
+        return;
+      }
+      pyodideLoading = false;
+    }
+    if (!pyodide) return;
+    try {
+      const result = pyodide.runPython(code);
+      if (result !== undefined && result !== null) {
+        xtermTerminal.writeln(String(result));
+      }
+    } catch (e) {
+      xtermTerminal.writeln("\x1b[31m" + (e.message || String(e)) + "\x1b[0m");
+    }
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Failed to load " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── Chat slash commands for terminal ─────────────────────────────
+
+  function runShellCommand(cmd) {
+    if (!cmd) {
+      addMessage("assistant", "Usage: `/run <command>` — e.g. `/run ls -la`");
+      return;
+    }
+    const output = executeShellCmd(cmd);
+    showTerminalOutput("$ " + cmd, output, false);
+  }
+
+  function executeShellCmd(cmd) {
+    const parts = cmd.split(/\s+/);
+    const command = parts[0];
+    const args = parts.slice(1).join(" ");
+    let output = "";
+
+    switch (command) {
+      case "ls": {
+        const target = resolvePath(args || currentDir);
+        const entry = fileSystem[target];
+        if (!entry) output = "ls: cannot access '" + (args || ".") + "': No such file or directory";
+        else if (entry.type !== "dir") output = target.split("/").pop();
+        else output = entry.children.join("\n");
+        break;
+      }
+      case "pwd":
+        output = currentDir;
+        break;
+      case "cat": {
+        if (!args) { output = "cat: missing file operand"; break; }
+        const target = resolvePath(args);
+        const entry = fileSystem[target];
+        if (!entry) output = "cat: " + args + ": No such file or directory";
+        else if (entry.type === "dir") output = "cat: " + args + ": Is a directory";
+        else output = entry.content || "";
+        break;
+      }
+      case "echo":
+        output = args;
+        break;
+      case "whoami":
+        output = "chatre";
+        break;
+      case "cd": {
+        if (!args || args === "~") {
+          currentDir = "/home/user";
+          output = "";
+        } else if (args === "..") {
+          currentDir = currentDir === "/" ? "/" : currentDir.replace(/\/[^/]+$/, "") || "/";
+          output = "";
+        } else {
+          const target = resolvePath(args);
+          const entry = fileSystem[target];
+          if (!entry) output = "cd: no such file or directory: " + args;
+          else if (entry.type !== "dir") output = "cd: not a directory: " + args;
+          else { currentDir = target; output = ""; }
+        }
+        break;
+      }
+      default:
+        output = "command not found: " + command + "\nTry: ls, cd, pwd, cat, echo, whoami";
+        break;
+    }
+    return output;
+  }
+
+  async function execJS(code) {
+    if (!code) {
+      addMessage("assistant", "Usage: `/exec <javascript>` — e.g. `/exec 2 + 2`");
+      return;
+    }
+    try {
+      const result = new Function("return (" + code + ")")();
+      showTerminalOutput("js> " + code, result !== undefined ? String(result) : "(undefined)", false);
+    } catch (e) {
+      showTerminalOutput("js> " + code, e.message || String(e), true);
+    }
+  }
+
+  async function execPython(code) {
+    if (!code) {
+      addMessage("assistant", "Usage: `/python <code>` — e.g. `/python print('hello')`");
+      return;
+    }
+    if (!pyodide && !pyodideLoading) {
+      pyodideLoading = true;
+      addMessage("assistant", '<span class="spinner"></span>Loading Python runtime (first time, may take a moment)...', { html: true });
+      try {
+        if (!window.loadPyodide) {
+          await loadScript("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+        }
+        pyodide = await window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
+      } catch (e) {
+        addMessage("assistant", "Failed to load Python: " + (e.message || e));
+        pyodideLoading = false;
+        return;
+      }
+      pyodideLoading = false;
+    }
+    if (!pyodide) return;
+    try {
+      const result = pyodide.runPython(code);
+      showTerminalOutput("python> " + code, result !== undefined && result !== null ? String(result) : "(no output)", false);
+    } catch (e) {
+      showTerminalOutput("python> " + code, e.message || String(e), true);
+    }
+  }
+
+  function showTerminalOutput(title, body, isError) {
+    const html =
+      '<div class="terminal-output-block">' +
+      '<div class="terminal-output-header"><span>' + escapeHtml(title) + "</span><span>" + (isError ? "error" : "output") + "</span></div>" +
+      '<div class="terminal-output-body' + (isError ? " error" : "") + '">' + escapeHtml(body) + "</div></div>";
+    addMessage("assistant", html, { html: true });
+  }
+
+  // ── Terminal event listeners ─────────────────────────────────────
+
+  document.getElementById("terminal-toggle").addEventListener("click", toggleTerminal);
+  document.getElementById("terminal-close").addEventListener("click", toggleTerminal);
 
   showGreeting();
 })();
