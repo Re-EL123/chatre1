@@ -31,10 +31,10 @@ This template demonstrates how to build an AI-powered chat interface using Cloud
 
 ## Remote API (Firestore + sandbox)
 
-The sibling folder `chatre-api/` is a separate Vercel project. It stores threads/workspaces in Firestore (`re-el-eed0d`) and streams agent runs over SSE.
+The sibling repo lives at **`/home/akani/Documents/chatre-api`** ([github.com/Re-EL123/chatre-api](https://github.com/Re-EL123/chatre-api)). It stores threads/workspaces in Firestore (`re-el-eed0d`) and streams agent runs over SSE.
 
 ```bash
-cd chatre-api
+cd /home/akani/Documents/chatre-api
 cp .env.example .env.local   # set FIREBASE_SERVICE_ACCOUNT, CHATRE_API_TOKEN, CHATRE_WORKER_URL
 npm install && npm start     # http://localhost:8080
 ```
@@ -47,7 +47,7 @@ localStorage.setItem("chatre_api_key", "YOUR_CHATRE_API_TOKEN");
 location.reload();
 ```
 
-Deploy `chatre-api` with `npx vercel` and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
+Deploy with `npx vercel` from that folder and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
 
 ## Getting Started
 

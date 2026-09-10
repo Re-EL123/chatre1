@@ -3,4 +3,3 @@ node_modules/
 dist/
 .dev.vars
 .DS_Store
-chatre-api/
