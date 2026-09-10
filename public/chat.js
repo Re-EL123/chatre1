@@ -802,6 +802,7 @@
     };
     apiKeyInput.addEventListener("change", persistKey);
     apiKeyInput.addEventListener("blur", persistKey);
+    apiKeyInput.addEventListener("input", persistKey);
   }
 
   function showGreeting() {

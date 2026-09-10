@@ -12,12 +12,26 @@
     ).replace(/\/$/, "");
   }
 
+  function syncKeyFromUi() {
+    const fromInput = document.getElementById("api-key-input");
+    if (!fromInput) return;
+    const v = fromInput.value.trim();
+    if (v) {
+      localStorage.setItem("chatre_api_key", v);
+      window.CHATRE_API_KEY = v;
+    }
+  }
+
   function apiKey() {
+    syncKeyFromUi();
+    const fromInput = document.getElementById("api-key-input");
+    const typed = fromInput && fromInput.value ? fromInput.value.trim() : "";
     return (
+      typed ||
       window.CHATRE_API_KEY ||
       localStorage.getItem("chatre_api_key") ||
       ""
-    );
+    ).trim();
   }
 
   function enabled() {
@@ -25,7 +39,10 @@
   }
 
   function headers() {
-    const h = { "Content-Type": "application/json", Accept: "application/json" };
+    const h = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
     const key = apiKey();
     if (key) {
       h.Authorization = "Bearer " + key;
@@ -91,11 +108,24 @@
 
   /**
    * Stream agent run via SSE.
-   * onEvent(ev) for each JSON event; returns { threadId, workspaceId, response }.
    */
-  async function runAgentStream({ message, threadId, workspaceId, model, onEvent, signal }) {
+  async function runAgentStream({
+    message,
+    threadId,
+    workspaceId,
+    model,
+    onEvent,
+    signal,
+  }) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
+
+    syncKeyFromUi();
+    if (!apiKey()) {
+      throw new Error(
+        "API key is empty — paste your Vercel CHATRE_API_TOKEN into the API key field.",
+      );
+    }
 
     const res = await fetch(base + "/api/agent", {
       method: "POST",
@@ -118,13 +148,21 @@
       } catch {
         /* ignore */
       }
+      if (res.status === 401) {
+        err +=
+          " — the key must exactly match Vercel env CHATRE_API_TOKEN on chatre-api (redeploy after setting it).";
+      }
       throw new Error(err);
     }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let carry = "";
-    let meta = { threadId: threadId || null, workspaceId: workspaceId || null, response: "" };
+    let meta = {
+      threadId: threadId || null,
+      workspaceId: workspaceId || null,
+      response: "",
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -159,6 +197,7 @@
     enabled,
     apiBase,
     apiKey,
+    syncKeyFromUi,
     health,
     createThread,
     listThreads,
