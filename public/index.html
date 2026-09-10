@@ -487,6 +487,28 @@
         background: #0e2818;
       }
 
+      .api-key-label {
+        font-size: 0.85rem;
+        color: var(--text-light);
+      }
+
+      #api-key-input {
+        min-width: 140px;
+        flex: 0 1 200px;
+        background: #0a0a10;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.45rem 0.6rem;
+        font: inherit;
+        font-size: 0.85rem;
+      }
+
+      #api-key-input:focus {
+        outline: none;
+        border-color: #6c8cff;
+      }
+
       .agent-final {
         border-top: 1px solid var(--border-color);
         padding-top: 0.65rem;
@@ -806,9 +828,17 @@
       <button type="button" class="btn" id="terminal-toggle" title="Toggle terminal">
         Terminal
       </button>
+      <label for="api-key-input" class="api-key-label">API key</label>
+      <input
+        id="api-key-input"
+        type="password"
+        autocomplete="off"
+        placeholder="CHATRE_API_TOKEN"
+        title="Same value as Vercel CHATRE_API_TOKEN"
+      />
       <p class="hint">
-        Agent mode ON — plan, build, verify, document, commit.
-        Set <code>CHATRE_API_BASE</code> to your Vercel API for Firestore persistence + streaming.
+        Agent uses <code>https://chatre-api.vercel.app</code> when configured.
+        Paste your Vercel <code>CHATRE_API_TOKEN</code> in API key (saved in this browser).
         <code>/image</code>, <code>/skills</code>, <code>/terminal</code>. Stop aborts.
       </p>
     </div>
@@ -846,6 +876,7 @@
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <script src="/config.js"></script>
     <script src="/skills.js"></script>
     <script src="/tools.js"></script>
     <script src="/agent.js"></script>

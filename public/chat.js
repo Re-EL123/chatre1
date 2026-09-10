@@ -780,9 +780,28 @@
     agentModeButton.classList.toggle("active", agentMode);
     agentModeButton.setAttribute("aria-pressed", agentMode ? "true" : "false");
     agentModeButton.addEventListener("click", () => {
-      // Toggle silently without double message from toggleAgentMode's addMessage when using button — still fine
       toggleAgentMode();
     });
+  }
+
+  const apiKeyInput = document.getElementById("api-key-input");
+  if (apiKeyInput) {
+    apiKeyInput.value =
+      localStorage.getItem("chatre_api_key") ||
+      window.CHATRE_API_KEY ||
+      "";
+    const persistKey = () => {
+      const v = apiKeyInput.value.trim();
+      if (v) {
+        localStorage.setItem("chatre_api_key", v);
+        window.CHATRE_API_KEY = v;
+      } else {
+        localStorage.removeItem("chatre_api_key");
+        window.CHATRE_API_KEY = "";
+      }
+    };
+    apiKeyInput.addEventListener("change", persistKey);
+    apiKeyInput.addEventListener("blur", persistKey);
   }
 
   function showGreeting() {
