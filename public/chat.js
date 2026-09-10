@@ -29,12 +29,13 @@
   const SLASH_COMMANDS = [
     { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
     { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
-    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python") },
+    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle agent mode (plan, build, code, commit)") },
     { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`") },
     { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
     { cmd: "/run", desc: "Run a shell command", action: (arg) => runShellCommand(arg) },
     { cmd: "/exec", desc: "Execute JavaScript code", action: (arg) => execJS(arg) },
     { cmd: "/python", desc: "Execute Python code", action: (arg) => execPython(arg) },
+    { cmd: "/agent", desc: "Toggle agent mode (plan, build, code, commit)", action: () => { agentMode = !agentMode; addMessage("assistant", agentMode ? "Agent mode ON: I can plan, build, write code, create documents, run commands, and handle git." : "Agent mode OFF: normal chat mode."); userInput.focus(); } },
   ];
 
   /** @type {{ role: string, content: string }[]} */
@@ -45,6 +46,10 @@
   let activeAbort = null;
   let thinkingTimer = null;
   let selectedSlashIndex = 0;
+  let agentMode = false;
+
+  // Agent workspace / git state
+  const gitState = { initialized: false, branch: "main", staged: new Set(), commits: [] };
 
   // Terminal state
   let terminalReady = false;
@@ -175,12 +180,14 @@
     container.appendChild(chipsDiv);
   }
 
-  function setBusy(busy) {
+  function setBusy(busy, mode) {
     isProcessing = busy;
     sendButton.disabled = busy;
     userInput.disabled = busy;
+    document.body.classList.toggle("is-working", busy);
     if (chatContainer) {
       chatContainer.classList.toggle("processing", busy);
+      chatContainer.classList.toggle("imaging", busy && mode === "image");
     }
     if (busy) {
       stopButton.classList.add("visible");
@@ -323,26 +330,37 @@
   }
 
   function updateSlashSuggestions(val) {
-    if (!val.startsWith("/") || isProcessing) {
+    if (!slashSuggestions) return;
+    if (!val.startsWith("/") || isProcessing || /\s/.test(val)) {
       slashSuggestions.style.display = "none";
       return;
     }
 
     const query = val.toLowerCase();
-    const filtered = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(query) || query === "/");
+    const filtered = SLASH_COMMANDS.filter(
+      (c) => query === "/" || c.cmd.startsWith(query),
+    );
 
     if (filtered.length === 0) {
       slashSuggestions.style.display = "none";
       return;
     }
 
-    selectedSlashIndex = Math.min(selectedSlashIndex, filtered.length - 1);
+    if (selectedSlashIndex >= filtered.length) selectedSlashIndex = 0;
     slashSuggestions.innerHTML = "";
 
     filtered.forEach((item, idx) => {
       const div = document.createElement("div");
-      div.className = "slash-suggestion-item" + (idx === selectedSlashIndex ? " active" : "");
-      div.innerHTML = `<code>${escapeHtml(item.cmd)}</code><span>${escapeHtml(item.desc)}</span>`;
+      div.className =
+        "slash-suggestion-item" + (idx === selectedSlashIndex ? " active" : "");
+      div.setAttribute("role", "option");
+      div.setAttribute("aria-selected", idx === selectedSlashIndex ? "true" : "false");
+      const code = document.createElement("code");
+      code.textContent = item.cmd;
+      const span = document.createElement("span");
+      span.textContent = item.desc;
+      div.appendChild(code);
+      div.appendChild(span);
       div.addEventListener("mousedown", (e) => {
         e.preventDefault();
         selectSlashCommand(item);
@@ -388,6 +406,14 @@
       userInput.value = "";
       userInput.style.height = "auto";
       return generateImage(imagePrompt);
+    }
+
+    // Agent routing: forced via /agent or auto-detected for build/code tasks
+    const useAgent = agentMode || (window.ChatreAgent && window.ChatreAgent.looksAgentic(message));
+    if (useAgent && window.ChatreAgent && window.ChatreTools) {
+      userInput.value = "";
+      userInput.style.height = "auto";
+      return runAgentTask(message);
     }
 
     setBusy(true);
@@ -465,6 +491,12 @@
 
       updateAssistantMessage(assistantEl, responseText || "…", false);
 
+      // Strip any tool-call blocks from non-agent responses for clean display
+      if (window.ChatreTools && /```(?:tool|tool_call|agent)\b/.test(responseText)) {
+        responseText = window.ChatreTools.cleanResponseText(responseText);
+        updateAssistantMessage(assistantEl, responseText || "…", false);
+      }
+
       if (!responseText) {
         updateAssistantMessage(assistantEl, "No response from the model.", false);
       } else {
@@ -496,15 +528,84 @@
     }
   }
 
+  /**
+   * Build an image message with real DOM nodes so blob:/data: URLs are never
+   * stripped by DOMPurify (which was why only "Generated image" text appeared).
+   */
+  function addGeneratedImageMessage(imageUrl, prompt) {
+    const el = document.createElement("div");
+    el.className = "message assistant-message";
+
+    const caption = document.createElement("p");
+    caption.textContent = "Here is your generated image:";
+    el.appendChild(caption);
+
+    const card = document.createElement("div");
+    card.className = "image-gen-card";
+
+    const img = document.createElement("img");
+    img.className = "generated-image";
+    img.alt = prompt ? "Generated image: " + prompt : "Generated image";
+    img.decoding = "async";
+    img.onload = () => {
+      img.classList.add("loaded");
+      scrollToBottom();
+    };
+    img.onerror = () => {
+      caption.textContent = "Image generated, but it failed to display in the browser.";
+      img.remove();
+    };
+    img.src = imageUrl;
+    card.appendChild(img);
+
+    const download = document.createElement("a");
+    download.className = "download-btn";
+    download.href = imageUrl;
+    download.download = "chatre-" + Date.now() + ".png";
+    download.textContent = "Download Image";
+    card.appendChild(download);
+
+    el.appendChild(card);
+    chatMessages.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
+  function showImagePlaceholder(prompt) {
+    const el = document.createElement("div");
+    el.className = "message assistant-message";
+    el.dataset.imagePlaceholder = "1";
+
+    const caption = document.createElement("p");
+    caption.textContent = "Painting your image…";
+    el.appendChild(caption);
+
+    const card = document.createElement("div");
+    card.className = "image-gen-card";
+    const skeleton = document.createElement("div");
+    skeleton.className = "image-skeleton";
+    skeleton.innerHTML =
+      '<div class="orbit" aria-hidden="true"></div>' +
+      "<span>" +
+      escapeHtml(prompt.length > 60 ? prompt.slice(0, 57) + "…" : prompt) +
+      "</span>";
+    card.appendChild(skeleton);
+    el.appendChild(card);
+    chatMessages.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
   async function generateImage(prompt) {
     if (!prompt || isProcessing) return;
 
-    setBusy(true);
+    setBusy(true, "image");
     addMessage("user", "/image " + prompt);
     chatHistory.push({ role: "user", content: "[Image] " + prompt });
     trimHistory();
 
     startThinking("Generating image");
+    const placeholder = showImagePlaceholder(prompt);
     activeAbort = new AbortController();
 
     try {
@@ -526,33 +627,35 @@
         throw new Error(errMsg);
       }
 
-      const contentType = response.headers.get("content-type") || "";
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
       let imageUrl = "";
 
       if (contentType.includes("application/json")) {
         const data = await response.json();
-        if (!data.image_base64) throw new Error("No image in response");
-        imageUrl = "data:image/png;base64," + data.image_base64;
+        const raw = data.image_base64 || data.image || "";
+        if (!raw) throw new Error("No image in response");
+        imageUrl = String(raw).startsWith("data:")
+          ? String(raw)
+          : "data:image/png;base64," + raw;
       } else {
         const blob = await response.blob();
-        imageUrl = URL.createObjectURL(blob);
+        if (!blob || blob.size === 0) {
+          throw new Error("Empty image response");
+        }
+        // Prefer data URL so the image survives refresh within the session and
+        // never depends on blob: being allowed through sanitizers.
+        imageUrl = await blobToDataUrl(blob);
       }
 
-      const html =
-        "<p>Here is your generated image:</p>" +
-        '<img class="generated-image" src="' +
-        imageUrl +
-        '" alt="Generated image"><br>' +
-        '<a href="' +
-        imageUrl +
-        '" download="chatre-generated-image.png" class="download-btn">Download Image</a>';
-      addMessage("assistant", html, { html: true });
+      placeholder.remove();
+      addGeneratedImageMessage(imageUrl, prompt);
       chatHistory.push({
         role: "assistant",
         content: "Generated an image for: " + prompt,
       });
       trimHistory();
     } catch (err) {
+      placeholder.remove();
       if (err && err.name === "AbortError") {
         addMessage("assistant", "Image generation stopped.");
       } else {
@@ -567,6 +670,15 @@
       setBusy(false);
       userInput.focus();
     }
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image data"));
+      reader.readAsDataURL(blob);
+    });
   }
 
   function stopGeneration() {
@@ -642,6 +754,146 @@
       : "Type a message… or /image a sunset over Cape Town";
     userInput.focus();
   });
+
+  // ── Agentic mode ──────────────────────────────────────────────────
+
+  async function runAgentTask(message) {
+    setBusy(true);
+    addMessage("user", message);
+    chatHistory.push({ role: "user", content: message });
+    trimHistory();
+
+    startThinking("Chatre is planning");
+
+    // Single agent container to hold plan + tool cards + final result
+    const agentBody = document.createElement("div");
+    agentBody.className = "agent-body";
+    const agentEl = document.createElement("div");
+    agentEl.className = "message assistant-message";
+    agentEl.appendChild(agentBody);
+    chatMessages.appendChild(agentEl);
+    scrollToBottom();
+
+    let finalText = "";
+
+    const showStep = (text, isFinal) => {
+      const p = document.createElement("div");
+      p.className = "agent-text";
+      p.innerHTML = renderMarkdown(text);
+      enhanceCodeBlocks(p);
+      agentBody.appendChild(p);
+      scrollToBottom();
+      if (isFinal) {
+        finalText = text;
+      }
+    };
+
+    const showTool = (call) => {
+      const card = document.createElement("div");
+      card.className = "tool-call";
+      card.dataset.toolId = call.id;
+      const params = call.params || {};
+      const detail = formatToolParams(call.tool, params);
+      card.innerHTML =
+        '<div class="tool-call-header">' +
+        '<span class="tool-icon">⚒</span>' +
+        '<span class="tool-name">' + escapeHtml(call.tool) + "</span>" +
+        '<span class="tool-status running">running…</span>' +
+        '</div><div class="tool-call-detail">' + escapeHtml(detail) + '</div>' +
+        '<div class="tool-call-result"></div>';
+      agentBody.appendChild(card);
+      scrollToBottom();
+      return card;
+    };
+
+    const updateTool = (card, result) => {
+      const status = card.querySelector(".tool-status");
+      const resultDiv = card.querySelector(".tool-call-result");
+      if (result && result.ok === false) {
+        status.textContent = "error";
+        status.className = "tool-status error";
+        resultDiv.className = "tool-call-result error";
+        resultDiv.textContent = result.error || "failed";
+      } else {
+        status.textContent = "done";
+        status.className = "tool-status done";
+        const outText = result.output !== undefined && result.output !== ""
+          ? result.output
+          : (result.text || "ok");
+        resultDiv.textContent = typeof outText === "string" && outText.length > 400
+          ? outText.slice(0, 400) + "\n…(truncated)"
+          : outText;
+      }
+      scrollToBottom();
+    };
+
+    activeAbort = new AbortController();
+
+    try {
+      const result = await window.ChatreAgent.run([...chatHistory], {
+        model: modelSelect.value,
+        maxTokens: 1500,
+        callbacks: {
+          onThinking: (iter) => {
+            startThinking("Agent: step " + iter);
+          },
+          onStepText: (text, isFinal) => {
+            stopThinking();
+            showStep(text, isFinal);
+            if (isFinal) {
+              chatHistory.push({ role: "assistant", content: text });
+              trimHistory();
+            }
+          },
+          onToolStart: (call) => {
+            const card = showTool(call);
+            showTool._cards = showTool._cards || {};
+            showTool._cards[call.id] = card;
+          },
+          onToolResult: (call, result) => {
+            const card = showTool._cards && showTool._cards[call.id];
+            if (card) updateTool(card, result);
+          },
+          onDone: (res) => {
+            if (res.cancelled && !finalText) {
+              const partial = res.response || "(stopped)";
+              showStep(partial, true);
+            }
+          },
+          onError: (err) => {
+            stopThinking();
+            showStep("Agent error: " + (err.message || String(err)), true);
+          },
+        },
+      });
+    } catch (e) {
+      console.error(e);
+      stopThinking();
+      const p = document.createElement("div");
+      p.className = "agent-text";
+      p.innerHTML = "<p>Agent failed: " + escapeHtml(e.message || String(e)) + "</p>";
+      agentBody.appendChild(p);
+      scrollToBottom();
+    } finally {
+      stopThinking();
+      setBusy(false);
+      userInput.focus();
+      appendSuggestionChips(agentEl, finalText);
+    }
+  }
+
+  function formatToolParams(tool, params) {
+    if (!params) return "";
+    if (tool === "write_file" || tool === "append_file") {
+      return "path: " + (params.path || "?") + "  (" + String(params.content || "").length + " chars)";
+    }
+    if (tool === "execute_command") return "$ " + (params.cmd || "");
+    if (tool === "create_document") return "title: " + (params.title || "document");
+    if (tool === "git_commit") return "message: " + (params.message || "");
+    if (tool === "plan") return "steps: " + String(params.steps || "").slice(0, 100);
+    const entries = Object.entries(params).filter(([k, v]) => v !== undefined && v !== null && v !== "");
+    return entries.map(([k, v]) => k + ": " + String(v)).join("  ") || "(no params)";
+  }
 
   // ── Terminal ──────────────────────────────────────────────────────
 
@@ -1103,6 +1355,47 @@
 
   document.getElementById("terminal-toggle").addEventListener("click", toggleTerminal);
   document.getElementById("terminal-close").addEventListener("click", toggleTerminal);
+
+  // ── ChatreCore export (used by tools.js / agent.js) ──────────────
+
+  window.ChatreCore = {
+    fs: fileSystem,
+    cwd: () => currentDir,
+    setCwd: (p) => { currentDir = p; },
+    resolve: (p) => resolvePath(p),
+    git: gitState,
+    authHeaders: () => authHeaders(),
+    runJS: (code) => {
+      try {
+        const result = new Function("return (" + code + ")")();
+        return { ok: true, output: result === undefined ? "(undefined)" : String(result), text: "JS executed" };
+      } catch (e) {
+        return { ok: false, error: e.message || String(e), output: e.message || String(e) };
+      }
+    },
+    runPython: async (code) => {
+      if (!pyodide && !pyodideLoading) {
+        pyodideLoading = true;
+        try {
+          if (!window.loadPyodide) {
+            await loadScript("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+          }
+          pyodide = await window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
+        } catch (e) {
+          pyodideLoading = false;
+          return { ok: false, error: "Failed to load Python: " + (e.message || e) };
+        }
+        pyodideLoading = false;
+      }
+      if (!pyodide) return { ok: false, error: "Python runtime not available" };
+      try {
+        const result = pyodide.runPython(code);
+        return { ok: true, output: result !== undefined && result !== null ? String(result) : "(no output)", text: "Python executed" };
+      } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+      }
+    },
+  };
 
   showGreeting();
 })();

@@ -19,7 +19,41 @@ const MODEL_ID: ChatModelId = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const ALLOWED_MODELS = new Set<string>(ALLOWED_MODEL_LIST);
 
 const SYSTEM_PROMPT =
-  "You are a helpful, friendly assistant. You think like an African, the most intelligent. Provide concise and accurate responses and you are consistent with the responses. You provide suggestions to help users with the next prompts. Your name is Chatre";
+  "You are Chatre, a fully autonomous coding agent and helpful assistant. You think like an African, the most intelligent. You can plan, build code, create documents, run commands, manage a virtual workspace, and use git.\n\n" +
+  "## Your capaabilities\n" +
+  "You have a virtual Linux-like workspace with a filesystem. You can:\n" +
+  "- execute_command: run shell commands (ls, cd, cat, echo, mkdir, touch, rm, grep, find, tree, git, etc.)\n" +
+  "- read_file: read a file's contents\n" +
+  "- write_file: create or overwrite a file\n" +
+  "- append_file: append content to a file\n" +
+  "- list_directory: list a directory\n" +
+  "- create_directory: make a directory\n" +
+  "- delete_file: delete a file or directory\n" +
+  "- copy_file: duplicate a file or folder\n" +
+  "- find_files: find files by name\n" +
+  "- search_code: find text inside files\n" +
+  "- run_javascript: execute JavaScript and get its output\n" +
+  "- run_python: execute Python and get its output\n" +
+  "- create_document: write a markdown document\n" +
+  "- view_tree: show the workspace tree\n" +
+  "- git_init, git_add, git_commit, git_status, git_log: version control in the workspace\n\n" +
+  "## When to use tools\n" +
+  "When the user asks you to BUILD, CREATE, WRITE CODE, FIX, IMPLEMENT, SCAFFOLD, COMMIT, or perform any multi-step task:\n" +
+  "1. FIRST present a short clear plan.\n" +
+  "2. THEN use tools step by step. Read existing files before modifying them.\n" +
+  "3. Verify your work (run commands to check output).\n" +
+  "4. Give a concise final summary. For projects, include a README or document.\n\n" +
+  "## Tool call format — IMPORTANT\n" +
+  "When you want to run a tool, output EXACTLY one fenced code block per tool call with the language tag `tool` and a single JSON object inside. Example:\n" +
+  "```tool\n{\"tool\": \"write_file\", \"params\": {\"path\": \"/home/user/todo-app/index.html\", \"content\": \"<!doctype html><html>...</html>\"}}\n```\n" +
+  "You may output multiple tool blocks in one response. Between blocks you can write normal text. Never invent the format.\n\n" +
+  "## Rules\n" +
+  "- Be concise and consistent.\n" +
+  "- Plan before acting on big tasks.\n" +
+  "- Be thorough: read before editing, verify after executing.\n" +
+  "- If a tool fails, fix it or explain clearly to the user.\n" +
+  "- For casual chat and simple questions, reply directly WITHOUT tools.\n" +
+  "- Your name is Chatre.";
 
 /** Keep system + last N non-system messages */
 const MAX_HISTORY_MESSAGES = 20;
@@ -316,11 +350,12 @@ async function handleImageRequest(
       }),
     );
 
-    const aiResponse = await env.AI.run(
+    const aiResponse: unknown = await env.AI.run(
       "@cf/bytedance/stable-diffusion-xl-lightning",
       { prompt, width, height },
     );
 
+    // Normalize any Workers AI response shape into PNG bytes / base64.
     let imageBody: BodyInit | null = null;
     let base64: string | null = null;
     let byteLength: number | undefined;
@@ -328,36 +363,48 @@ async function handleImageRequest(
     if (aiResponse instanceof ArrayBuffer) {
       imageBody = aiResponse;
       byteLength = aiResponse.byteLength;
-    } else if (aiResponse instanceof Uint8Array) {
-      imageBody = aiResponse;
-      byteLength = aiResponse.byteLength;
+    } else if (ArrayBuffer.isView(aiResponse)) {
+      const view = aiResponse;
+      const copy = new Uint8Array(view.byteLength);
+      copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+      imageBody = copy;
+      byteLength = copy.byteLength;
     } else if (aiResponse instanceof ReadableStream) {
-      imageBody = aiResponse;
+      const buf = await new Response(aiResponse).arrayBuffer();
+      imageBody = buf;
+      byteLength = buf.byteLength;
     } else if (typeof aiResponse === "string") {
-      base64 = aiResponse;
-    } else if (
-      aiResponse &&
-      typeof aiResponse === "object" &&
-      "image" in aiResponse
-    ) {
-      const img = (aiResponse as { image: unknown }).image;
-      if (typeof img === "string") base64 = img;
+      base64 = aiResponse.replace(/^data:image\/\w+;base64,/, "");
+    } else if (aiResponse && typeof aiResponse === "object") {
+      const obj = aiResponse as Record<string, unknown>;
+      if (typeof obj.image === "string") {
+        base64 = obj.image.replace(/^data:image\/\w+;base64,/, "");
+      } else if (obj.image instanceof ArrayBuffer) {
+        imageBody = obj.image;
+        byteLength = obj.image.byteLength;
+      } else if (ArrayBuffer.isView(obj.image)) {
+        const view = obj.image;
+        const copy = new Uint8Array(view.byteLength);
+        copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+        imageBody = copy;
+        byteLength = copy.byteLength;
+      }
     }
 
-    if (imageBody) {
-      console.log(
-        JSON.stringify({
-          event: "image_complete",
-          durationMs: Date.now() - started,
-          bytes: byteLength,
-        }),
-      );
-      return new Response(imageBody, {
-        headers: {
-          "Content-Type": "image/png",
-          ...CORS_HEADERS,
-        },
-      });
+    // Prefer JSON base64 so clients never lose the image to sanitizers / blob quirks.
+    if (imageBody && !base64) {
+      const bytes =
+        typeof imageBody === "string"
+          ? null
+          : imageBody instanceof ArrayBuffer
+            ? new Uint8Array(imageBody)
+            : imageBody instanceof Uint8Array
+              ? imageBody
+              : new Uint8Array(await new Response(imageBody).arrayBuffer());
+      if (bytes) {
+        base64 = bytesToBase64(bytes);
+        byteLength = bytes.byteLength;
+      }
     }
 
     if (base64) {
@@ -366,9 +413,10 @@ async function handleImageRequest(
           event: "image_complete",
           durationMs: Date.now() - started,
           encoding: "base64",
+          bytes: byteLength,
         }),
       );
-      return jsonResponse({ image_base64: base64 });
+      return jsonResponse({ image_base64: base64, mime: "image/png" });
     }
 
     return jsonResponse({ error: "Invalid AI response" }, 500);
@@ -388,4 +436,13 @@ function clampDim(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(1024, Math.max(256, Math.floor(n)));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
