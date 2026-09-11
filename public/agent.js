@@ -738,6 +738,18 @@
   function serializeResult(result) {
     if (!result) return "null";
     const clone = Object.assign({}, result);
+    if (clone.screenshot_base64) {
+      clone.hasScreenshot = true;
+      delete clone.screenshot_base64;
+    }
+    if (clone.screenshot_ui) {
+      clone.hasScreenshot = true;
+      delete clone.screenshot_ui;
+    }
+    if (clone.screenshot_preview) {
+      clone.hasScreenshot = true;
+      delete clone.screenshot_preview;
+    }
     const soft = 1800;
     const keep = 850;
     ["output", "content", "text", "guide"].forEach((key) => {

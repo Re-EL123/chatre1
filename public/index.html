@@ -1304,8 +1304,328 @@
           max-width: min(1680px, 98vw);
         }
         .app-shell {
-          grid-template-columns: 300px minmax(0, 1fr) 360px;
+          grid-template-columns: 280px minmax(0, 1fr) 320px 300px;
           gap: 1rem;
+        }
+      }
+
+      /* ── UI advancements ───────────────────────────────────────── */
+      .mode-control {
+        display: inline-flex;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .mode-control button {
+        background: transparent;
+        color: var(--text-light);
+        border: 0;
+        padding: 0.4rem 0.75rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      .mode-control button.active {
+        background: rgba(232, 168, 76, 0.18);
+        color: var(--text-color);
+        font-weight: 600;
+      }
+      .toolbar-more {
+        position: relative;
+      }
+      .toolbar-more summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 0.4rem 0.7rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-light);
+      }
+      .toolbar-more[open] summary {
+        color: var(--text-color);
+      }
+      .toolbar-more .more-menu {
+        position: absolute;
+        right: 0;
+        top: 110%;
+        z-index: 40;
+        min-width: 180px;
+        background: #0c0c12;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.4rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      #status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin: 0 0 0.55rem;
+        min-height: 0;
+      }
+      .status-chip {
+        border: 1px solid var(--border-color);
+        background: rgba(255,255,255,0.03);
+        color: var(--text-color);
+        border-radius: 999px;
+        padding: 0.25rem 0.7rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+      .status-chip.warn {
+        border-color: rgba(232, 168, 76, 0.55);
+        background: rgba(232, 168, 76, 0.12);
+      }
+      .status-chip.ok {
+        border-color: rgba(76, 184, 120, 0.45);
+      }
+      #budget-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin: 0 0 0.55rem;
+      }
+      #budget-bar-track {
+        flex: 1;
+        height: 6px;
+        background: #1a1a22;
+        border-radius: 99px;
+        overflow: hidden;
+      }
+      #budget-bar-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #e8a84c, #e85d4c);
+        transition: width 0.35s ease;
+      }
+      #budget-bar-label {
+        font-size: 0.78rem;
+        color: var(--text-light);
+        white-space: nowrap;
+      }
+      #starter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin: 0 0 0.45rem;
+      }
+      .starter-chip {
+        border: 1px solid var(--border-color);
+        background: rgba(255,255,255,0.03);
+        color: var(--text-color);
+        border-radius: 999px;
+        padding: 0.3rem 0.75rem;
+        font: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: transform 0.15s ease, border-color 0.15s ease;
+      }
+      .starter-chip:hover {
+        border-color: #e8a84c;
+        transform: translateY(-1px);
+      }
+      #artifact-rail {
+        display: flex;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding: 0.35rem 0 0.55rem;
+      }
+      .artifact-card {
+        min-width: 160px;
+        max-width: 220px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.55rem 0.65rem;
+        background: rgba(20, 22, 34, 0.9);
+      }
+      .artifact-kind {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-light);
+      }
+      .artifact-title {
+        font-size: 0.88rem;
+        margin: 0.2rem 0 0.45rem;
+        word-break: break-word;
+      }
+      .artifact-actions {
+        display: flex;
+        gap: 0.35rem;
+      }
+      .run-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin: 0.25rem 0 0.5rem;
+      }
+      .timeline-item {
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: rgba(12, 12, 18, 0.7);
+        overflow: hidden;
+      }
+      .timeline-item.enter {
+        animation: rise-in 0.35s ease;
+      }
+      @keyframes rise-in {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: none; }
+      }
+      .timeline-head {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: transparent;
+        border: 0;
+        color: inherit;
+        font: inherit;
+        padding: 0.45rem 0.65rem;
+        cursor: pointer;
+        text-align: left;
+      }
+      .timeline-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #e8a84c;
+        flex: 0 0 auto;
+      }
+      .timeline-analyze .timeline-dot { background: #4cb8e8; }
+      .timeline-plan .timeline-dot { background: #e8a84c; }
+      .timeline-tool .timeline-dot { background: #8b8b97; }
+      .timeline-critique .timeline-dot { background: #e85d4c; }
+      .timeline-answer .timeline-dot { background: #4caf7a; }
+      .timeline-body {
+        padding: 0 0.65rem 0.55rem 1.5rem;
+      }
+      .tool-call.collapsed .tool-call-result {
+        display: none;
+      }
+      .tool-call.open .tool-call-result,
+      .timeline-item.open .tool-call-result {
+        display: block;
+      }
+      .tool-shot-thumb {
+        display: block;
+        max-width: 180px;
+        margin-top: 0.4rem;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+      }
+      #browser-pane-img {
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: #000;
+      }
+      #browser-pane-img.flash {
+        animation: shot-in 0.4s ease;
+      }
+      @keyframes shot-in {
+        from { opacity: 0.4; transform: scale(0.98); }
+        to { opacity: 1; transform: none; }
+      }
+      #browser-pane-empty {
+        color: var(--text-light);
+        font-size: 0.88rem;
+        padding: 1rem 0.25rem;
+      }
+      #browser-pane-meta {
+        font-size: 0.78rem;
+        color: var(--text-light);
+        margin-top: 0.4rem;
+        word-break: break-all;
+      }
+      #plan-drawer {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 80;
+        display: none;
+        align-items: stretch;
+        justify-content: flex-end;
+      }
+      #plan-drawer.open { display: flex; }
+      #plan-drawer-panel {
+        width: min(420px, 100%);
+        background: #0c0c12;
+        border-left: 1px solid var(--border-color);
+        padding: 1rem;
+        overflow: auto;
+        animation: slide-drawer 0.28s ease;
+      }
+      @keyframes slide-drawer {
+        from { transform: translateX(24px); opacity: 0.6; }
+        to { transform: none; opacity: 1; }
+      }
+      .empty-state {
+        max-width: 520px;
+        margin: 2rem auto;
+        text-align: left;
+        padding: 1.25rem 1.4rem;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: rgba(20, 22, 34, 0.75);
+      }
+      .empty-state h2 {
+        margin: 0 0 0.4rem;
+        font-size: 1.35rem;
+        letter-spacing: 0.06em;
+      }
+      .empty-steps {
+        color: var(--text-light);
+        padding-left: 1.1rem;
+      }
+      .empty-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.85rem;
+      }
+      .app-shell.hide-browser #browser-panel { display: none; }
+      .file-preview-md {
+        white-space: normal;
+        line-height: 1.55;
+      }
+      #file-upload-progress {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        margin: 0.25rem 0;
+      }
+      .legacy-mode-btns { display: none; }
+
+      @media (max-width: 900px) {
+        .app-shell {
+          display: block;
+        }
+        .side-panel {
+          position: fixed;
+          inset: auto 0 0 0;
+          max-height: 72vh;
+          z-index: 60;
+          border-radius: 14px 14px 0 0;
+          transform: translateY(110%);
+          transition: transform 0.28s ease;
+          box-shadow: 0 -12px 40px rgba(0,0,0,0.45);
+        }
+        .app-shell.show-threads #threads-panel,
+        .app-shell.show-files #files-panel,
+        .app-shell.show-browser #browser-panel {
+          transform: translateY(0);
+        }
+        .sheet-backdrop {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.4);
+          z-index: 55;
+        }
+        .app-shell.show-threads .sheet-backdrop,
+        .app-shell.show-files .sheet-backdrop,
+        .app-shell.show-browser .sheet-backdrop {
+          display: block;
         }
       }
     </style>
@@ -1329,15 +1649,15 @@
         <option value="@cf/meta/llama-3.1-8b-instruct">Llama 3.1 8B</option>
         <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B</option>
       </select>
-      <button type="button" class="btn" id="image-mode-button" title="Toggle image mode">
-        Image
-      </button>
-      <button type="button" class="btn active" id="agent-mode-button" title="Toggle agent mode" aria-pressed="true">
-        Agent
-      </button>
-      <button type="button" class="btn" id="terminal-toggle" title="Toggle terminal">
-        Terminal
-      </button>
+      <div class="mode-control" id="mode-control" role="group" aria-label="Mode">
+        <button type="button" data-mode="chat" aria-pressed="false">Chat</button>
+        <button type="button" data-mode="agent" class="active" aria-pressed="true">Agent</button>
+        <button type="button" data-mode="image" aria-pressed="false">Image</button>
+      </div>
+      <span class="legacy-mode-btns">
+        <button type="button" class="btn" id="image-mode-button" title="Toggle image mode">Image</button>
+        <button type="button" class="btn active" id="agent-mode-button" title="Toggle agent mode" aria-pressed="true">Agent</button>
+      </span>
       <button type="button" class="btn" id="agent-resume" hidden title="Resume interrupted agent run">
         Resume
       </button>
@@ -1352,18 +1672,31 @@
       <span id="api-status" class="api-status off" aria-live="polite">Local</span>
       <span id="companion-status" class="api-status off" title="Desktop companion" aria-live="polite">Desktop off</span>
       <span id="usage-meter" hidden></span>
-      <p class="hint">
-        Remote API: <code>https://chatre-api.vercel.app</code>. Status shows Connected/Unauthorized.
-        Threads &amp; files sync from Firestore when authorized. Interrupted runs can Resume.
-      </p>
+      <details class="toolbar-more">
+        <summary>More</summary>
+        <div class="more-menu">
+          <button type="button" class="btn" id="terminal-toggle">Terminal</button>
+          <button type="button" class="btn" id="toggle-threads">Threads</button>
+          <button type="button" class="btn" id="toggle-files">Files</button>
+          <button type="button" class="btn" id="toggle-browser">Browser</button>
+        </div>
+      </details>
+    </div>
+
+    <div id="status-strip" aria-live="polite"></div>
+    <div id="budget-bar" hidden>
+      <div id="budget-bar-track"><div id="budget-bar-fill"></div></div>
+      <span id="budget-bar-label"></span>
     </div>
 
     <div class="panel-toggle-bar">
-      <button type="button" class="btn" id="toggle-threads">Threads</button>
-      <button type="button" class="btn" id="toggle-files">Files</button>
+      <button type="button" class="btn" id="toggle-threads-bar">Threads</button>
+      <button type="button" class="btn" id="toggle-files-bar">Files</button>
+      <button type="button" class="btn" id="toggle-browser-bar">Browser</button>
     </div>
 
-    <div class="app-shell">
+    <div class="app-shell hide-browser">
+      <div class="sheet-backdrop" id="sheet-backdrop"></div>
       <aside class="side-panel" id="threads-panel" aria-label="Threads">
         <h2>Threads</h2>
         <div class="panel-actions">
@@ -1376,8 +1709,10 @@
       <div class="main-column">
         <div class="chat-container">
           <div class="work-bar" aria-hidden="true"></div>
+          <div id="artifact-rail" hidden></div>
           <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
           <div class="typing-indicator" id="typing-indicator" aria-hidden="true"></div>
+          <div id="starter-chips" aria-label="Starters"></div>
           <div class="message-input" style="position: relative;">
             <div id="slash-suggestions" class="slash-suggestions" role="listbox" aria-label="Slash commands"></div>
             <textarea
@@ -1409,10 +1744,27 @@
           Drop files here to upload into the workspace
           <input type="file" id="file-drop-input" multiple hidden />
         </div>
+        <div id="file-upload-progress" hidden></div>
         <div id="file-tree"></div>
         <div id="file-viewer-path"></div>
-        <pre id="file-viewer"></pre>
+        <div id="file-viewer" class="file-viewer"></div>
       </aside>
+
+      <aside class="side-panel" id="browser-panel" aria-label="Browser">
+        <h2>Browser</h2>
+        <div id="browser-pane">
+          <p id="browser-pane-empty">Screenshots from navigate/computer appear here during agent runs.</p>
+          <img id="browser-pane-img" alt="Live browser screenshot" hidden />
+          <div id="browser-pane-meta"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div id="plan-drawer" aria-hidden="true">
+      <div id="plan-drawer-panel">
+        <h2>Plan</h2>
+        <div id="plan-drawer-body"></div>
+      </div>
     </div>
 
     <div class="diff-modal" id="diff-modal" role="dialog" aria-modal="true">
@@ -1446,6 +1798,7 @@
     <script src="/analyst.js"></script>
     <script src="/plan-templates.js"></script>
     <script src="/plan-ui.js"></script>
+    <script src="/ui-adv.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
     <script src="/panels.js"></script>

@@ -608,15 +608,23 @@
           "Browser session was relaunched; re-read the page before using old refs.";
       }
       if (out && out.screenshot_base64) {
+        const b64 = String(out.screenshot_base64);
+        out.screenshot_ui = "data:image/jpeg;base64," + b64;
         out.screenshot = {
           mime: out.mime || "image/jpeg",
           note: "Screenshot captured (base64 omitted from chat context)",
-          bytesApprox: Math.floor(
-            (String(out.screenshot_base64).length * 3) / 4,
-          ),
+          bytesApprox: Math.floor((b64.length * 3) / 4),
           id: out.id || "screenshot:1",
         };
         out.hasScreenshot = true;
+        if (window.ChatreUIAdv && window.ChatreUIAdv.setBrowserPane) {
+          window.ChatreUIAdv.setBrowserPane({
+            dataUrl: out.screenshot_ui,
+            url: out.url || "",
+            note: "live",
+            open: true,
+          });
+        }
         delete out.screenshot_base64;
       }
       if (out && out.text) out.text = String(out.text).slice(0, 12000);

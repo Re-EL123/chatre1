@@ -497,6 +497,12 @@
     const message = userInput.value.trim();
     if (!message || isProcessing) return;
 
+    if (window.ChatreUIAdv && window.ChatreUIAdv.hideStarterChips) {
+      window.ChatreUIAdv.hideStarterChips();
+    }
+    const empty = chatMessages && chatMessages.querySelector(".empty-state");
+    if (empty) empty.remove();
+
     slashSuggestions.style.display = "none";
 
     const slashMatch = SLASH_COMMANDS.find((c) => message === c.cmd || message.startsWith(c.cmd + " "));
@@ -959,8 +965,16 @@
   }
 
   function showGreeting() {
+    chatMessages.innerHTML = "";
+    if (window.ChatreUIAdv && window.ChatreUIAdv.showStarterChips) {
+      window.ChatreUIAdv.showStarterChips();
+    }
+    if (window.ChatreUIAdv && window.ChatreUIAdv.renderEmptyState) {
+      window.ChatreUIAdv.renderEmptyState(chatMessages);
+      return;
+    }
     const text = agentMode
-      ? "Hello! I'm Chatre — agent mode is on. Ask me to plan, build code, create documents, run commands, or commit. Try: “Build a todo app with HTML/CSS/JS, then commit it.”"
+      ? "Hello! I'm Chatre — agent mode is on. Ask me to plan, build code, create documents, run commands, or commit."
       : greetings[Math.floor(Math.random() * greetings.length)];
     addMessage("assistant", text);
   }
@@ -990,6 +1004,11 @@
     agentEl.appendChild(agentBody);
     chatMessages.appendChild(agentEl);
     scrollToBottom();
+
+    const timeline = window.ChatreUIAdv && window.ChatreUIAdv.createTimeline
+      ? window.ChatreUIAdv.createTimeline(agentBody)
+      : null;
+    if (timeline) timeline.setPhase("analyze", "Analyzing");
 
     let finalText = "";
 
@@ -1025,10 +1044,24 @@
         agentBody.appendChild(node);
       });
       scrollToBottom();
-      if (isFinal) finalText = display;
+      if (isFinal) {
+        finalText = display;
+        if (timeline && timeline.setPhase) {
+          timeline.setPhase("answer", "Answer");
+        }
+        if (window.ChatreUIAdv && window.ChatreUIAdv.clearLoginChip) {
+          window.ChatreUIAdv.clearLoginChip();
+        }
+      }
     };
 
     const showTool = (call) => {
+      if (window.ChatreUIAdv && window.ChatreUIAdv.renderToolCard) {
+        const card = window.ChatreUIAdv.renderToolCard(call, timeline);
+        if (!timeline) agentBody.appendChild(card);
+        scrollToBottom();
+        return card;
+      }
       const card = document.createElement("div");
       card.className = "tool-call";
       card.dataset.toolId = call.id || call.tool;
@@ -1051,6 +1084,22 @@
     };
 
     const updateTool = (card, result) => {
+      if (window.ChatreUIAdv && window.ChatreUIAdv.updateToolCard) {
+        window.ChatreUIAdv.updateToolCard(card, result);
+      }
+      if (result && (result.path || result.title) && window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
+        const toolName =
+          (result && result.tool) ||
+          (card && card.querySelector(".tool-name") && card.querySelector(".tool-name").textContent) ||
+          "";
+        if (/create_document|create_pdf|write_file/.test(toolName)) {
+          window.ChatreUIAdv.pushArtifact({
+            kind: toolName || "document",
+            title: result.title || result.path || "Document",
+            path: result.path,
+          });
+        }
+      }
       const status = card.querySelector(".tool-status");
       const resultDiv = card.querySelector(".tool-call-result");
       if (result && result.ok === false) {
@@ -1104,9 +1153,25 @@
               );
             } else if (ev.type === "phase") {
               startThinking(ev.text || ev.phase || "Working…");
+              if (timeline && timeline.setPhase) {
+                const p = ev.phase || "";
+                timeline.setPhase(
+                  p === "analyze"
+                    ? "analyze"
+                    : p === "critique"
+                      ? "critique"
+                      : p === "plan"
+                        ? "plan"
+                        : "tool",
+                  ev.text || p || "Working",
+                );
+              }
             } else if (ev.type === "awaiting_login") {
               stopThinking();
               showStep(ev.reason || "Complete login / 2FA / CAPTCHA, then resume.", true);
+              if (window.ChatreUIAdv && window.ChatreUIAdv.showLoginPause) {
+                window.ChatreUIAdv.showLoginPause(ev.reason);
+              }
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_login");
               }
@@ -1131,15 +1196,17 @@
               if (agentBody) agentBody.appendChild(line);
               scrollToBottom();
             } else if (ev.type === "budget") {
-              if (window.ChatrePanels) {
-                window.ChatrePanels.updateUsageMeter({
-                  model: modelSelect.value,
-                  steps: (ev.maxSteps || 0) - (ev.remainingSteps || 0),
-                  remainingSteps: ev.remainingSteps,
-                  toolsUsed: 0,
-                  totalTokensEst: 0,
-                });
-              }
+              const usage = {
+                model: modelSelect.value,
+                steps: (ev.maxSteps || 0) - (ev.remainingSteps || 0),
+                remainingSteps: ev.remainingSteps,
+                maxSteps: ev.maxSteps,
+                elapsedMs: ev.elapsedMs,
+                toolsUsed: 0,
+                totalTokensEst: 0,
+              };
+              if (window.ChatrePanels) window.ChatrePanels.updateUsageMeter(usage);
+              if (window.ChatreUIAdv) window.ChatreUIAdv.updateBudgetBar(usage);
             } else if (ev.type === "download_detected") {
               showStep(
                 "Download detected — confirm before saving:\n" +
@@ -1155,32 +1222,38 @@
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
               }
-              if (window.ChatrePlanUI && chatMessages) {
-                const card = window.ChatrePlanUI.renderPlanCard(
+              if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
+                window.ChatreUIAdv.openPlanDrawer(
                   ev.briefing,
                   async (edited) => {
-                    card.remove();
-                    window.__pendingPlan = null;
+                    window.__pendingPlan = { briefing: edited };
                     if (window.ChatrePanels) {
                       window.ChatrePanels.setResumeAvailable(false);
                     }
-                    if (window.ChatreRemote && window.ChatreRemote.enabled()) {
-                      const remoteState = window.__chatreRemote || {};
-                      await window.ChatreRemote.runAgentStream({
-                        message: "",
-                        threadId: remoteState.threadId,
-                        workspaceId: remoteState.workspaceId,
-                        resume: true,
-                        approvePlan: true,
-                        briefing: edited,
-                        model: modelSelect.value,
-                        signal: activeAbort && activeAbort.signal,
-                        onEvent: handleAgentEvent,
-                      });
+                    if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+                      await window.ChatreUI.resumeAgent();
                     }
                   },
                   () => {
                     window.__pendingPlan = null;
+                  },
+                );
+              } else if (window.ChatrePlanUI && chatMessages) {
+                const card = window.ChatrePlanUI.renderPlanCard(
+                  ev.briefing,
+                  async (edited) => {
+                    card.remove();
+                    window.__pendingPlan = { briefing: edited };
+                    if (window.ChatrePanels) {
+                      window.ChatrePanels.setResumeAvailable(false);
+                    }
+                    if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+                      await window.ChatreUI.resumeAgent();
+                    }
+                  },
+                  () => {
+                    window.__pendingPlan = null;
+                    card.remove();
                   },
                 );
                 chatMessages.appendChild(card);
@@ -1188,12 +1261,15 @@
               }
             } else if (ev.type === "critique") {
               const c = ev.critique || {};
-              showStep(
+              const critText =
                 "Critique: " +
-                  (c.pass ? "pass" : "needs work") +
-                  (c.score != null ? " (" + c.score + ")" : ""),
-                false,
-              );
+                (c.pass ? "pass" : "needs work") +
+                (c.score != null ? " (" + c.score + ")" : "");
+              if (timeline && timeline.setPhase) {
+                timeline.setPhase("critique", critText);
+              } else {
+                showStep(critText, false);
+              }
             } else if (ev.type === "subagent") {
               showStep("Executor: " + (ev.label || ev.role || ""), false);
             } else if (ev.type === "analysis") {
@@ -1202,10 +1278,13 @@
               const bits = [];
               if (b.task_type) bits.push(b.task_type);
               if (b.goal) bits.push(b.goal);
-              showStep(
-                "Plan: " + (bits.join(" — ") || "ready").slice(0, 160),
-                false,
-              );
+              const planText =
+                "Plan: " + (bits.join(" — ") || "ready").slice(0, 160);
+              if (timeline && timeline.setPhase) {
+                timeline.setPhase("plan", planText);
+              } else {
+                showStep(planText, false);
+              }
             } else if (ev.type === "todos") {
               showStep(
                 "Todos:\n" +
@@ -1352,6 +1431,12 @@
             },
             onPhase: (phase, text) => {
               startThinking(text || (phase === "analyze" ? "Analyzing…" : "Working…"));
+              if (timeline && timeline.setPhase) {
+                timeline.setPhase(
+                  phase === "analyze" ? "analyze" : phase === "critique" ? "critique" : "tool",
+                  text || phase || "Working",
+                );
+              }
             },
             onAnalysis: (briefing) => {
               stopThinking();
@@ -1366,11 +1451,19 @@
             },
             onAwaitPlan: (briefing) => {
               return new Promise((resolve) => {
+                stopThinking();
+                if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
+                  window.ChatreUIAdv.openPlanDrawer(
+                    briefing,
+                    (edited) => resolve(edited),
+                    () => resolve(null),
+                  );
+                  return;
+                }
                 if (!window.ChatrePlanUI || !chatMessages) {
                   resolve(briefing);
                   return;
                 }
-                stopThinking();
                 const card = window.ChatrePlanUI.renderPlanCard(
                   briefing,
                   (edited) => {
@@ -1383,7 +1476,6 @@
                   },
                 );
                 chatMessages.appendChild(card);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
               });
             },
             onThinking: (iter, max) => {
@@ -2118,6 +2210,24 @@
   showGreeting();
 
   window.ChatreUI = {
+    setAgentMode: function (on) {
+      agentMode = !!on;
+      const btn = document.getElementById("agent-mode-button");
+      if (btn) {
+        btn.classList.toggle("active", agentMode);
+        btn.setAttribute("aria-pressed", agentMode ? "true" : "false");
+      }
+      const mc = document.getElementById("mode-control");
+      if (mc) {
+        mc.querySelectorAll("[data-mode]").forEach(function (b) {
+          const active =
+            (agentMode && b.getAttribute("data-mode") === "agent") ||
+            (!agentMode && b.getAttribute("data-mode") === "chat");
+          b.classList.toggle("active", active);
+        });
+      }
+    },
+    formatToolParams: formatToolParams,
     resetChat: function (messages) {
       chatHistory = [];
       chatMessages.innerHTML = "";
@@ -2125,6 +2235,9 @@
       if (!list.length) {
         showGreeting();
         return;
+      }
+      if (window.ChatreUIAdv && window.ChatreUIAdv.hideStarterChips) {
+        window.ChatreUIAdv.hideStarterChips();
       }
       list.forEach((m) => {
         if (!m || !m.role) return;
@@ -2176,6 +2289,9 @@
       scrollToBottom();
 
       let finalText = "";
+      const timeline = window.ChatreUIAdv && window.ChatreUIAdv.createTimeline
+        ? window.ChatreUIAdv.createTimeline(agentBody)
+        : null;
       const showStep = (text, isFinal) => {
         let display = text;
         let confirmNodes = [];
@@ -2208,9 +2324,20 @@
           agentBody.appendChild(node);
         });
         scrollToBottom();
-        if (isFinal) finalText = display;
+        if (isFinal) {
+          finalText = display;
+          if (timeline && timeline.setPhase) {
+            timeline.setPhase("answer", "Answer");
+          }
+        }
       };
       const showTool = (call) => {
+        if (window.ChatreUIAdv && window.ChatreUIAdv.renderToolCard) {
+          const card = window.ChatreUIAdv.renderToolCard(call, timeline);
+          if (!timeline) agentBody.appendChild(card);
+          scrollToBottom();
+          return card;
+        }
         const card = document.createElement("div");
         card.className = "tool-call";
         card.dataset.toolId = call.id || call.tool;
@@ -2232,6 +2359,9 @@
         return card;
       };
       const updateTool = (card, result) => {
+        if (window.ChatreUIAdv && window.ChatreUIAdv.updateToolCard) {
+          window.ChatreUIAdv.updateToolCard(card, result);
+        }
         const status = card.querySelector(".tool-status");
         const resultDiv = card.querySelector(".tool-call-result");
         if (result && result.ok === false) {
@@ -2286,9 +2416,15 @@
                   ? "Continuing approved plan"
                   : "Resuming remote agent",
               );
+              if (window.ChatreUIAdv && window.ChatreUIAdv.clearLoginChip) {
+                window.ChatreUIAdv.clearLoginChip();
+              }
             } else if (ev.type === "awaiting_login") {
               stopThinking();
               showStep(ev.reason || "Complete login / 2FA / CAPTCHA, then resume.", true);
+              if (window.ChatreUIAdv && window.ChatreUIAdv.showLoginPause) {
+                window.ChatreUIAdv.showLoginPause(ev.reason);
+              }
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_login");
               }
@@ -2313,15 +2449,17 @@
               if (agentBody) agentBody.appendChild(line);
               scrollToBottom();
             } else if (ev.type === "budget") {
-              if (window.ChatrePanels) {
-                window.ChatrePanels.updateUsageMeter({
-                  model: modelSelect.value,
-                  steps: (ev.maxSteps || 0) - (ev.remainingSteps || 0),
-                  remainingSteps: ev.remainingSteps,
-                  toolsUsed: 0,
-                  totalTokensEst: 0,
-                });
-              }
+              const usage = {
+                model: modelSelect.value,
+                steps: (ev.maxSteps || 0) - (ev.remainingSteps || 0),
+                remainingSteps: ev.remainingSteps,
+                maxSteps: ev.maxSteps,
+                elapsedMs: ev.elapsedMs,
+                toolsUsed: 0,
+                totalTokensEst: 0,
+              };
+              if (window.ChatrePanels) window.ChatrePanels.updateUsageMeter(usage);
+              if (window.ChatreUIAdv) window.ChatreUIAdv.updateBudgetBar(usage);
             } else if (ev.type === "download_detected") {
               showStep(
                 "Download detected — confirm before saving:\n" +
@@ -2337,7 +2475,21 @@
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
               }
-              if (window.ChatrePlanUI && chatMessages) {
+              if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
+                window.ChatreUIAdv.openPlanDrawer(
+                  ev.briefing,
+                  async (edited) => {
+                    window.__pendingPlan = { briefing: edited };
+                    if (window.ChatrePanels) {
+                      window.ChatrePanels.setResumeAvailable(false);
+                    }
+                    await window.ChatreUI.resumeAgent();
+                  },
+                  () => {
+                    window.__pendingPlan = null;
+                  },
+                );
+              } else if (window.ChatrePlanUI && chatMessages) {
                 const card = window.ChatrePlanUI.renderPlanCard(
                   ev.briefing,
                   async (edited) => {
@@ -2350,6 +2502,7 @@
                   },
                   () => {
                     window.__pendingPlan = null;
+                    card.remove();
                   },
                 );
                 chatMessages.appendChild(card);

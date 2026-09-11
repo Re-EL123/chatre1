@@ -84,6 +84,9 @@
     if (!r || !r.enabled()) {
       setStatus("off", "Local");
       await refreshCompanionStatus();
+      if (window.ChatreUIAdv && window.ChatreUIAdv.refreshStatusActions) {
+        window.ChatreUIAdv.refreshStatusActions();
+      }
       return;
     }
     setStatus("pending", "Checking…");
@@ -99,6 +102,9 @@
       setStatus("bad", ping.error || "Offline");
     }
     await refreshCompanionStatus();
+    if (window.ChatreUIAdv && window.ChatreUIAdv.refreshStatusActions) {
+      window.ChatreUIAdv.refreshStatusActions();
+    }
   }
 
   function updateUsageMeter(usage) {
@@ -123,6 +129,9 @@
       " · ~" +
       (usage.totalTokensEst || 0) +
       " tok";
+    if (window.ChatreUIAdv && window.ChatreUIAdv.updateBudgetBar) {
+      window.ChatreUIAdv.updateBudgetBar(usage);
+    }
   }
 
   function setResumeAvailable(on, reason) {
@@ -345,9 +354,18 @@
     const meta = $("file-viewer-path");
     if (!viewer) return;
     const f = state.files[path];
-    const content = f && f.content != null ? f.content : "";
-    viewer.textContent = content;
+    const content = f && f.content != null ? String(f.content) : "";
     if (meta) meta.textContent = path;
+    if (/\.(md|markdown)$/i.test(path) && window.marked && window.DOMPurify) {
+      viewer.className = "file-viewer file-preview-md";
+      viewer.innerHTML = window.DOMPurify.sanitize(window.marked.parse(content));
+    } else {
+      viewer.className = "file-viewer";
+      viewer.textContent = content;
+    }
+    if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
+      window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
+    }
     await refreshFiles();
   }
 
@@ -501,18 +519,39 @@
   function togglePanel(which) {
     const shell = document.querySelector(".app-shell");
     if (!shell) return;
+    const mobile = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    if (mobile) {
+      const cls =
+        which === "threads"
+          ? "show-threads"
+          : which === "files"
+            ? "show-files"
+            : which === "browser"
+              ? "show-browser"
+              : "";
+      if (!cls) return;
+      const on = !shell.classList.contains(cls);
+      shell.classList.remove("show-threads", "show-files", "show-browser");
+      if (on) shell.classList.add(cls);
+      return;
+    }
     if (which === "threads") {
       shell.classList.toggle("hide-threads");
     } else if (which === "files") {
       shell.classList.toggle("hide-files");
+    } else if (which === "browser") {
+      shell.classList.toggle("hide-browser");
     }
   }
 
   function initMobileDefaults() {
     const shell = document.querySelector(".app-shell");
     if (!shell || !window.matchMedia) return;
-    if (window.matchMedia("(max-width: 960px)").matches) {
-      shell.classList.add("hide-threads", "hide-files");
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      shell.classList.add("hide-threads", "hide-files", "hide-browser");
+      shell.classList.remove("show-threads", "show-files", "show-browser");
+    } else {
+      shell.classList.add("hide-browser");
     }
   }
 
@@ -523,8 +562,10 @@
     const zipBtn = $("files-export-zip");
     const closeDiff = $("diff-modal-close");
     const resumeBtn = $("agent-resume");
-    const toggleThreads = $("toggle-threads");
-    const toggleFiles = $("toggle-files");
+    const toggleThreads = $("toggle-threads") || $("toggle-threads-bar");
+    const toggleFiles = $("toggle-files") || $("toggle-files-bar");
+    const toggleBrowser = $("toggle-browser") || $("toggle-browser-bar");
+    const backdrop = $("sheet-backdrop");
 
     if (refreshBtn) refreshBtn.addEventListener("click", refreshThreads);
     if (newBtn) newBtn.addEventListener("click", newThread);
@@ -533,6 +574,7 @@
 
     const drop = $("file-drop");
     const dropInput = $("file-drop-input");
+    const progress = $("file-upload-progress");
     async function uploadLocalFiles(fileList) {
       const r = remote();
       if (!r || !r.enabled() || !r.putFile) {
@@ -545,10 +587,31 @@
         return;
       }
       const files = Array.from(fileList || []);
-      for (const file of files) {
+      if (progress) {
+        progress.hidden = false;
+        progress.textContent = "Uploading 0/" + files.length;
+      }
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (progress) {
+          progress.textContent = "Uploading " + (i + 1) + "/" + files.length + " · " + file.name;
+        }
         const text = await file.text();
         const path = "/home/user/uploads/" + file.name.replace(/[^\w.\-]+/g, "_");
         await r.putFile(wsId, path, text, "file");
+        if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
+          window.ChatreUIAdv.pushArtifact({
+            kind: "upload",
+            title: file.name,
+            path: path,
+          });
+        }
+      }
+      if (progress) {
+        progress.textContent = "Uploaded " + files.length + " file(s)";
+        setTimeout(function () {
+          progress.hidden = true;
+        }, 2000);
       }
       await refreshFiles();
     }
@@ -589,11 +652,22 @@
         }
       });
     }
-    if (toggleThreads) {
-      toggleThreads.addEventListener("click", () => togglePanel("threads"));
+    function bindToggle(node, which) {
+      if (node) node.addEventListener("click", () => togglePanel(which));
     }
-    if (toggleFiles) {
-      toggleFiles.addEventListener("click", () => togglePanel("files"));
+    bindToggle(toggleThreads, "threads");
+    bindToggle(toggleFiles, "files");
+    bindToggle(toggleBrowser, "browser");
+    bindToggle($("toggle-threads-bar"), "threads");
+    bindToggle($("toggle-files-bar"), "files");
+    bindToggle($("toggle-browser-bar"), "browser");
+    if (backdrop) {
+      backdrop.addEventListener("click", function () {
+        const shell = document.querySelector(".app-shell");
+        if (shell) {
+          shell.classList.remove("show-threads", "show-files", "show-browser");
+        }
+      });
     }
 
     const apiKeyInput = $("api-key-input");
@@ -621,6 +695,7 @@
     rememberWrite,
     setResumeAvailable,
     askAboutFile,
+    togglePanel,
     state,
   };
 
