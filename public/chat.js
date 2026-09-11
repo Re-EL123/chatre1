@@ -916,6 +916,20 @@
                 "Skills: " + ((ev.skills && ev.skills.join(", ")) || "none"),
                 false,
               );
+            } else if (ev.type === "todos") {
+              showStep(
+                "Todos:\n" +
+                  ((ev.todos || [])
+                    .map(
+                      (t) =>
+                        (t.status === "done" ? "- [x] " : "- [ ] ") +
+                        t.id +
+                        ": " +
+                        t.content,
+                    )
+                    .join("\n") || "(empty)"),
+                false,
+              );
             } else if (ev.type === "thinking") {
               startThinking("Agent step " + ev.step + "/" + ev.max);
               if (ev.usage && window.ChatrePanels) {

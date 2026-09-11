@@ -6,6 +6,7 @@
   "use strict";
 
   const TOOL_DEFINITIONS = [
+    { name: "todo", desc: "Manage OpenCode-style todos (set|add|done|list)", params: { action: "string", items: "array", id: "string", content: "string" } },
     { name: "plan", desc: "Create a step-by-step plan before executing", params: { steps: "string" } },
     { name: "list_skills", desc: "List available agent skills", params: {} },
     { name: "use_skill", desc: "Load a skill playbook (coding|documents|git|debugging|research|project)", params: { name: "string" } },
@@ -207,6 +208,9 @@
     switch (tool) {
       case "plan":
         return { ok: true, tool, type: "plan", text: "Plan recorded: " + String(p.steps || "") };
+
+      case "todo":
+        return todoTool(p);
 
       case "list_skills":
         return listSkillsTool();
@@ -807,6 +811,56 @@
         ? "Verification warnings:\n- " + issues.join("\n- ")
         : "Project looks healthy (" + files.length + " files).",
     };
+  }
+
+  // ─── Todo (OpenCode-style) ────────────────────────────────────────
+
+  const todoState = { items: [] };
+
+  function formatTodos(items) {
+    if (!items || !items.length) return "(no todos)";
+    return items
+      .map(function (t) {
+        return (t.status === "done" ? "- [x] " : "- [ ] ") + t.id + ": " + t.content;
+      })
+      .join("\n");
+  }
+
+  function todoTool(p) {
+    const action = String((p && p.action) || "list").toLowerCase();
+    let items = todoState.items.slice();
+    if (action === "set" || action === "replace") {
+      const raw = p.items || p.todos || [];
+      items = (Array.isArray(raw) ? raw : []).map(function (item, i) {
+        if (typeof item === "string") {
+          return { id: "t" + (i + 1), content: item, status: "pending" };
+        }
+        return {
+          id: String((item && item.id) || "t" + (i + 1)),
+          content: String((item && (item.content || item.text)) || ""),
+          status: "pending",
+        };
+      }).filter(function (t) { return t.content; });
+      todoState.items = items;
+      return { ok: true, tool: "todo", action: action, todos: items, text: "Todos set:\n" + formatTodos(items), guide: formatTodos(items) };
+    }
+    if (action === "add") {
+      const content = String((p && (p.content || p.text)) || "");
+      if (!content) return { ok: false, tool: "todo", error: "content required" };
+      const id = String((p && p.id) || "t" + (items.length + 1));
+      items.push({ id: id, content: content, status: "pending" });
+      todoState.items = items;
+      return { ok: true, tool: "todo", action: action, todos: items, text: "Added " + id + "\n" + formatTodos(items) };
+    }
+    if (action === "done" || action === "complete") {
+      const id = String((p && p.id) || "");
+      const hit = items.find(function (t) { return t.id === id; });
+      if (!hit) return { ok: false, tool: "todo", error: "Unknown todo id: " + id };
+      hit.status = "done";
+      todoState.items = items;
+      return { ok: true, tool: "todo", action: action, todos: items, text: "Checked off " + id + "\n" + formatTodos(items) };
+    }
+    return { ok: true, tool: "todo", action: "list", todos: items, text: formatTodos(items), guide: formatTodos(items) };
   }
 
   function listSkillsTool() {

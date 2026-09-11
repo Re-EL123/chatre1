@@ -57,24 +57,26 @@
           )) ||
         [];
 
-      // Kick off with an explicit agent brief so the model plans thoroughly.
+      // Kick off with an OpenCode-style Build brief.
       if (forcePlan) {
         const skillBlock =
           autoSkills.length && window.ChatreSkills.skillBrief
-            ? "Auto-selected skills (no use_skill needed):\n" +
+            ? "Auto-selected skills:\n" +
               window.ChatreSkills.skillBrief(autoSkills) +
               "\n"
             : "";
         messages.push({
           role: "user",
           content:
-            "AGENT BRIEF: You are in full agent mode. Be skilled and thorough.\n" +
+            "OPENCODE BUILD MODE — enforce the workflow.\n" +
+            "Order: explore → plan+todos → implement (mark todos done) → verify → summarize.\n" +
+            "Keep going until todos are complete and verification passes.\n" +
             skillBlock +
-            "1) Skills are already selected above — skip use_skill unless you need another.\n" +
-            "2) Call plan with concrete steps.\n" +
-            "3) Inspect the workspace before writing files.\n" +
-            "4) Implement completely, verify, document, and commit/push when asked.\n" +
-            "Use ```tool JSON blocks for every tool. Begin now.",
+            "1) view_tree / read_file before writes.\n" +
+            "2) plan + todo({action:\"set\", items:[...]}).\n" +
+            "3) Implement with write_file / execute_command; todo({action:\"done\", id}).\n" +
+            "4) verify_project before finishing.\n" +
+            "Use ```tool JSON blocks (or native tools). Begin now.",
         });
         callbacks.onSkills && callbacks.onSkills(autoSkills);
       }

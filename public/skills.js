@@ -10,14 +10,13 @@
       title: "Software engineering",
       summary: "Plan, scaffold, implement, test, and document code thoroughly.",
       steps: [
-        "Clarify the goal and constraints briefly.",
-        "Inspect the workspace (view_tree / list_directory / read_file) before writing.",
-        "Create a plan with the plan tool.",
-        "Scaffold directories and files with clear structure.",
-        "Implement complete, working code — no placeholders like TODO unless asked.",
-        "Run verify commands (run_javascript / run_python / execute_command) after writing.",
-        "Write or update a README / document explaining how to use it.",
-        "Stage and commit with a clear message when the build is done.",
+        "Explore the workspace (view_tree / list_directory / read_file) before writing.",
+        "Create a plan and a todo list (todo set) with atomic tasks.",
+        "Implement one todo at a time with complete files — no placeholders.",
+        "Mark each todo done as you finish it.",
+        "Verify with verify_project / execute_command / run_javascript / run_python.",
+        "Write or update a README / document.",
+        "Stage and commit when the build is done.",
       ],
     },
     documents: {
@@ -25,7 +24,7 @@
       title: "Document authoring",
       summary: "Produce polished markdown documents users can download.",
       steps: [
-        "Outline sections first (plan tool).",
+        "Outline sections and set todos.",
         "Write complete content with headings, lists, and examples.",
         "Use create_document so the file is saved under /home/user/documents/.",
         "Offer a short summary of what was written.",
@@ -37,10 +36,9 @@
       summary: "Initialize repos, stage, commit, and report status/history.",
       steps: [
         "git_status or git_init as needed.",
-        "git_add relevant paths (or all project files).",
+        "git_add relevant paths (or .).",
         "git_commit with a concise why-focused message.",
-        "Optionally git_push to record a remote push in the workspace log.",
-        "Show git_log so the user sees the result.",
+        "Optionally git_push; show git_log.",
       ],
     },
     debugging: {
@@ -50,8 +48,7 @@
       steps: [
         "Reproduce with execute_command / run_javascript / run_python.",
         "Read related files and search_code for clues.",
-        "Form a hypothesis, then apply a minimal fix.",
-        "Re-run the failing command to verify.",
+        "Apply a minimal fix, then re-verify.",
         "Summarize root cause and fix.",
       ],
     },
@@ -70,11 +67,10 @@
     project: {
       name: "project",
       title: "Full project delivery",
-      summary: "End-to-end: plan → build → verify → document → commit.",
+      summary: "OpenCode Build: plan → build → verify → document → commit.",
       steps: [
-        "Load coding + documents + git skills mentally.",
-        "plan the deliverables.",
-        "Build the full project structure.",
+        "Explore, then plan + todo set.",
+        "Build the full project structure with complete files.",
         "verify_project after implementation.",
         "create_document / README.",
         "git_init (if needed), git_add, git_commit, git_push.",
