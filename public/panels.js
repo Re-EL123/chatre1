@@ -142,7 +142,7 @@
     btn.disabled = !on;
     if (on) {
       btn.classList.add("pulse");
-      btn.title =
+      const tip =
         reason === "awaiting_plan"
           ? "Approve or edit the plan, then continue"
           : reason === "awaiting_login"
@@ -150,15 +150,35 @@
             : reason === "companion_offline"
               ? "Start the desktop companion, then retry"
               : "Resume interrupted agent run";
-      btn.textContent =
+      btn.title = tip;
+      btn.setAttribute("data-tip", tip);
+      const label =
         reason === "awaiting_plan"
           ? "Continue plan"
           : reason === "awaiting_login"
             ? "Resume after login"
             : "Resume agent";
+      const icon =
+        reason === "awaiting_plan"
+          ? "list-checks"
+          : reason === "awaiting_login"
+            ? "shield-alert"
+            : "play";
+      btn.innerHTML =
+        window.ChatreKit && window.ChatreKit.labelWithIcon
+          ? window.ChatreKit.labelWithIcon(icon, label, 14)
+          : label;
+      if (window.ChatreKit) {
+        window.ChatreKit.refreshIcons(btn);
+        window.ChatreKit.tip(btn, tip);
+      }
     } else {
       btn.classList.remove("pulse");
-      btn.textContent = "Resume";
+      btn.innerHTML =
+        window.ChatreKit && window.ChatreKit.labelWithIcon
+          ? window.ChatreKit.labelWithIcon("play", "Resume", 14)
+          : "Resume";
+      if (window.ChatreKit) window.ChatreKit.refreshIcons(btn);
     }
   }
 
@@ -197,8 +217,14 @@
           escapeHtml(usageHint) +
           "</span></button>" +
           '<div class="thread-actions">' +
-          '<button type="button" class="thread-rename" title="Rename">✎</button>' +
-          '<button type="button" class="thread-delete" title="Delete">×</button>' +
+          '<button type="button" class="thread-rename" data-tip="Rename" title="Rename">' +
+          (window.ChatreKit
+            ? window.ChatreKit.iconHtml("pencil", 14)
+            : "✎") +
+          "</button>" +
+          '<button type="button" class="thread-delete" data-tip="Delete" title="Delete">' +
+          (window.ChatreKit ? window.ChatreKit.iconHtml("trash-2", 14) : "×") +
+          "</button>" +
           "</div>";
         wrap.querySelector(".thread-open").addEventListener("click", () => {
           loadThread(thr.id);
@@ -217,6 +243,10 @@
           });
         list.appendChild(wrap);
       });
+      if (window.ChatreKit) {
+        window.ChatreKit.refreshIcons(list);
+        window.ChatreKit.bindTips(list);
+      }
     } catch (e) {
       list.innerHTML =
         '<p class="panel-empty">' + escapeHtml(e.message || String(e)) + "</p>";
@@ -335,17 +365,34 @@
         "file-item" + (state.selectedPath === p ? " active" : "");
       row.innerHTML =
         '<button type="button" class="file-open">' +
+        (window.ChatreKit ? window.ChatreKit.iconHtml("file", 13) + " " : "") +
         escapeHtml(p) +
         "</button>" +
-        '<button type="button" class="file-ask" title="Explain in chat">?</button>' +
-        '<button type="button" class="file-diff" title="Diff">Δ</button>' +
-        '<button type="button" class="file-dl" title="Download">↓</button>';
+        '<button type="button" class="file-ask" data-tip="Explain in chat" title="Explain in chat">' +
+        (window.ChatreKit
+          ? window.ChatreKit.iconHtml("message-circle-question", 14)
+          : "?") +
+        "</button>" +
+        '<button type="button" class="file-diff" data-tip="Show diff" title="Diff">' +
+        (window.ChatreKit
+          ? window.ChatreKit.iconHtml("git-compare", 14)
+          : "Δ") +
+        "</button>" +
+        '<button type="button" class="file-dl" data-tip="Download" title="Download">' +
+        (window.ChatreKit
+          ? window.ChatreKit.iconHtml("download", 14)
+          : "↓") +
+        "</button>";
       row.querySelector(".file-open").addEventListener("click", () => openFile(p));
       row.querySelector(".file-ask").addEventListener("click", () => askAboutFile(p));
       row.querySelector(".file-diff").addEventListener("click", () => showDiff(p));
       row.querySelector(".file-dl").addEventListener("click", () => downloadFile(p));
       root.appendChild(row);
     });
+    if (window.ChatreKit) {
+      window.ChatreKit.refreshIcons(root);
+      window.ChatreKit.bindTips(root);
+    }
   }
 
   async function openFile(path) {
@@ -612,6 +659,12 @@
         setTimeout(function () {
           progress.hidden = true;
         }, 2000);
+      }
+      if (window.ChatreKit) {
+        window.ChatreKit.toast(
+          "Uploaded " + files.length + " file(s)",
+          "success",
+        );
       }
       await refreshFiles();
     }

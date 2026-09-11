@@ -12,6 +12,9 @@
     />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tippy.js@6.3.7/dist/tippy.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tippy.js@6.3.7/animations/shift-away-subtle.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css">
     <style>
       :root {
         --primary-color: #fff;
@@ -1596,6 +1599,94 @@
       }
       .legacy-mode-btns { display: none; }
 
+      /* Lucide / Tippy / Notyf integration */
+      .ui-icon,
+      i[data-lucide],
+      svg.lucide,
+      svg.lucide-icon {
+        display: inline-block;
+        vertical-align: -0.2em;
+        flex-shrink: 0;
+      }
+      .btn,
+      .mode-control button,
+      .starter-chip,
+      .status-chip,
+      .panel-actions .btn,
+      .toolbar-more > summary,
+      #send-button,
+      #stop-button,
+      .side-panel > h2,
+      #plan-drawer-panel > h2 {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .side-panel > h2,
+      #plan-drawer-panel > h2 {
+        display: flex;
+      }
+      .ui-label { line-height: 1; }
+      .file-drop-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.45rem;
+        pointer-events: none;
+      }
+      .file-item .file-open {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        text-align: left;
+      }
+      header h1 {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      header h1 svg {
+        color: #4cb8e8;
+      }
+      .tippy-box[data-theme~="chatre"] {
+        background: #151520;
+        color: #f2f2f5;
+        border: 1px solid var(--border-color);
+        font-size: 0.78rem;
+        font-family: "DM Sans", system-ui, sans-serif;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+      .tippy-box[data-theme~="chatre"][data-placement^="top"] > .tippy-arrow::before {
+        border-top-color: #151520;
+      }
+      .tippy-box[data-theme~="chatre"][data-placement^="bottom"] > .tippy-arrow::before {
+        border-bottom-color: #151520;
+      }
+      .notyf__toast {
+        font-family: "DM Sans", system-ui, sans-serif;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+      }
+      .notyf__toast--info .notyf__ripple { background: #4cb8e8 !important; }
+      .starter-chip svg,
+      .status-chip svg {
+        width: 14px;
+        height: 14px;
+      }
+      .tool-call-header .tool-icon svg {
+        width: 14px;
+        height: 14px;
+        color: #6c8cff;
+      }
+      .empty-state .empty-icon {
+        margin-bottom: 0.35rem;
+        color: #4cb8e8;
+      }
+      .empty-state .empty-icon svg {
+        width: 28px;
+        height: 28px;
+      }
+
       @media (max-width: 900px) {
         .app-shell {
           display: block;
@@ -1633,7 +1724,7 @@
   <body>
     <div class="spectrum-strip"></div>
     <header>
-      <h1>Chatre</h1>
+      <h1><i data-lucide="zap" style="width:1.1em;height:1.1em;vertical-align:-0.12em" aria-hidden="true"></i> Chatre</h1>
       <p>Re-EL AI ChatBot (Maerd Portal)</p>
     </header>
 
@@ -1740,8 +1831,11 @@
           <button type="button" class="btn" id="files-refresh">Refresh</button>
           <button type="button" class="btn" id="files-export-zip">Export ZIP</button>
         </div>
-        <div id="file-drop" class="file-drop" tabindex="0">
-          Drop files here to upload into the workspace
+        <div id="file-drop" class="file-drop" tabindex="0" data-tip="Upload files into the remote workspace">
+          <div class="file-drop-inner">
+            <i data-lucide="upload" style="width:22px;height:22px" aria-hidden="true"></i>
+            <span>Drop files here to upload into the workspace</span>
+          </div>
           <input type="file" id="file-drop-input" multiple hidden />
         </div>
         <div id="file-upload-progress" hidden></div>
@@ -1788,6 +1882,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tippy.js@6.3.7/dist/tippy.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.js"></script>
+    <script src="/ui-libs.js"></script>
     <script src="/config.js"></script>
     <script src="/skills.js"></script>
     <script src="/intent.js"></script>

@@ -56,15 +56,20 @@
     if (!row || !window.ChatrePlanTemplates) return;
     row.innerHTML = "";
     const starters = [
-      { id: "research", label: "Research", prompt: "Research: " },
-      { id: "fill-form", label: "Fill form", prompt: "Fill this form: " },
-      { id: "build", label: "Build", prompt: "Build: " },
-      { id: "ask", label: "Ask", prompt: "" },
+      { id: "research", label: "Research", icon: "search", prompt: "Research: " },
+      { id: "fill-form", label: "Fill form", icon: "form-input", prompt: "Fill this form: " },
+      { id: "build", label: "Build", icon: "hammer", prompt: "Build: " },
+      { id: "ask", label: "Ask", icon: "message-circle", prompt: "" },
     ];
     starters.forEach(function (s) {
       const b = el("button", "starter-chip");
       b.type = "button";
-      b.textContent = s.label;
+      if (window.ChatreKit && window.ChatreKit.labelWithIcon) {
+        b.innerHTML = window.ChatreKit.labelWithIcon(s.icon, s.label, 14);
+      } else {
+        b.textContent = s.label;
+      }
+      b.setAttribute("data-tip", s.label);
       b.addEventListener("click", function () {
         const input = $("user-input");
         if (!input) return;
@@ -82,6 +87,10 @@
       });
       row.appendChild(b);
     });
+    if (window.ChatreKit) {
+      window.ChatreKit.refreshIcons(row);
+      window.ChatreKit.bindTips(row);
+    }
   }
 
   // ── Status action strip ─────────────────────────────────────────────
@@ -96,7 +105,21 @@
       host.appendChild(chip);
     }
     chip.className = "status-chip " + (kind || "off");
-    chip.textContent = label;
+    const icons = {
+      companion: "monitor",
+      api: "key-round",
+      login: "shield-alert",
+    };
+    if (window.ChatreKit && window.ChatreKit.labelWithIcon && label) {
+      chip.innerHTML = window.ChatreKit.labelWithIcon(
+        icons[id] || "info",
+        label,
+        14,
+      );
+      window.ChatreKit.refreshIcons(chip);
+    } else {
+      chip.textContent = label;
+    }
     chip.onclick = typeof action === "function" ? action : null;
     chip.hidden = !label;
   }
@@ -109,9 +132,21 @@
         const cmd =
           "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN npm run companion:start";
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(cmd);
+          navigator.clipboard.writeText(cmd).then(
+            function () {
+              if (window.ChatreKit) {
+                window.ChatreKit.toast("Companion start command copied", "success");
+              } else {
+                window.alert("Copied companion start command to clipboard:\n\n" + cmd);
+              }
+            },
+            function () {
+              window.alert(cmd);
+            },
+          );
+        } else {
+          window.alert(cmd);
         }
-        window.alert("Copied companion start command to clipboard:\n\n" + cmd);
       });
     } else {
       setStatusChip("companion", "ok", "", null);
@@ -256,6 +291,11 @@
         : JSON.stringify(params).slice(0, 120));
     detail.innerHTML =
       '<div class="tool-call-header">' +
+      '<span class="tool-icon">' +
+      (window.ChatreKit
+        ? window.ChatreKit.iconHtml(toolIcon(call.tool), 14)
+        : "⚒") +
+      "</span>" +
       '<span class="tool-name"></span>' +
       '<span class="tool-status running">running…</span>' +
       "</div>" +
@@ -268,9 +308,24 @@
       : null;
     if (slot) {
       slot.appendChild(detail);
+      if (window.ChatreKit) window.ChatreKit.refreshIcons(detail);
       return detail;
     }
+    if (window.ChatreKit) window.ChatreKit.refreshIcons(detail);
     return detail;
+  }
+
+  function toolIcon(name) {
+    const n = String(name || "");
+    if (/navigate|browser|computer|screenshot|read_page|find|form/.test(n)) {
+      return "globe";
+    }
+    if (/search/.test(n)) return "search";
+    if (/desktop/.test(n)) return "monitor";
+    if (/write|create_document|create_pdf|file/.test(n)) return "file-pen";
+    if (/shell|terminal|run_command/.test(n)) return "terminal";
+    if (/git|commit/.test(n)) return "git-branch";
+    return "wrench";
   }
 
   function updateToolCard(card, result) {
@@ -330,12 +385,28 @@
     const title = item.title || item.path || item.kind || "Artifact";
     card.innerHTML =
       '<div class="artifact-kind"></div><div class="artifact-title"></div><div class="artifact-actions"></div>';
-    card.querySelector(".artifact-kind").textContent = item.kind || "file";
+    const kindIcon =
+      item.kind === "upload"
+        ? "upload"
+        : item.kind === "document" || /create_document/.test(item.kind || "")
+          ? "file-text"
+          : "file";
+    const kindEl = card.querySelector(".artifact-kind");
+    if (window.ChatreKit) {
+      kindEl.innerHTML =
+        window.ChatreKit.iconHtml(kindIcon, 12) +
+        " " +
+        (item.kind || "file");
+    } else {
+      kindEl.textContent = item.kind || "file";
+    }
     card.querySelector(".artifact-title").textContent = title;
     const actions = card.querySelector(".artifact-actions");
     if (item.dataUrl) {
       const a = el("a", "btn");
-      a.textContent = "Open";
+      a.innerHTML = window.ChatreKit
+        ? window.ChatreKit.labelWithIcon("external-link", "Open", 13)
+        : "Open";
       a.href = item.dataUrl;
       a.target = "_blank";
       a.rel = "noopener";
@@ -344,7 +415,9 @@
     if (item.path && window.ChatreUI && window.ChatreUI.composeAndSend) {
       const b = el("button", "btn");
       b.type = "button";
-      b.textContent = "Ask";
+      b.innerHTML = window.ChatreKit
+        ? window.ChatreKit.labelWithIcon("message-circle", "Ask", 13)
+        : "Ask";
       b.addEventListener("click", function () {
         window.ChatreUI.composeAndSend("Explain " + item.path);
       });
@@ -352,12 +425,15 @@
     }
     if (item.downloadUrl) {
       const a = el("a", "btn");
-      a.textContent = "Download";
+      a.innerHTML = window.ChatreKit
+        ? window.ChatreKit.labelWithIcon("download", "Download", 13)
+        : "Download";
       a.href = item.downloadUrl;
       a.download = item.filename || "download";
       actions.appendChild(a);
     }
     rail.prepend(card);
+    if (window.ChatreKit) window.ChatreKit.refreshIcons(card);
   }
 
   // ── Empty / first-run state ─────────────────────────────────────────
@@ -365,6 +441,9 @@
     if (!host) return;
     const box = el("div", "empty-state enter");
     box.innerHTML =
+      '<div class="empty-icon">' +
+      (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
+      "</div>" +
       "<h2>Chatre</h2>" +
       "<p>Connect your API key, optionally start the desktop companion, then try a task.</p>" +
       '<ol class="empty-steps">' +
@@ -376,7 +455,9 @@
     const actions = box.querySelector(".empty-actions");
     const tryBtn = el("button", "btn");
     tryBtn.type = "button";
-    tryBtn.textContent = "Try example.com";
+    tryBtn.innerHTML = window.ChatreKit
+      ? window.ChatreKit.labelWithIcon("play", "Try example.com", 14)
+      : "Try example.com";
     tryBtn.addEventListener("click", function () {
       if (window.ChatreUI && window.ChatreUI.composeAndSend) {
         window.ChatreUI.composeAndSend(
@@ -386,7 +467,9 @@
     });
     const keyBtn = el("button", "btn");
     keyBtn.type = "button";
-    keyBtn.textContent = "Focus API key";
+    keyBtn.innerHTML = window.ChatreKit
+      ? window.ChatreKit.labelWithIcon("key-round", "Focus API key", 14)
+      : "Focus API key";
     keyBtn.addEventListener("click", function () {
       const inp = $("api-key-input");
       if (inp) inp.focus();
@@ -394,6 +477,7 @@
     actions.appendChild(tryBtn);
     actions.appendChild(keyBtn);
     host.appendChild(box);
+    if (window.ChatreKit) window.ChatreKit.refreshIcons(box);
   }
 
   // ── Plan drawer ─────────────────────────────────────────────────────
