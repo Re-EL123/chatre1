@@ -192,6 +192,9 @@
     onEvent,
     signal,
     resume,
+    approvePlan,
+    briefing,
+    skipPlanApproval,
   }) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
@@ -209,10 +212,15 @@
       model,
       stream: true,
     };
-    if (resume) {
+    if (resume || approvePlan) {
       body.resume = true;
+      if (approvePlan) body.approvePlan = true;
+      if (briefing) body.briefing = briefing;
+      if (skipPlanApproval) body.skipPlanApproval = true;
+      if (message) body.message = message;
     } else {
       body.message = message;
+      if (skipPlanApproval) body.skipPlanApproval = true;
     }
 
     const res = await fetch(base + "/api/agent", {

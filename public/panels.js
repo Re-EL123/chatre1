@@ -78,12 +78,24 @@
       " tok";
   }
 
-  function setResumeAvailable(on) {
+  function setResumeAvailable(on, reason) {
     state.canResume = !!on;
     const btn = $("agent-resume");
     if (!btn) return;
     btn.hidden = !on;
     btn.disabled = !on;
+    if (on) {
+      btn.classList.add("pulse");
+      btn.title =
+        reason === "awaiting_plan"
+          ? "Approve or edit the plan, then continue"
+          : "Resume interrupted agent run";
+      btn.textContent =
+        reason === "awaiting_plan" ? "Continue plan" : "Resume agent";
+    } else {
+      btn.classList.remove("pulse");
+      btn.textContent = "Resume";
+    }
   }
 
   async function refreshThreads() {
@@ -103,7 +115,9 @@
         wrap.className =
           "thread-item" + (thr.id === active ? " active" : "");
         const interrupted =
-          thr.agentRun && thr.agentRun.status === "interrupted";
+          thr.agentRun &&
+          (thr.agentRun.status === "interrupted" ||
+            thr.agentRun.status === "awaiting_plan");
         const usageHint =
           thr.lastUsage && thr.lastUsage.totalTokensEst
             ? " · ~" + thr.lastUsage.totalTokensEst + " tok"

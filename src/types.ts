@@ -7,11 +7,15 @@ export interface Env {
   ASSETS: Fetcher;
   /** Cloudflare Browser Rendering binding for Puppeteer. */
   BROWSER?: Fetcher;
+  /** Per-thread browser session Durable Object namespace. */
+  BROWSER_SESSIONS?: DurableObjectNamespace;
   /**
    * Optional shared secret. When set, API POSTs must send
    * Authorization: Bearer <secret> or x-chatre-key: <secret>.
    */
   CHATRE_SECRET?: string;
+  /** Optional Brave Search API key for stronger search_web. */
+  BRAVE_API_KEY?: string;
 }
 
 export interface ChatMessage {
@@ -27,7 +31,7 @@ export interface ChatRequestBody {
   /** Use the thorough agent system prompt and ignore client system messages. */
   agent?: boolean;
   /** chat (default) | analyst (plan/brief only) | agent (executor). */
-  mode?: "chat" | "analyst" | "agent";
+  mode?: "chat" | "analyst" | "agent" | "critic";
   /** OpenAI-style tool definitions for structured function calling. */
   tools?: unknown[];
 }

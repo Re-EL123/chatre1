@@ -141,6 +141,27 @@
 
       callbacks.onAnalysis && callbacks.onAnalysis(briefing);
 
+      const isLightLocal =
+        briefing.task_type === 'chat' ||
+        (briefing.task_type === 'question' &&
+          (!briefing.todos || !briefing.todos.length));
+      if (
+        !isLightLocal &&
+        options &&
+        options.skipPlanApproval !== true &&
+        typeof callbacks.onAwaitPlan === 'function'
+      ) {
+        const edited = await callbacks.onAwaitPlan(briefing);
+        if (edited === null || edited === false) {
+          this.running = false;
+          return { response: '', cancelled: true, planCancelled: true };
+        }
+        if (edited && typeof edited === 'object') {
+          briefing = edited;
+        }
+      }
+
+
       if (briefing.needs_clarification && briefing.clarification_question) {
         const q = briefing.clarification_question;
         callbacks.onStepText && callbacks.onStepText(q, true);
@@ -167,16 +188,36 @@
           ? window.ChatreIntent.classifyIntent(userText, autoSkills)
           : null;
 
+      if (briefing.max_steps) {
+        this.maxIterations = Math.min(
+          this.maxIterations,
+          Number(briefing.max_steps) || this.maxIterations,
+        );
+      }
+
       const forcePlan =
         (options && options.forcePlan !== false) &&
         ["build", "debug", "document", "git", "mixed", "run", "browser"].indexOf(
           briefing.task_type,
         ) !== -1;
 
-      const executorOrders =
+      const role =
+        window.ChatreSubagents && window.ChatreSubagents.subagentPrompt
+          ? window.ChatreSubagents.subagentPrompt(briefing.task_type)
+          : null;
+      if (role) {
+        callbacks.onStepText &&
+          callbacks.onStepText("Executor: " + (role.label || role.name), false);
+      }
+
+      let executorOrders =
         window.ChatreAnalyst && window.ChatreAnalyst.formatExecutorPrompt
           ? window.ChatreAnalyst.formatExecutorPrompt(briefing, userText)
           : "";
+      if (role && role.prompt) {
+        executorOrders =
+          "## Role\n" + role.prompt + "\n\n" + (executorOrders || "");
+      }
 
       // Slim skill context + analyst orders (not a generic workflow dump).
       const preamble = buildPreamble(autoSkills, intent, executorOrders);
@@ -373,6 +414,8 @@
           messages.push({ role: "assistant", content: text });
 
           const execOptions = {
+            taskType: briefing && briefing.task_type,
+            toolsPriority: briefing && briefing.tools_priority,
             onWrite: function () {},
             onCommand: function () {},
             onDocument: function (path, content, title) {

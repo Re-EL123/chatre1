@@ -26,8 +26,11 @@
     '  "constraints": ["..."],\n' +
     '  "needs_clarification": false,\n' +
     '  "clarification_question": "",\n' +
+    '  "max_steps": 8,\n' +
+    '  "estimated_minutes": 2,\n' +
     '  "executor_brief": "Detailed instructions for the executor, specific to this request"\n' +
-    "}";
+    "}\n\n" +
+    "Set max_steps realistically (prefer 4–12). Prefer fewer high-value tools over long loops.";
 
   function extractJsonObject(text) {
     const raw = String(text || "").trim();
@@ -97,6 +100,14 @@
       clarification_question: String(
         o.clarification_question || o.clarificationQuestion || "",
       ).trim(),
+      max_steps: (function () {
+        const n = Number(o.max_steps || o.maxSteps || o.budget_steps) || 0;
+        return n > 0 ? Math.min(Math.max(n, 1), 40) : undefined;
+      })(),
+      estimated_minutes: (function () {
+        const n = Number(o.estimated_minutes || o.estimatedMinutes) || 0;
+        return n > 0 ? n : undefined;
+      })(),
       executor_brief: String(o.executor_brief || o.executorBrief || "").trim(),
     };
   }

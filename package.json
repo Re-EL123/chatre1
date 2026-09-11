@@ -31,7 +31,9 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
-    "test": "vitest"
+    "test": "vitest",
+    "smoke": "node scripts/smoke.js",
+    "eval": "node evals/run.js"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.4.0"

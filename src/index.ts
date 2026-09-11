@@ -8,6 +8,12 @@ import { handleBrowserRequest } from "./browser";
 import { AGENT_SYSTEM_PROMPT } from "./agent-prompt";
 import { ANALYST_SYSTEM_PROMPT } from "./analyst-prompt";
 
+const CRITIC_SYSTEM_PROMPT = `You are Chatre's critic. Decide if the executor finished the user's request.
+Output ONLY JSON: {"pass":true|false,"score":0-100,"gaps":["..."],"fix_brief":"..."}.
+Be strict about success criteria. You are Chatre — never mention other products.`;
+
+export { BrowserSessionDO } from "./session-do";
+
 const ALLOWED_MODEL_LIST = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   "@cf/meta/llama-3.1-8b-instruct",
@@ -278,7 +284,10 @@ async function handleChatRequest(
 
     const body = (await request.json()) as ChatRequestBody;
     const mode =
-      body.mode === "analyst" || body.mode === "agent" || body.mode === "chat"
+      body.mode === "analyst" ||
+      body.mode === "agent" ||
+      body.mode === "chat" ||
+      body.mode === "critic"
         ? body.mode
         : body.agent === true
           ? "agent"
@@ -287,9 +296,11 @@ async function handleChatRequest(
     const systemPrompt =
       mode === "analyst"
         ? ANALYST_SYSTEM_PROMPT
-        : mode === "agent"
-          ? AGENT_SYSTEM_PROMPT
-          : CHAT_SYSTEM_PROMPT;
+        : mode === "critic"
+          ? CRITIC_SYSTEM_PROMPT
+          : mode === "agent"
+            ? AGENT_SYSTEM_PROMPT
+            : CHAT_SYSTEM_PROMPT;
 
     // Never trust client-supplied system messages — always inject ours.
     let messages = (Array.isArray(body.messages) ? body.messages : []).filter(
@@ -303,15 +314,20 @@ async function handleChatRequest(
         ? (body.model as ChatModelId)
         : MODEL_ID;
     const tools =
-      mode === "analyst"
+      mode === "analyst" || mode === "critic"
         ? null
         : Array.isArray(body.tools)
           ? body.tools
           : null;
-    const wantStream = body.stream !== false && !tools && mode !== "analyst";
+    const wantStream =
+      body.stream !== false && !tools && mode !== "analyst" && mode !== "critic";
     const maxTokens = clampMaxTokens(
       body.max_tokens ??
-        (mode === "analyst" ? 2048 : agentMode ? 3072 : DEFAULT_MAX_TOKENS),
+        (mode === "analyst" || mode === "critic"
+          ? 2048
+          : agentMode
+            ? 3072
+            : DEFAULT_MAX_TOKENS),
     );
 
     console.log(

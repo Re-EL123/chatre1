@@ -217,6 +217,16 @@
   async function executeTool(call, options) {
     const { tool, params } = call;
     const p = params || {};
+    if (window.ChatreAllowlists && options && options.taskType) {
+      const gate = window.ChatreAllowlists.assertToolAllowed(
+        tool,
+        options.taskType,
+        options.toolsPriority,
+      );
+      if (!gate.ok) {
+        return { ok: false, tool: tool, error: gate.error };
+      }
+    }
     const common = {
       onWrite: options && options.onWrite,
       onCommand: options && options.onCommand,

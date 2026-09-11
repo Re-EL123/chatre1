@@ -5,6 +5,7 @@
 import type { Browser, Page, ElementHandle } from "@cloudflare/puppeteer";
 import puppeteer from "@cloudflare/puppeteer";
 import type { Env } from "./types";
+import { captionScreenshot } from "./vision";
 
 const VIEWPORT = { width: 1280, height: 800 };
 const KEEP_ALIVE_MS = 600_000;
@@ -14,6 +15,8 @@ export interface BrowserRequestBody {
   action?: string;
   session_id?: string;
   tab_id?: number;
+  thread_id?: string;
+  caption?: boolean;
   url?: string;
   query?: string;
   queries?: string[];
@@ -76,17 +79,85 @@ export async function handleBrowserRequest(
   }
 
   const tool = normalizeTool(body);
+
+  // search_web does not need a live browser tab
+  if (tool === "search_web") {
+    try {
+      const result = await searchWeb(body, env);
+      return jsonResponse({ tool, ...result, ok: result.ok !== false });
+    } catch (err) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        500,
+      );
+    }
+  }
+
   let browser: Browser | null = null;
   let launched = false;
 
   try {
+    // Restore session_id from Durable Object when thread_id is provided.
+    if (!body.session_id && body.thread_id && env.BROWSER_SESSIONS) {
+      try {
+        const id = env.BROWSER_SESSIONS.idFromName(String(body.thread_id));
+        const stub = env.BROWSER_SESSIONS.get(id);
+        const stored = await stub.fetch("https://do/get");
+        const j = (await stored.json()) as { sessionId?: string; lastTabId?: number };
+        if (j && j.sessionId) body.session_id = j.sessionId;
+        if (body.tab_id == null && j && j.lastTabId != null) body.tab_id = j.lastTabId;
+      } catch {
+        /* ignore DO errors */
+      }
+    }
+
     const opened = await openBrowser(env, body.session_id);
     browser = opened.browser;
     launched = opened.launched;
     const sessionId = browserSessionId(browser);
 
-    const result = await dispatch(browser, tool, body);
+    let result = await dispatch(browser, tool, body, env);
+
+    // Optional vision caption for screenshots (computer / navigate snaps).
+    if (
+      (body.caption !== false) &&
+      result &&
+      typeof result.screenshot_base64 === "string" &&
+      result.screenshot_base64
+    ) {
+      try {
+        const cap = await captionScreenshot(
+          env,
+          String(result.screenshot_base64),
+        );
+        if (cap.ok && cap.caption) {
+          result = { ...result, vision_caption: cap.caption, vision_model: cap.model };
+        }
+      } catch {
+        /* ignore vision failures */
+      }
+    }
+
     await browser.disconnect();
+
+    if (body.thread_id && env.BROWSER_SESSIONS && sessionId) {
+      try {
+        const id = env.BROWSER_SESSIONS.idFromName(String(body.thread_id));
+        const stub = env.BROWSER_SESSIONS.get(id);
+        await stub.fetch("https://do/set", {
+          method: "POST",
+          body: JSON.stringify({
+            sessionId,
+            lastTabId: result && result.tab_id != null ? result.tab_id : body.tab_id,
+          }),
+        });
+      } catch {
+        /* ignore */
+      }
+    }
 
     return jsonResponse({
       ok: true,
@@ -164,6 +235,7 @@ async function dispatch(
   browser: Browser,
   tool: string,
   body: BrowserRequestBody,
+  env?: Env,
 ): Promise<Record<string, unknown>> {
   switch (tool) {
     case "tabs_create":
@@ -183,7 +255,7 @@ async function dispatch(
     case "get_page_text":
       return getPageText(browser, body);
     case "search_web":
-      return searchWeb(body);
+      return searchWeb(body, env);
     // Legacy wrappers
     case "browser_navigate":
       return navigate(browser, { ...body, url: body.url });
@@ -730,7 +802,7 @@ async function getPageText(browser: Browser, body: BrowserRequestBody) {
   };
 }
 
-async function searchWeb(body: BrowserRequestBody) {
+async function searchWeb(body: BrowserRequestBody, env?: Env) {
   const queries = Array.isArray(body.queries)
     ? body.queries.map(String).filter(Boolean).slice(0, 3)
     : String(body.query || "")
@@ -742,32 +814,119 @@ async function searchWeb(body: BrowserRequestBody) {
 
   const results: Array<Record<string, unknown>> = [];
   let webIndex = 0;
+  const braveKey = env && env.BRAVE_API_KEY;
+
   for (const q of queries) {
-    const url =
-      "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; ChatreBot/1.0; +https://chatre)",
-      },
-    });
-    const html = await res.text();
-    const re =
-      /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    let count = 0;
-    while ((m = re.exec(html)) && count < 5) {
-      webIndex += 1;
-      count += 1;
-      const href = decodeDuckHref(m[1]);
-      const title = stripTags(m[2]).trim();
-      results.push({
-        id: "web:" + webIndex,
-        query: q,
-        title,
-        url: href,
-        snippet: title,
+    let got = 0;
+    if (braveKey) {
+      try {
+        const res = await fetch(
+          "https://api.search.brave.com/res/v1/web/search?q=" +
+            encodeURIComponent(q) +
+            "&count=5",
+          {
+            headers: {
+              Accept: "application/json",
+              "X-Subscription-Token": braveKey,
+            },
+          },
+        );
+        if (res.ok) {
+          const data = (await res.json()) as {
+            web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
+          };
+          for (const r of (data.web && data.web.results) || []) {
+            webIndex += 1;
+            got += 1;
+            results.push({
+              id: "web:" + webIndex,
+              query: q,
+              title: r.title || "",
+              url: r.url || "",
+              snippet: r.description || r.title || "",
+              source: "brave",
+            });
+          }
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+
+    if (got === 0) {
+      // DuckDuckGo Instant Answer + HTML fallback
+      try {
+        const ia = await fetch(
+          "https://api.duckduckgo.com/?q=" +
+            encodeURIComponent(q) +
+            "&format=json&no_html=1&skip_disambig=1",
+        );
+        if (ia.ok) {
+          const data = (await ia.json()) as {
+            AbstractText?: string;
+            AbstractURL?: string;
+            Heading?: string;
+            RelatedTopics?: Array<{ Text?: string; FirstURL?: string }>;
+          };
+          if (data.AbstractText && data.AbstractURL) {
+            webIndex += 1;
+            got += 1;
+            results.push({
+              id: "web:" + webIndex,
+              query: q,
+              title: data.Heading || q,
+              url: data.AbstractURL,
+              snippet: data.AbstractText,
+              source: "duckduckgo_ia",
+            });
+          }
+          for (const t of (data.RelatedTopics || []).slice(0, 4)) {
+            if (!t.FirstURL || !t.Text) continue;
+            webIndex += 1;
+            got += 1;
+            results.push({
+              id: "web:" + webIndex,
+              query: q,
+              title: t.Text.slice(0, 80),
+              url: t.FirstURL,
+              snippet: t.Text,
+              source: "duckduckgo_ia",
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (got === 0) {
+      const url =
+        "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; ChatreBot/1.0; +https://chatre)",
+        },
       });
+      const html = await res.text();
+      const re =
+        /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+      let m;
+      let count = 0;
+      while ((m = re.exec(html)) && count < 5) {
+        webIndex += 1;
+        count += 1;
+        const href = decodeDuckHref(m[1]);
+        const title = stripTags(m[2]).trim();
+        results.push({
+          id: "web:" + webIndex,
+          query: q,
+          title,
+          url: href,
+          snippet: title,
+          source: "duckduckgo_html",
+        });
+      }
     }
   }
   return { ok: true, results, queries };

@@ -994,13 +994,38 @@
     let finalText = "";
 
     const showStep = (text, isFinal) => {
+      let display = text;
+      let confirmNodes = [];
+      if (window.ChatrePlanUI) {
+        confirmNodes = window.ChatrePlanUI.renderConfirmations(
+          text,
+          (action, question) => {
+            window.ChatreUI.composeAndSend(
+              "Approved: " +
+                action +
+                (question ? " — " + question : ""),
+            );
+          },
+          (action, question) => {
+            window.ChatreUI.composeAndSend(
+              "Denied: " +
+                action +
+                (question ? " — " + question : ""),
+            );
+          },
+        );
+        display = window.ChatrePlanUI.stripConfirmationTags(text);
+      }
       const p = document.createElement("div");
       p.className = "agent-text" + (isFinal ? " agent-final" : "");
-      p.innerHTML = renderMarkdown(text);
+      p.innerHTML = renderMarkdown(display);
       enhanceCodeBlocks(p);
       agentBody.appendChild(p);
+      confirmNodes.forEach(function (node) {
+        agentBody.appendChild(node);
+      });
       scrollToBottom();
-      if (isFinal) finalText = text;
+      if (isFinal) finalText = display;
     };
 
     const showTool = (call) => {
@@ -1079,6 +1104,56 @@
               );
             } else if (ev.type === "phase") {
               startThinking(ev.text || ev.phase || "Working…");
+            } else if (ev.type === "awaiting_plan") {
+              stopThinking();
+              window.__pendingPlan = {
+                threadId: (window.__chatreRemote || {}).threadId,
+                briefing: ev.briefing,
+              };
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
+              }
+              if (window.ChatrePlanUI && chatMessages) {
+                const card = window.ChatrePlanUI.renderPlanCard(
+                  ev.briefing,
+                  async (edited) => {
+                    card.remove();
+                    window.__pendingPlan = null;
+                    if (window.ChatrePanels) {
+                      window.ChatrePanels.setResumeAvailable(false);
+                    }
+                    if (window.ChatreRemote && window.ChatreRemote.enabled()) {
+                      const remoteState = window.__chatreRemote || {};
+                      await window.ChatreRemote.runAgentStream({
+                        message: "",
+                        threadId: remoteState.threadId,
+                        workspaceId: remoteState.workspaceId,
+                        resume: true,
+                        approvePlan: true,
+                        briefing: edited,
+                        model: modelSelect.value,
+                        signal: activeAbort && activeAbort.signal,
+                        onEvent: handleAgentEvent,
+                      });
+                    }
+                  },
+                  () => {
+                    window.__pendingPlan = null;
+                  },
+                );
+                chatMessages.appendChild(card);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              }
+            } else if (ev.type === "critique") {
+              const c = ev.critique || {};
+              showStep(
+                "Critique: " +
+                  (c.pass ? "pass" : "needs work") +
+                  (c.score != null ? " (" + c.score + ")" : ""),
+                false,
+              );
+            } else if (ev.type === "subagent") {
+              showStep("Executor: " + (ev.label || ev.role || ""), false);
             } else if (ev.type === "analysis") {
               stopThinking();
               const b = ev.briefing || {};
@@ -1246,6 +1321,28 @@
                 "Plan: " + (bits.join(" — ") || "ready").slice(0, 160),
                 false,
               );
+            },
+            onAwaitPlan: (briefing) => {
+              return new Promise((resolve) => {
+                if (!window.ChatrePlanUI || !chatMessages) {
+                  resolve(briefing);
+                  return;
+                }
+                stopThinking();
+                const card = window.ChatrePlanUI.renderPlanCard(
+                  briefing,
+                  (edited) => {
+                    card.remove();
+                    resolve(edited);
+                  },
+                  () => {
+                    card.remove();
+                    resolve(null);
+                  },
+                );
+                chatMessages.appendChild(card);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              });
             },
             onThinking: (iter, max) => {
               startThinking("Agent step " + iter + "/" + max);
@@ -2036,16 +2133,40 @@
       chatMessages.appendChild(agentEl);
       scrollToBottom();
 
-let finalText = "";
-    let skipChips = false;
+      let finalText = "";
       const showStep = (text, isFinal) => {
+        let display = text;
+        let confirmNodes = [];
+        if (window.ChatrePlanUI) {
+          confirmNodes = window.ChatrePlanUI.renderConfirmations(
+            text,
+            (action, question) => {
+              window.ChatreUI.composeAndSend(
+                "Approved: " +
+                  action +
+                  (question ? " — " + question : ""),
+              );
+            },
+            (action, question) => {
+              window.ChatreUI.composeAndSend(
+                "Denied: " +
+                  action +
+                  (question ? " — " + question : ""),
+              );
+            },
+          );
+          display = window.ChatrePlanUI.stripConfirmationTags(text);
+        }
         const p = document.createElement("div");
         p.className = "agent-text" + (isFinal ? " agent-final" : "");
-        p.innerHTML = renderMarkdown(text);
+        p.innerHTML = renderMarkdown(display);
         enhanceCodeBlocks(p);
         agentBody.appendChild(p);
+        confirmNodes.forEach(function (node) {
+          agentBody.appendChild(node);
+        });
         scrollToBottom();
-        if (isFinal) finalText = text;
+        if (isFinal) finalText = display;
       };
       const showTool = (call) => {
         const card = document.createElement("div");
@@ -2096,8 +2217,15 @@ let finalText = "";
       let tokenEl = null;
 
       try {
+        const pendingPlan = window.__pendingPlan;
+        const approvingPlan = !!(pendingPlan && pendingPlan.briefing);
+        if (approvingPlan) {
+          window.__pendingPlan = null;
+        }
         await window.ChatreRemote.runAgentStream({
           resume: true,
+          approvePlan: approvingPlan,
+          briefing: approvingPlan ? pendingPlan.briefing : undefined,
           threadId: remoteState.threadId,
           workspaceId: remoteState.workspaceId || null,
           model: modelSelect.value,
@@ -2111,7 +2239,38 @@ let finalText = "";
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(false);
               }
-              startThinking("Resuming remote agent");
+              startThinking(
+                approvingPlan
+                  ? "Continuing approved plan"
+                  : "Resuming remote agent",
+              );
+            } else if (ev.type === "awaiting_plan") {
+              stopThinking();
+              window.__pendingPlan = {
+                threadId: remoteState.threadId,
+                briefing: ev.briefing,
+              };
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
+              }
+              if (window.ChatrePlanUI && chatMessages) {
+                const card = window.ChatrePlanUI.renderPlanCard(
+                  ev.briefing,
+                  async (edited) => {
+                    card.remove();
+                    window.__pendingPlan = { briefing: edited };
+                    if (window.ChatrePanels) {
+                      window.ChatrePanels.setResumeAvailable(false);
+                    }
+                    await window.ChatreUI.resumeAgent();
+                  },
+                  () => {
+                    window.__pendingPlan = null;
+                  },
+                );
+                chatMessages.appendChild(card);
+                scrollToBottom();
+              }
             } else if (ev.type === "resume") {
               startThinking("Resumed at step " + ev.step + "/" + ev.max);
             } else if (ev.type === "thinking") {

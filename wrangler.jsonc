@@ -1,7 +1,8 @@
 /**
  * For more details on how to configure Wrangler, refer to:
  * https://developers.cloudflare.com/workers/wrangler/configuration/
- */ {
+ */
+{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "chatre1",
   "main": "src/index.ts",
@@ -20,5 +21,19 @@
   "browser": {
     "binding": "BROWSER"
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BROWSER_SESSIONS",
+        "class_name": "BrowserSessionDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-browser-sessions",
+      "new_classes": ["BrowserSessionDO"]
+    }
+  ],
   "upload_source_maps": true
 }

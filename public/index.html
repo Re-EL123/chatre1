@@ -668,6 +668,42 @@
         transform: scale(0.97);
       }
 
+      .plan-card,
+      .confirm-card {
+        margin: 0.75rem 0;
+        padding: 0.85rem 1rem;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: rgba(255, 248, 230, 0.9);
+        border-radius: 6px;
+      }
+      .plan-card .plan-meta {
+        opacity: 0.75;
+        font-size: 0.9em;
+        margin: 0.25rem 0 0.6rem;
+      }
+      .plan-label {
+        display: block;
+        font-size: 0.8em;
+        margin-top: 0.45rem;
+        opacity: 0.8;
+      }
+      .plan-card textarea {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.2rem;
+        font: inherit;
+        padding: 0.4rem;
+      }
+      .plan-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.65rem;
+      }
+      #agent-resume.pulse {
+        box-shadow: 0 0 0 2px #c45c26;
+        font-weight: 600;
+      }
+
       .connector-prompt {
         margin: 0.5rem 0 0.25rem;
         display: flex;
@@ -1369,9 +1405,12 @@
     <script src="/config.js"></script>
     <script src="/skills.js"></script>
     <script src="/intent.js"></script>
+    <script src="/allowlists.js"></script>
+    <script src="/subagents.js"></script>
     <script src="/mcp.js"></script>
     <script src="/tools.js"></script>
     <script src="/analyst.js"></script>
+    <script src="/plan-ui.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
     <script src="/panels.js"></script>
