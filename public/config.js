@@ -20,4 +20,21 @@
   if (!localStorage.getItem("chatre_api_base")) {
     localStorage.setItem("chatre_api_base", window.CHATRE_API_BASE);
   }
+
+  /**
+   * Firebase web app config for Auth (email/password + Google).
+   * Fill these from Firebase Console → Project settings → Your apps.
+   * Project default: re-el-eed0d
+   */
+  if (!window.CHATRE_FIREBASE) {
+    window.CHATRE_FIREBASE = {
+      apiKey: localStorage.getItem("chatre_firebase_api_key") || "",
+      authDomain:
+        localStorage.getItem("chatre_firebase_auth_domain") ||
+        "re-el-eed0d.firebaseapp.com",
+      projectId:
+        localStorage.getItem("chatre_firebase_project_id") || "re-el-eed0d",
+      appId: localStorage.getItem("chatre_firebase_app_id") || "",
+    };
+  }
 })();

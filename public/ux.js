@@ -83,13 +83,10 @@
         if (e.target === drawer) closeSettings();
       });
     }
-    // Move model + api key into settings if placeholders exist
     var modelHost = $("settings-model-slot");
     var keyHost = $("settings-key-slot");
     var model = $("model-select");
     var key = $("api-key-input");
-    var apiStatus = $("api-status");
-    var companion = $("companion-status");
     if (modelHost && model && model.parentNode !== modelHost) {
       var modelLabel = document.querySelector('label[for="model-select"]');
       if (modelLabel) modelHost.appendChild(modelLabel);
@@ -102,8 +99,175 @@
       var hint = document.createElement("p");
       hint.style.cssText = "margin:0;font-size:0.78rem;color:var(--text-light)";
       hint.textContent =
-        "Status stays in the toolbar. Connection updates live after you paste a token.";
+        "Optional service token. Prefer signing in with your account.";
       keyHost.appendChild(hint);
+    }
+    initAuthUi();
+    initByokUi();
+    refreshModelCatalog();
+  }
+
+  function setAuthError(msg) {
+    var el = $("auth-error");
+    if (el) el.textContent = msg || "";
+  }
+
+  function paintAuthUi() {
+    var out = $("auth-signed-out");
+    var inn = $("auth-signed-in");
+    var label = $("auth-user-label");
+    var signed = window.ChatreAuth && window.ChatreAuth.isSignedIn();
+    if (out) out.hidden = !!signed;
+    if (inn) inn.hidden = !signed;
+    if (label && signed) {
+      var u = window.ChatreAuth.currentUser();
+      label.textContent = (u && (u.email || u.uid)) || "Signed in";
+    }
+    refreshByokStatus();
+    refreshModelCatalog();
+  }
+
+  function initAuthUi() {
+    function run(fn) {
+      return function () {
+        setAuthError("");
+        Promise.resolve()
+          .then(fn)
+          .then(function () {
+            paintAuthUi();
+            if (window.ChatreKit) window.ChatreKit.toast("Signed in", "success");
+          })
+          .catch(function (e) {
+            setAuthError((e && e.message) || String(e));
+          });
+      };
+    }
+    var email = function () {
+      return ($("auth-email") && $("auth-email").value.trim()) || "";
+    };
+    var pass = function () {
+      return ($("auth-password") && $("auth-password").value) || "";
+    };
+    if ($("auth-signin")) {
+      $("auth-signin").addEventListener(
+        "click",
+        run(function () {
+          return window.ChatreAuth.signIn(email(), pass());
+        }),
+      );
+    }
+    if ($("auth-signup")) {
+      $("auth-signup").addEventListener(
+        "click",
+        run(function () {
+          return window.ChatreAuth.signUp(email(), pass());
+        }),
+      );
+    }
+    if ($("auth-google")) {
+      $("auth-google").addEventListener(
+        "click",
+        run(function () {
+          return window.ChatreAuth.signInGoogle();
+        }),
+      );
+    }
+    if ($("auth-signout")) {
+      $("auth-signout").addEventListener("click", function () {
+        window.ChatreAuth.signOut().then(paintAuthUi);
+      });
+    }
+    if (window.ChatreAuth) window.ChatreAuth.onChange(paintAuthUi);
+  }
+
+  function refreshByokStatus() {
+    var el = $("byok-status");
+    if (!el) return;
+    var profile =
+      window.ChatreAuth &&
+      window.ChatreAuth.state &&
+      window.ChatreAuth.state.profile;
+    if (!profile) {
+      el.textContent = "Sign in to save provider keys.";
+      return;
+    }
+    var byok = profile.byok || {};
+    var saved = Object.keys(byok).filter(function (k) {
+      return byok[k];
+    });
+    el.textContent = saved.length
+      ? "Saved: " + saved.join(", ")
+      : "No provider keys saved yet.";
+  }
+
+  function initByokUi() {
+    if ($("byok-save")) {
+      $("byok-save").addEventListener("click", function () {
+        var provider = $("byok-provider") && $("byok-provider").value;
+        var key = $("byok-key") && $("byok-key").value.trim();
+        if (!window.ChatreRemote || !window.ChatreRemote.saveByok) return;
+        window.ChatreRemote
+          .saveByok(provider, key)
+          .then(function () {
+            if ($("byok-key")) $("byok-key").value = "";
+            return window.ChatreAuth.refreshProfile();
+          })
+          .then(function () {
+            refreshByokStatus();
+            refreshModelCatalog();
+            if (window.ChatreKit) window.ChatreKit.toast("Key saved", "success");
+          })
+          .catch(function (e) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(e.message || String(e), "error");
+            }
+          });
+      });
+    }
+    if ($("byok-delete")) {
+      $("byok-delete").addEventListener("click", function () {
+        var provider = $("byok-provider") && $("byok-provider").value;
+        window.ChatreRemote
+          .deleteByok(provider)
+          .then(function () {
+            return window.ChatreAuth.refreshProfile();
+          })
+          .then(function () {
+            refreshByokStatus();
+            refreshModelCatalog();
+          })
+          .catch(function (e) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(e.message || String(e), "error");
+            }
+          });
+      });
+    }
+  }
+
+  async function refreshModelCatalog() {
+    var sel = $("model-select");
+    if (!sel || !window.ChatreRemote || !window.ChatreRemote.listModels) return;
+    if (!window.ChatreRemote.hasAuth || !window.ChatreRemote.hasAuth()) return;
+    try {
+      var data = await window.ChatreRemote.listModels();
+      var current = sel.value;
+      sel.innerHTML = "";
+      (data.groups || []).forEach(function (g) {
+        var og = document.createElement("optgroup");
+        og.label = g.label || g.provider;
+        (g.models || []).forEach(function (m) {
+          var opt = document.createElement("option");
+          opt.value = m.value || m.id;
+          opt.textContent = m.label || m.id;
+          og.appendChild(opt);
+        });
+        sel.appendChild(og);
+      });
+      if (current) sel.value = current;
+      if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+    } catch (e) {
+      /* keep existing options */
     }
   }
 
@@ -348,8 +512,8 @@
         paint();
       } else if (act === "focus-key") {
         openSettings();
-        var inp = $("api-key-input");
-        if (inp) inp.focus();
+        var email = $("auth-email");
+        if (email) email.focus();
       } else if (act === "copy-companion") {
         var cmd =
           "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN npm run companion:start";

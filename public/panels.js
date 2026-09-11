@@ -94,10 +94,12 @@
     if (ping.connected) {
       setStatus(
         "ok",
-        "Connected" + (ping.backend ? " · " + ping.backend : ""),
+        ping.authKind === "user"
+          ? "Signed in"
+          : "Connected" + (ping.backend ? " · " + ping.backend : ""),
       );
     } else if (ping.status === "unauthorized") {
-      setStatus("bad", "Unauthorized");
+      setStatus("bad", "Sign in");
     } else {
       setStatus("bad", ping.error || "Offline");
     }
@@ -850,7 +852,7 @@
 
     initMobileDefaults();
     refreshAuthStatus();
-    if (remote() && remote().enabled() && remote().apiKey()) {
+    if (remote() && remote().enabled() && remote().hasAuth && remote().hasAuth()) {
       refreshThreads();
       refreshFiles();
     }

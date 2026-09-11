@@ -1945,6 +1945,23 @@
         justify-content: flex-end;
       }
       #settings-drawer.open { display: flex; }
+
+      #settings-auth-section input,
+      #settings-drawer-panel #byok-key,
+      #settings-drawer-panel #byok-provider,
+      #settings-drawer-panel #auth-email,
+      #settings-drawer-panel #auth-password {
+        width: 100%;
+        display: block;
+        margin-top: 0.3rem;
+        background: #0a0a10;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.45rem 0.6rem;
+        font: inherit;
+      }
+
       #settings-drawer-panel {
         width: min(400px, 100%);
         background: #0c0c12;
@@ -2410,13 +2427,47 @@
           <h2>Settings</h2>
           <button type="button" class="btn" id="settings-close">Close</button>
         </div>
+        <div class="settings-section" id="settings-auth-section">
+          <h3>Account</h3>
+          <div id="auth-signed-out">
+            <input id="auth-email" type="email" placeholder="Email" autocomplete="username" />
+            <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" />
+            <div class="onboard-actions" style="margin-top:0.4rem">
+              <button type="button" class="btn" id="auth-signin">Sign in</button>
+              <button type="button" class="btn" id="auth-signup">Sign up</button>
+              <button type="button" class="btn" id="auth-google">Google</button>
+            </div>
+            <p id="auth-error" style="color:#ffb4c0;font-size:0.8rem;margin:0.35rem 0 0"></p>
+          </div>
+          <div id="auth-signed-in" hidden>
+            <p id="auth-user-label" style="margin:0 0 0.4rem;font-size:0.9rem"></p>
+            <button type="button" class="btn" id="auth-signout">Sign out</button>
+          </div>
+        </div>
         <div class="settings-section">
           <h3>Model</h3>
           <div id="settings-model-slot"></div>
+          <p style="margin:0;font-size:0.75rem;color:var(--text-light)">Chatre models are default. BYOK models appear after you save a provider key.</p>
         </div>
         <div class="settings-section">
-          <h3>API &amp; desktop</h3>
+          <h3>Bring your own key</h3>
+          <select id="byok-provider">
+            <option value="openrouter">OpenRouter</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="google">Google Gemini</option>
+          </select>
+          <input id="byok-key" type="password" placeholder="Provider API key" autocomplete="off" />
+          <div class="onboard-actions" style="margin-top:0.35rem">
+            <button type="button" class="btn" id="byok-save">Save key</button>
+            <button type="button" class="btn" id="byok-delete">Remove</button>
+          </div>
+          <p id="byok-status" style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-light)"></p>
+        </div>
+        <div class="settings-section">
+          <h3>Service key <span style="font-weight:400;text-transform:none;letter-spacing:0">(advanced)</span></h3>
           <div id="settings-key-slot"></div>
+          <p style="margin:0;font-size:0.75rem;color:var(--text-light)">Optional site token for companion / self-host. Prefer signing in above.</p>
         </div>
         <div class="settings-section">
           <h3>Density</h3>
@@ -2449,8 +2500,8 @@
           <span class="onboard-dot"></span>
         </div>
         <div data-onboard-step="1">
-          <h2>Connect your API</h2>
-          <p>Paste your <strong>CHATRE_API_TOKEN</strong> so Chatre can use the remote workspace, browser, and threads.</p>
+          <h2>Create your account</h2>
+          <p>Sign up or sign in so your threads and BYOK keys stay private to you. Chatre models stay the default.</p>
           <div class="onboard-actions">
             <button type="button" class="btn" data-onboard-action="focus-key">Open settings</button>
             <button type="button" class="btn" data-onboard-action="next">Next</button>
@@ -2493,7 +2544,10 @@
     <script src="https://cdn.jsdelivr.net/npm/tippy.js@6.3.7/dist/tippy.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.js"></script>
     <script src="/ui-libs.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <script src="/config.js"></script>
+    <script src="/auth.js"></script>
     <script src="/skills.js"></script>
     <script src="/intent.js"></script>
     <script src="/allowlists.js"></script>

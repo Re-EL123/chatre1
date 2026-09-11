@@ -154,10 +154,14 @@
         $("status-strip").querySelector('[data-chip="companion"]');
       if (c) c.hidden = true;
     }
-    if (api && /Unauthorized|Offline|bad/i.test(api.className + api.textContent)) {
-      setStatusChip("api", "warn", "Paste API key above", function () {
-        const inp = $("api-key-input");
-        if (inp) inp.focus();
+    if (api && /Unauthorized|Offline|bad|Sign in/i.test(api.className + api.textContent)) {
+      setStatusChip("api", "warn", "Sign in to continue", function () {
+        if (window.ChatreUX && window.ChatreUX.openSettings) {
+          window.ChatreUX.openSettings();
+        } else {
+          const inp = $("api-key-input");
+          if (inp) inp.focus();
+        }
       });
     } else {
       const c = $("status-strip") &&
@@ -464,9 +468,10 @@
       (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
       "</div>" +
       "<h2>Chatre</h2>" +
-      "<p>Connect your API key, optionally start the desktop companion, then try a task.</p>" +
+      "<p>Sign in, optionally add your own provider keys, then try a task. Chatre models stay the default.</p>" +
       '<ol class="empty-steps">' +
-      "<li>Paste <strong>CHATRE_API_TOKEN</strong> in the toolbar until status is Connected</li>" +
+      "<li>Sign in from Settings (email or Google)</li>" +
+      "<li>Optional: add OpenRouter / Anthropic / OpenAI / Google keys under BYOK</li>" +
       "<li>Optional: run <code>npm run companion:start</code> for desktop tools</li>" +
       "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
       "</ol>" +
@@ -487,11 +492,12 @@
     const keyBtn = el("button", "btn");
     keyBtn.type = "button";
     keyBtn.innerHTML = window.ChatreKit
-      ? window.ChatreKit.labelWithIcon("key-round", "Focus API key", 14)
-      : "Focus API key";
+      ? window.ChatreKit.labelWithIcon("user", "Open settings", 14)
+      : "Open settings";
     keyBtn.addEventListener("click", function () {
-      const inp = $("api-key-input");
-      if (inp) inp.focus();
+      if (window.ChatreUX && window.ChatreUX.openSettings) {
+        window.ChatreUX.openSettings();
+      }
     });
     actions.appendChild(tryBtn);
     actions.appendChild(keyBtn);

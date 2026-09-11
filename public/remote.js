@@ -38,11 +38,46 @@
     return !!apiBase();
   }
 
-  function headers() {
+  function hasAuth() {
+    if (window.ChatreAuth && window.ChatreAuth.isSignedIn()) return true;
+    return !!apiKey();
+  }
+
+  async function authHeaders() {
     const h = {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     };
+    if (window.ChatreAuth && window.ChatreAuth.isSignedIn()) {
+      const token = await window.ChatreAuth.getIdToken(false);
+      if (token) {
+        h.Authorization = "Bearer " + token;
+        return h;
+      }
+    }
+    syncKeyFromUi();
+    const key = apiKey();
+    if (key) {
+      h.Authorization = "Bearer " + key;
+      h["x-chatre-key"] = key;
+    }
+    return h;
+  }
+
+  function headers() {
+    // Sync fallback for non-async callers; prefer authHeaders()
+    const h = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
+    if (
+      window.ChatreAuth &&
+      window.ChatreAuth.state &&
+      window.ChatreAuth.state.idToken
+    ) {
+      h.Authorization = "Bearer " + window.ChatreAuth.state.idToken;
+      return h;
+    }
     const key = apiKey();
     if (key) {
       h.Authorization = "Bearer " + key;
@@ -54,9 +89,10 @@
   async function request(path, options) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
+    const h = await authHeaders();
     const res = await fetch(base + path, {
       ...options,
-      headers: { ...headers(), ...(options && options.headers) },
+      headers: { ...h, ...(options && options.headers) },
     });
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("text/event-stream")) return res;
@@ -82,11 +118,15 @@
     if (!base) {
       return { ok: false, connected: false, status: "no-base", error: "No API base" };
     }
-    syncKeyFromUi();
     try {
+      if (window.ChatreAuth && window.ChatreAuth.isSignedIn()) {
+        await window.ChatreAuth.getIdToken(false);
+      } else {
+        syncKeyFromUi();
+      }
       const res = await fetch(base + "/api/health?auth=1", {
         method: "GET",
-        headers: headers(),
+        headers: await authHeaders(),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -107,6 +147,35 @@
         error: e.message || String(e),
       };
     }
+  }
+
+  async function getMe() {
+    return request("/api/me", { method: "GET" });
+  }
+
+  async function patchMe(body) {
+    return request("/api/me", {
+      method: "PATCH",
+      body: JSON.stringify(body || {}),
+    });
+  }
+
+  async function saveByok(provider, apiKeyValue) {
+    return request("/api/me?action=byok", {
+      method: "PUT",
+      body: JSON.stringify({ provider: provider, apiKey: apiKeyValue }),
+    });
+  }
+
+  async function deleteByok(provider) {
+    return request(
+      "/api/me?action=byok&provider=" + encodeURIComponent(provider),
+      { method: "DELETE" },
+    );
+  }
+
+  async function listModels() {
+    return request("/api/models", { method: "GET" });
   }
 
   async function createThread(title, model) {
@@ -214,9 +283,9 @@
     if (!base) throw new Error("CHATRE_API_BASE not set");
 
     syncKeyFromUi();
-    if (!apiKey()) {
+    if (!hasAuth()) {
       throw new Error(
-        "API key is empty — paste your Vercel CHATRE_API_TOKEN into the API key field.",
+        "Sign in to your Chatre account (Settings), or paste a service API token for advanced use.",
       );
     }
 
@@ -239,7 +308,7 @@
 
     const res = await fetch(base + "/api/agent", {
       method: "POST",
-      headers: headers(),
+      headers: await authHeaders(),
       signal,
       body: JSON.stringify(body),
     });
@@ -253,8 +322,7 @@
         /* ignore */
       }
       if (res.status === 401) {
-        err +=
-          " — the key must exactly match Vercel env CHATRE_API_TOKEN on chatre-api (redeploy after setting it).";
+        err += " — sign in again or check your account / service token.";
       }
       throw new Error(err);
     }
@@ -320,7 +388,7 @@
     syncKeyFromUi();
     const res = await fetch(base + "/api/companion", {
       method: "GET",
-      headers: headers(),
+      headers: await authHeaders(),
     });
     const data = await res.json().catch(function () {
       return null;
@@ -333,11 +401,18 @@
 
   window.ChatreRemote = {
     enabled,
+    hasAuth,
     apiBase,
     apiKey,
     syncKeyFromUi,
+    authHeaders,
     health,
     pingAuth,
+    getMe,
+    patchMe,
+    saveByok,
+    deleteByok,
+    listModels,
     companionStatus,
     createThread,
     listThreads,

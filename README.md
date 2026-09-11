@@ -27,7 +27,9 @@ This template demonstrates how to build an AI-powered chat interface using Cloud
 - Structured observability logs
 - Markdown via marked + DOMPurify
 - Optional **chatre-api** (Vercel + Firestore): persisted threads, sandbox exec, SSE agent
-- Auth status badge (Connected / Unauthorized), thread sidebar, file explorer + ZIP export, usage meter
+- **Accounts:** Firebase Auth (email/password + Google); threads/workspaces scoped per user
+- **BYOK:** OpenRouter, Anthropic, OpenAI, Google Gemini keys (encrypted server-side); Chatre `@cf/…` models remain default
+- Auth status badge (Signed in / Sign in), thread sidebar, file explorer + ZIP export, usage meter
 - Agent: streamed tokens per step, auto skill routing, tool-result summarization
 - **Computer use**: real browser via Cloudflare Browser Rendering (`/api/browser`) + shell/files/HTTP tools
 <!-- dash-content-end -->
@@ -38,23 +40,35 @@ The sibling repo lives at **`/home/akani/Documents/chatre-api`** ([github.com/Re
 
 ```bash
 cd /home/akani/Documents/chatre-api
-cp .env.example .env.local   # set FIREBASE_SERVICE_ACCOUNT, CHATRE_API_TOKEN, CHATRE_WORKER_URL
+cp .env.example .env.local   # FIREBASE_SERVICE_ACCOUNT, CHATRE_API_TOKEN, BYOK_ENCRYPTION_KEY, CHATRE_WORKER_URL
 npm install
 npm run check-env            # pre-deploy checklist
 npm start                    # http://localhost:8080
 ```
 
-In the Chatre UI paste your `CHATRE_API_TOKEN` into the toolbar — status shows **Connected** or **Unauthorized**. Or:
+### Frontend Auth (Firebase)
+
+1. Firebase Console → Authentication → enable **Email/Password** and **Google**.
+2. Project settings → Your apps → copy web `apiKey` and `appId` into `public/config.js` (`CHATRE_FIREBASE`) or:
+
+```js
+localStorage.setItem("chatre_firebase_api_key", "YOUR_WEB_API_KEY");
+localStorage.setItem("chatre_firebase_app_id", "YOUR_APP_ID");
+location.reload();
+```
+
+Sign in from **Settings**. Service token remains under Settings → Service key (advanced) for companion/self-host.
 
 ```js
 localStorage.setItem("chatre_api_base", "http://localhost:8080");
+// optional advanced:
 localStorage.setItem("chatre_api_key", "YOUR_CHATRE_API_TOKEN");
 location.reload();
 ```
 
 Publish `firestore.rules` from chatre-api in Firebase Console (deny-all for `sites/chatre/**`, Admin SDK only).
 
-Deploy API with `npx vercel` and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
+Deploy API with `npx vercel` (set `BYOK_ENCRYPTION_KEY`) and point `CHATRE_WORKER_URL` at your Cloudflare Worker.
 
 ## Getting Started
 
