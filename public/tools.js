@@ -37,6 +37,11 @@
     { name: "export_document", desc: "Download an existing workspace file", params: { path: "string" } },
     { name: "verify_project", desc: "Sanity-check a project directory", params: { path: "string" } },
     { name: "view_tree", desc: "Show the workspace file tree", params: { path: "string" } },
+    { name: "ask_user_input", desc: "Ask the user a question with tappable option buttons (2-4 short, mutually exclusive choices)", params: { question: "string", options: "array" } },
+    { name: "search_mcp_registry", desc: "Search available MCP connectors (Jira, Slack, Notion, GitHub, …) by product or task", params: { query: "string", queries: "array" } },
+    { name: "suggest_connectors", desc: "Present connector options to the user with Connect/Use buttons (pass directory UUIDs from search_mcp_registry)", params: { uuids: "array", question: "string" } },
+    { name: "call_mcp", desc: "Call a tool on a connected MCP server (pass server uuid, tool name, arguments)", params: { server: "string", tool: "string", arguments: "object" } },
+    { name: "list_mcp_tools", desc: "List the tools exposed by a connected MCP server", params: { server: "string" } },
     { name: "git_init", desc: "Initialize a git repository", params: {} },
     { name: "git_add", desc: "Stage a file for commit", params: { path: "string" } },
     { name: "git_commit", desc: "Commit staged changes", params: { message: "string" } },
@@ -233,6 +238,21 @@
 
       case "use_skill":
         return useSkillTool(p.name);
+
+      case "ask_user_input":
+        return askUserInputTool(p.question, p.options);
+
+      case "search_mcp_registry":
+        return searchMcpRegistryTool(p.query || p.queries);
+
+      case "suggest_connectors":
+        return suggestConnectorsTool(p.uuids, p.question);
+
+      case "call_mcp":
+        return await callMcpTool(p.server, p.tool, p.arguments);
+
+      case "list_mcp_tools":
+        return await listMcpToolsTool(p.server);
 
       case "tabs_create":
       case "navigate":
@@ -1307,6 +1327,167 @@
     }
     const guide = window.ChatreSkills.formatSkill(skill);
     return { ok: true, tool: "use_skill", skill: skill.name, guide, text: guide };
+  }
+
+  // ─── Elicitation: tappable options ──────────────────────────────────────
+
+  /**
+   * Normalize options into [{ label, value }]. Accepts strings or objects
+   * with label/value. Caps at 4 (per the elicitation guideline) and requires
+   * at least 2 to render buttons; otherwise the caller asks in prose.
+   */
+  function normalizeOptions(options) {
+    const list = Array.isArray(options) ? options : [];
+    const out = [];
+    for (const opt of list) {
+      if (out.length >= 4) break;
+      if (typeof opt === "string" && opt.trim()) {
+        out.push({ label: opt.trim(), value: opt.trim() });
+      } else if (opt && typeof opt === "object") {
+        const label = opt.label || opt.value || opt.text;
+        if (label) out.push({ label: String(label), value: String(opt.value || label) });
+      }
+    }
+    return out;
+  }
+
+  function askUserInputTool(question, options) {
+    const q = String(question || "").trim();
+    const opts = normalizeOptions(options);
+    if (!q) {
+      return { ok: false, tool: "ask_user_input", error: "ask_user_input requires a question" };
+    }
+    if (opts.length < 2) {
+      return {
+        ok: false,
+        tool: "ask_user_input",
+        error:
+          "ask_user_input needs 2-4 tappable options. Ask in prose instead if there is only one choice.",
+      };
+    }
+    return {
+      ok: true,
+      tool: "ask_user_input",
+      type: "user_input",
+      question: q,
+      options: opts,
+      text: q,
+    };
+  }
+
+  // ─── MCP connectors ─────────────────────────────────────────────────────
+
+  function toQueryList(query) {
+    if (Array.isArray(query)) return query.map(String).filter(Boolean);
+    if (query == null) return [];
+    return [String(query)];
+  }
+
+  function searchMcpRegistryTool(query) {
+    if (!window.ChatreMCP) {
+      return { ok: false, tool: "search_mcp_registry", error: "MCP module not loaded" };
+    }
+    const terms = toQueryList(query);
+    const seen = {};
+    const results = [];
+    const searchTerms = terms.length ? terms : [""];
+    searchTerms.forEach(function (t) {
+      window.ChatreMCP.search(t).forEach(function (r) {
+        if (!seen[r.uuid]) {
+          seen[r.uuid] = true;
+          results.push(r);
+        }
+      });
+    });
+    const connected = window.ChatreMCP.listConnected();
+    const connectedIds = connected.map(function (c) { return c.uuid; });
+    return {
+      ok: true,
+      tool: "search_mcp_registry",
+      results: results.slice(0, 8),
+      connected: connectedIds,
+      text:
+        results.length
+          ? results
+              .slice(0, 8)
+              .map(function (r) {
+                return r.name + " (" + r.uuid + ") — " + r.description + (r.connected ? " [connected]" : "");
+              })
+              .join("\n")
+          : "No connectors matched. Answer directly if the task doesn't need one.",
+    };
+  }
+
+  function suggestConnectorsTool(uuids, question) {
+    if (!window.ChatreMCP) {
+      return { ok: false, tool: "suggest_connectors", error: "MCP module not loaded" };
+    }
+    const ids = Array.isArray(uuids) ? uuids : uuids ? [uuids] : [];
+    // Resolve each uuid to a registry entry (support name search as a fallback).
+    const options = [];
+    ids.forEach(function (id) {
+      const found = window.ChatreMCP.search(id)[0];
+      if (found && !options.some(function (o) { return o.uuid === found.uuid; })) {
+        options.push(found);
+      }
+    });
+    if (!options.length) {
+      return {
+        ok: false,
+        tool: "suggest_connectors",
+        error: "No matching connectors. Call search_mcp_registry first and pass those directory UUIDs.",
+      };
+    }
+    return {
+      ok: true,
+      tool: "suggest_connectors",
+      type: "connectors",
+      question: String(question || "Which of these would you like to connect?"),
+      connectors: options,
+      text: options.map(function (o) { return o.name + " (" + o.uuid + ")"; }).join(", "),
+    };
+  }
+
+  async function callMcpTool(server, tool, args) {
+    if (!window.ChatreMCP) {
+      return { ok: false, tool: "call_mcp", error: "MCP module not loaded" };
+    }
+    if (!server || !tool) {
+      return { ok: false, tool: "call_mcp", error: "call_mcp requires server and tool" };
+    }
+    const result = await window.ChatreMCP.call(server, tool, args);
+    if (!result.ok) {
+      return { ok: false, tool: "call_mcp", error: result.error };
+    }
+    return {
+      ok: true,
+      tool: "call_mcp",
+      server,
+      called: tool,
+      result: result.result,
+      text: typeof result.result === "string" ? result.result : JSON.stringify(result.result).slice(0, 4000),
+    };
+  }
+
+  async function listMcpToolsTool(server) {
+    if (!window.ChatreMCP) {
+      return { ok: false, tool: "list_mcp_tools", error: "MCP module not loaded" };
+    }
+    const result = await window.ChatreMCP.listTools(server);
+    if (!result.ok) {
+      return { ok: false, tool: "list_mcp_tools", error: result.error };
+    }
+    const tools = result.tools || [];
+    return {
+      ok: true,
+      tool: "list_mcp_tools",
+      server,
+      tools,
+      text:
+        tools.length
+          ? tools.map(function (t) { return (t.name || t) + (t.description ? " — " + t.description : ""); }).join("\n")
+          : result.note || "(no tools discovered)",
+    };
   }
 
   function ensureDir(path) {

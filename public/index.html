@@ -622,6 +622,130 @@
         transform: translateY(-1px);
       }
 
+      .ask-user-prompt {
+        margin: 0.5rem 0 0.25rem;
+        padding: 0.65rem 0.75rem;
+        background: rgba(108, 140, 255, 0.08);
+        border: 1px solid rgba(108, 140, 255, 0.35);
+        border-radius: 10px;
+      }
+
+      .ask-user-prompt .ask-question {
+        font-weight: 600;
+        margin: 0 0 0.55rem;
+        color: #dfe8ff;
+      }
+
+      .option-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .option-button {
+        flex: 1 1 auto;
+        min-width: 110px;
+        padding: 0.65rem 0.9rem;
+        background: #1a1a2e;
+        border: 1px solid #3a3a5a;
+        color: #c9d4f0;
+        border-radius: 10px;
+        font: inherit;
+        font-size: 0.92rem;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        text-align: center;
+      }
+
+      .option-button:hover {
+        background: rgba(108, 140, 255, 0.28);
+        border-color: #6c8cff;
+        color: #fff;
+        transform: translateY(-1px);
+      }
+
+      .option-button:active {
+        transform: scale(0.97);
+      }
+
+      .connector-prompt {
+        margin: 0.5rem 0 0.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .connector-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0.6rem 0.75rem;
+        background: rgba(20, 22, 44, 0.85);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+      }
+
+      .connector-card .connector-name {
+        font-weight: 600;
+        color: #9fd4ff;
+        font-size: 0.95rem;
+      }
+
+      .connector-card .connector-desc {
+        font-size: 0.82rem;
+        color: var(--text-light);
+      }
+
+      .connector-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.35rem;
+        flex-wrap: wrap;
+      }
+
+      .connector-actions button {
+        padding: 0.4rem 0.85rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: #12121c;
+        color: var(--text-light);
+        font: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.18s ease;
+      }
+
+      .connector-actions .connect-btn {
+        background: #1a3a28;
+        border-color: #3a9a5a;
+        color: #9dffb0;
+      }
+
+      .connector-actions .connect-btn:hover {
+        background: #0e2818;
+        border-color: #6cff9d;
+      }
+
+      .connector-actions .use-btn {
+        background: #0e1a28;
+        border-color: #3a6a9a;
+        color: #9fd4ff;
+      }
+
+      .connector-actions .use-btn:hover {
+        border-color: #6c8cff;
+      }
+
+      .connector-actions .none-btn:hover {
+        color: #fff;
+        border-color: #555;
+      }
+
+      .connector-state {
+        font-size: 0.78rem;
+        color: #9dffb0;
+      }
+
       .spinner {
         display: inline-block;
         width: 14px;
@@ -1245,6 +1369,7 @@
     <script src="/config.js"></script>
     <script src="/skills.js"></script>
     <script src="/intent.js"></script>
+    <script src="/mcp.js"></script>
     <script src="/tools.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>

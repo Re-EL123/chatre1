@@ -28,7 +28,7 @@
 
   const SLASH_COMMANDS = [
     { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
-    { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
+    { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; window.__pendingUserInput = null; window.__pendingConnectors = null; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
     { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle agent mode (ON by default — plan, build, code, commit, documents)") },
     { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`\nAgent mode: **" + (agentMode ? "ON" : "OFF") + "**") },
     { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
@@ -183,6 +183,115 @@
     });
 
     container.appendChild(chipsDiv);
+  }
+
+  /** Send a string through the normal chat pipeline (used by chips/buttons). */
+  function submitChoice(text) {
+    if (isProcessing) return;
+    userInput.value = String(text || "");
+    userInput.style.height = "auto";
+    sendMessage();
+  }
+
+  /** Render tappable option buttons from an ask_user_input result. */
+  function renderOptionButtons(container, payload) {
+    if (!payload || !Array.isArray(payload.options) || !payload.options.length) {
+      return;
+    }
+    const box = document.createElement("div");
+    box.className = "ask-user-prompt";
+    const q = document.createElement("div");
+    q.className = "ask-question";
+    q.textContent = payload.question || "Please choose:";
+    box.appendChild(q);
+    const btns = document.createElement("div");
+    btns.className = "option-buttons";
+    payload.options.forEach((opt) => {
+      const label = opt.label || opt.value || String(opt);
+      const value = opt.value || label;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "option-button";
+      b.textContent = label;
+      b.addEventListener("click", () => submitChoice(value));
+      btns.appendChild(b);
+    });
+    box.appendChild(btns);
+    container.appendChild(box);
+    scrollToBottom();
+  }
+
+  /** Render connector cards from a suggest_connectors result. */
+  function renderConnectorCards(container, payload) {
+    if (!payload || !Array.isArray(payload.connectors) || !payload.connectors.length) {
+      return;
+    }
+    const prompt = document.createElement("div");
+    prompt.className = "connector-prompt";
+    if (payload.question) {
+      const q = document.createElement("div");
+      q.className = "ask-question";
+      q.textContent = payload.question;
+      prompt.appendChild(q);
+    }
+    let connectedUuids = [];
+    if (window.ChatreMCP) {
+      connectedUuids = window.ChatreMCP.listConnected().map((c) => c.uuid);
+    }
+    payload.connectors.forEach((c) => {
+      const card = document.createElement("div");
+      card.className = "connector-card";
+      const nameEl = document.createElement("div");
+      nameEl.className = "connector-name";
+      nameEl.textContent = c.name || c.uuid;
+      const descEl = document.createElement("div");
+      descEl.className = "connector-desc";
+      descEl.textContent = c.description || "";
+      card.appendChild(nameEl);
+      card.appendChild(descEl);
+
+      const actions = document.createElement("div");
+      actions.className = "connector-actions";
+      const statusEl = document.createElement("span");
+      statusEl.className = "connector-state";
+
+      const mkBtn = (label, cls, fn) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = cls;
+        b.textContent = label;
+        b.addEventListener("click", fn);
+        return b;
+      };
+
+      const useBtn = mkBtn("Use", "use-btn", () =>
+        submitChoice("Use " + (c.name || c.uuid) + " (" + c.uuid + ")"),
+      );
+
+      const alreadyConnected = connectedUuids.indexOf(c.uuid) !== -1;
+      if (alreadyConnected) {
+        statusEl.textContent = "connected";
+        actions.appendChild(useBtn);
+      } else {
+        const connectBtn = mkBtn("Connect", "connect-btn", () => {
+          if (window.ChatreMCP) window.ChatreMCP.connect(c.uuid);
+          statusEl.textContent = "connected";
+          actions.replaceChild(useBtn, connectBtn);
+        });
+        actions.appendChild(connectBtn);
+      }
+      actions.appendChild(
+        mkBtn("None of these", "none-btn", () =>
+          submitChoice("None of these connectors"),
+        ),
+      );
+
+      card.appendChild(statusEl);
+      card.appendChild(actions);
+      prompt.appendChild(card);
+    });
+    container.appendChild(prompt);
+    scrollToBottom();
   }
 
   function setBusy(busy, mode) {
@@ -415,12 +524,20 @@
         ? window.ChatreIntent.classifyIntent(message)
         : null;
 
-    // If the agent asked a clarifying question last turn, the next message
-    // is an answer — resume the existing thread automatically.
+    // If the agent asked a clarifying question OR showed tappable option
+    // buttons / connector cards last turn, the next message is the user's
+    // answer/choice — resume the existing thread automatically.
     let resumeBecauseClarification = false;
-    if (window.__pendingClarification && window.__localResumeMessages) {
+    const hadPendingChoice =
+      window.__pendingUserInput || window.__pendingConnectors;
+    if (
+      hadPendingChoice ||
+      (window.__pendingClarification && window.__localResumeMessages)
+    ) {
       resumeBecauseClarification = true;
       window.__pendingClarification = false;
+      window.__pendingUserInput = null;
+      window.__pendingConnectors = null;
     }
 
     const stashed = window.__localResumeMessages;
@@ -1178,6 +1295,27 @@
               if (res.cancelled && !finalText) {
                 showStep(res.response || "(stopped)", true);
               }
+              // Tappable preference buttons: render chips and wait for the
+              // user's choice (the next message resumes this thread).
+              if (res.userInput && res.userInput.options && res.userInput.options.length) {
+                skipChips = true;
+                window.__pendingUserInput = res.userInput;
+                window.__pendingClarification = false;
+                if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(true);
+                renderOptionButtons(agentBody, res.userInput);
+              }
+              // Connector suggestion cards: Connect / Use / None buttons.
+              if (
+                res.suggestedConnectors &&
+                res.suggestedConnectors.connectors &&
+                res.suggestedConnectors.connectors.length
+              ) {
+                skipChips = true;
+                window.__pendingConnectors = res.suggestedConnectors;
+                window.__pendingClarification = false;
+                if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(true);
+                renderConnectorCards(agentBody, res.suggestedConnectors);
+              }
             },
             onError: (err) => {
               stopThinking();
@@ -1231,7 +1369,9 @@
       stopThinking();
       setBusy(false);
       userInput.focus();
-      appendSuggestionChips(agentEl, finalText || "project");
+      if (!skipChips) {
+        appendSuggestionChips(agentEl, finalText || "project");
+      }
     }
   }
 
@@ -1270,6 +1410,30 @@
       );
     if (tool === "export_document") return "path: " + (params.path || "");
     if (tool === "use_skill") return "skill: " + (params.name || "");
+    if (tool === "ask_user_input")
+      return (
+        "→ " +
+        String(params.question || "").slice(0, 80) +
+        "  [" +
+        (Array.isArray(params.options) ? params.options.length : 0) +
+        " options]"
+      );
+    if (tool === "search_mcp_registry")
+      return (
+        "search: " +
+        JSON.stringify(params.queries || params.query || "")
+      );
+    if (tool === "suggest_connectors")
+      return (
+        "connectors: " +
+        (Array.isArray(params.uuids) ? params.uuids.join(", ") : params.uuids || "")
+      );
+    if (tool === "call_mcp")
+      return (
+        (params.server || "?") + " :: " + (params.tool || "?")
+      );
+    if (tool === "list_mcp_tools")
+      return "server: " + (params.server || "");
     if (tool === "git_commit") return "message: " + (params.message || "");
     if (tool === "git_push") {
       return (
@@ -1846,7 +2010,8 @@
       chatMessages.appendChild(agentEl);
       scrollToBottom();
 
-      let finalText = "";
+let finalText = "";
+    let skipChips = false;
       const showStep = (text, isFinal) => {
         const p = document.createElement("div");
         p.className = "agent-text" + (isFinal ? " agent-final" : "");

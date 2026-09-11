@@ -21,6 +21,8 @@
     "git_log",
     "list_skills",
     "verify_project",
+    "search_mcp_registry",
+    "list_mcp_tools",
   ]);
 
   // Tools that change the workspace → trigger the post-write verification gate.
@@ -141,6 +143,12 @@
 
           callbacks.onThinking &&
             callbacks.onThinking(i + 1, this.maxIterations);
+
+          // Pace non-first iterations so tool rounds don't burst all of the
+          // minute's AI requests at once (Workers AI has per-minute caps).
+          if (i > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+          }
 
           const payloadMessages = preamble.concat(trimAgentMessages(messages));
 
@@ -380,6 +388,37 @@
           }
 
           if (cancelled) break;
+
+          // Terminal elicitation/connector tools: stop the loop so the
+          // UI can render tappable option buttons or connector cards.
+          const specialResult = results.find(function (r) {
+            return r.result && (r.result.type === "user_input" || r.result.type === "connectors");
+          });
+          if (specialResult) {
+            const payload = specialResult.result;
+            callbacks.onDone &&
+              callbacks.onDone({
+                response: fullAssistantText,
+                iterations: i + 1,
+                cancelled: false,
+                toolsUsed: usedTools,
+                intent: intent && intent.name,
+                askedClarification: true,
+                userInput: payload.type === "user_input" ? payload : null,
+                suggestedConnectors: payload.type === "connectors" ? payload : null,
+              });
+            return {
+              response: fullAssistantText,
+              iterations: i + 1,
+              cancelled: false,
+              messages,
+              toolsUsed: usedTools,
+              intent: intent && intent.name,
+              askedClarification: true,
+              userInput: payload.type === "user_input" ? payload : null,
+              suggestedConnectors: payload.type === "connectors" ? payload : null,
+            };
+          }
 
           messages.push({
             role: "user",
@@ -639,7 +678,35 @@
       );
     }
 
-    // 3. Full skill playbooks (real workflow guidance)
+    // 3. Elicitation + integrations guidance
+    const elicit = [
+      "When the user's request needs preferences, constraints, or goals you cannot infer, use the ask_user_input tool to show tappable option buttons instead of asking in prose bullets.",
+      "Keep to ONE question, with 2-4 short, mutually exclusive options. Before asking, check the conversation for the answer; if it is already there, use it and proceed.",
+      "If the user asks 'A or B?', asks for your opinion, is venting, or the question is factual — do NOT use ask_user_input; answer directly.",
+      "If reading the user's data (email, calendar, tasks, tickets, files) would help and no tool covers it, call search_mcp_registry with product or task keywords, then suggest_connectors to present the matches.",
+      "After suggest_connectors, your turn is done — the user's choice arrives as their next message.",
+    ];
+    parts.push(
+      "## Elicitation and integrations\n" + elicit.map((s) => "- " + s).join("\n"),
+    );
+
+    if (window.ChatreMCP) {
+      const connected = window.ChatreMCP.listConnected();
+      if (connected.length) {
+        parts.push(
+          "## Connected integrations\n" +
+            "These MCP servers are connected and their tools are reachable via call_mcp(server=uuid, tool=name, arguments={...}). Use list_mcp_tools(server) to discover what each exposes.\n" +
+            connected
+              .map(function (c) {
+                return "- " + c.name + " (server: " + c.uuid + ")";
+              })
+              .join("\n") +
+            "\nNote: public MCP endpoints often require credentials; connect after confirming with the user.",
+        );
+      }
+    }
+
+    // 4. Full skill playbooks (real workflow guidance)
     const known = (skills || []).filter(function (name) {
       return window.ChatreSkills && window.ChatreSkills.getSkill(name);
     });

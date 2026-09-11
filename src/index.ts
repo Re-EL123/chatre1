@@ -29,8 +29,67 @@ const SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT;
 const MAX_HISTORY_MESSAGES = 20;
 const DEFAULT_MAX_TOKENS = 2048;
 const HARD_MAX_TOKENS = 4096;
-const RATE_LIMIT_PER_MINUTE = 30;
+const RATE_LIMIT_PER_MINUTE = 120;
 const RATE_WINDOW_MS = 60_000;
+const AI_MAX_RETRIES = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelayMs(retryAfter: string | null, attempt: number): number {
+  if (retryAfter) {
+    const seconds = Number.parseInt(retryAfter, 10);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.min(seconds * 1000, 30_000);
+    }
+  }
+  return Math.min(1000 * 2 ** attempt, 8_000);
+}
+
+/**
+ * Retry an AI binding call when Workers AI returns/throws HTTP 429 (its own
+ * per-minute caps, independent of the daily neuron quota). Honors the
+ * upstream Retry-After header so bursts self-heal instead of failing.
+ */
+async function aiRunWithRetry(
+  fn: () => Promise<Response>,
+): Promise<Response> {
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt <= AI_MAX_RETRIES; attempt++) {
+    try {
+      lastResponse = await fn();
+      if (lastResponse.status !== 429) return lastResponse;
+    } catch (error) {
+      const status = statusOf(error);
+      if (status !== 429) throw error;
+      lastResponse = null;
+    }
+    if (attempt >= AI_MAX_RETRIES) break;
+    const retryAfter = lastResponse
+      ? lastResponse.headers.get("retry-after")
+      : null;
+    const delayMs = retryDelayMs(retryAfter, attempt);
+    console.warn(
+      JSON.stringify({
+        event: "ai_rate_limited",
+        attempt: attempt + 1,
+        retryAfterMs: delayMs,
+      }),
+    );
+    await sleep(delayMs);
+  }
+  return lastResponse ?? new Response("Rate limited", { status: 429 });
+}
+
+function statusOf(error: unknown): number | undefined {
+  if (error && typeof error === "object") {
+    const obj = error as { status?: unknown; statusCode?: unknown };
+    const n = typeof obj.status === "number" ? obj.status : obj.statusCode;
+    if (typeof n === "number") return n;
+  }
+  return undefined;
+}
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -59,7 +118,14 @@ function clientIp(request: Request): string {
   );
 }
 
-function checkRateLimit(request: Request): Response | null {
+function checkRateLimit(request: Request, env: Env): Response | null {
+  // Trusted first-party callers (requests carrying the shared secret) are
+  // exempt from the per-IP cap — they're not a single browser session.
+  if (env.CHATRE_SECRET) {
+    const auth = request.headers.get("authorization") || "";
+    if (auth === "Bearer " + env.CHATRE_SECRET) return null;
+    if (request.headers.get("x-chatre-key") === env.CHATRE_SECRET) return null;
+  }
   const ip = clientIp(request);
   const now = Date.now();
   let bucket = rateBuckets.get(ip);
@@ -170,10 +236,16 @@ export default {
         if (!authorized(request, env)) {
           return jsonResponse({ error: "Unauthorized" }, 401);
         }
-        const limited = checkRateLimit(request);
+        const limited = checkRateLimit(request, env);
         if (limited) return limited;
         return handleBrowserRequest(request, env);
       }
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    if (url.pathname === "/api/mcp") {
+      if (request.method === "OPTIONS") return optionsResponse();
+      if (request.method === "POST") return handleMcpRequest(request, env);
       return new Response("Method not allowed", { status: 405 });
     }
 
@@ -200,7 +272,7 @@ async function handleChatRequest(
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const limited = checkRateLimit(request);
+    const limited = checkRateLimit(request, env);
     if (limited) return limited;
 
     const body = (await request.json()) as ChatRequestBody;
@@ -238,7 +310,7 @@ async function handleChatRequest(
     );
 
     if (!wantStream) {
-      const runInput: Record<string, unknown> = {
+      let runInput: Record<string, unknown> = {
         messages,
         max_tokens: maxTokens,
       };
@@ -246,28 +318,50 @@ async function handleChatRequest(
         runInput.tools = tools;
       }
 
-      let result: unknown;
-      try {
-        result = await env.AI.run(modelId as keyof AiModels, runInput as never);
-      } catch (toolErr) {
-        // Some models reject tools — retry without them
-        if (tools && tools.length) {
-          console.warn(
-            JSON.stringify({
-              event: "chat_tools_fallback",
-              error:
-                toolErr instanceof Error ? toolErr.message : String(toolErr),
-            }),
-          );
-          result = await env.AI.run(modelId as keyof AiModels, {
-            messages,
-            max_tokens: maxTokens,
-          } as never);
-        } else {
-          throw toolErr;
-        }
+      let aiResponse = await aiRunWithRetry(() =>
+        env.AI.run(modelId as keyof AiModels, runInput as never, {
+          returnRawResponse: true,
+        }),
+      );
+
+      // Some models reject tools — retry without them (but not on 429s;
+      // those are already retried by aiRunWithRetry and are rate-limit errors,
+      // not tool-rejection errors).
+      if (!aiResponse.ok && aiResponse.status !== 429 && tools && tools.length) {
+        console.warn(
+          JSON.stringify({
+            event: "chat_tools_fallback",
+            status: aiResponse.status,
+          }),
+        );
+        runInput = { messages, max_tokens: maxTokens };
+        aiResponse = await aiRunWithRetry(() =>
+          env.AI.run(modelId as keyof AiModels, runInput as never, {
+            returnRawResponse: true,
+          }),
+        );
       }
 
+      if (!aiResponse.ok) {
+        const bodyText = await aiResponse.text().catch(() => "");
+        console.error(
+          JSON.stringify({
+            event: "chat_non_stream_error",
+            status: aiResponse.status,
+            body: bodyText.slice(0, 500),
+          }),
+        );
+        return jsonResponse(
+          {
+            error:
+              bodyText ||
+              "Workers AI returned " + aiResponse.status + ".",
+          },
+          aiResponse.status,
+        );
+      }
+
+      const result = (await aiResponse.json()) as unknown;
       const parsed = normalizeChatResult(result);
       console.log(
         JSON.stringify({
@@ -283,15 +377,35 @@ async function handleChatRequest(
       return jsonResponse(parsed);
     }
 
-    const aiResponse = await env.AI.run(
-      modelId as keyof AiModels,
-      {
-        messages,
-        max_tokens: maxTokens,
-        stream: true,
-      },
-      { returnRawResponse: true },
+    const aiResponse = await aiRunWithRetry(() =>
+      env.AI.run(
+        modelId as keyof AiModels,
+        {
+          messages,
+          max_tokens: maxTokens,
+          stream: true,
+        },
+        { returnRawResponse: true },
+      ),
     );
+
+    if (!aiResponse.ok) {
+      const bodyText = await aiResponse.text().catch(() => "");
+      console.error(
+        JSON.stringify({
+          event: "chat_stream_error",
+          status: aiResponse.status,
+          body: bodyText.slice(0, 500),
+        }),
+      );
+      return jsonResponse(
+        {
+          error:
+            bodyText || "Workers AI returned " + aiResponse.status + ".",
+        },
+        aiResponse.status,
+      );
+    }
 
     const headers = new Headers(aiResponse.headers);
     for (const [key, value] of Object.entries(CORS_HEADERS)) {
@@ -323,6 +437,136 @@ async function handleChatRequest(
   }
 }
 
+interface McpRequestBody {
+  endpoint?: string;
+  /** MCP JSON-RPC method: "tools/call" (default) or "tools/list". */
+  method?: string;
+  tool?: string;
+  arguments?: Record<string, unknown>;
+}
+
+/**
+ * CORS-safe relay to external MCP (Model Context Protocol) endpoints.
+ * The browser can't fetch these directly (no CORS headers), so the Worker
+ * POSTs a JSON-RPC 2.0 request upstream and forwards the JSON or the last
+ * SSE event. Credentials stay on the user's side for now (endpoint auth is
+ * passed through in the request from the client when configured).
+ */
+async function handleMcpRequest(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const started = Date.now();
+  try {
+    if (!authorized(request, env)) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    const limited = checkRateLimit(request, env);
+    if (limited) return limited;
+
+    const body = (await request.json()) as McpRequestBody;
+    const endpoint = String(body.endpoint || "").trim();
+    if (!/^https:\/\//i.test(endpoint)) {
+      return jsonResponse({ error: "endpoint must be an https URL" }, 400);
+    }
+
+    const method =
+      body.method === "tools/list" ? "tools/list" : "tools/call";
+    const payload = {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params:
+        method === "tools/list"
+          ? {}
+          : { name: body.tool, arguments: body.arguments || {} },
+    };
+
+    // Forward any client-provided auth headers (e.g. x-api-key) set by the
+    // connector card, so the upstream endpoint can authenticate the user.
+    const forwardHeaders: Record<string, string> = {};
+    for (const key of ["x-api-key", "authorization", "x-chatre-key"]) {
+      const v = request.headers.get(key);
+      if (v) forwardHeaders[key] = v;
+    }
+
+    const upstream = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "user-agent": "Chatre/1.0",
+        ...forwardHeaders,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const ct = upstream.headers.get("content-type") || "";
+    let result: unknown = null;
+    if (ct.includes("text/event-stream")) {
+      const raw = await upstream.text();
+      for (const line of raw.split("\n")) {
+        const m = line.match(/^data:\s*(.*)$/);
+        if (m && m[1]) {
+          try {
+            result = JSON.parse(m[1]);
+          } catch {
+            /* non-JSON SSE frame — keep last */
+          }
+        }
+      }
+    } else {
+      try {
+        result = await upstream.json();
+      } catch {
+        result = { ok: false, error: "Non-JSON response from " + endpoint };
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        event: "mcp_call",
+        endpoint,
+        method,
+        tool: body.tool,
+        status: upstream.status,
+        durationMs: Date.now() - started,
+      }),
+    );
+
+    if (!upstream.ok && !result) {
+      return jsonResponse(
+        { ok: false, error: "Upstream returned " + upstream.status },
+        upstream.status,
+      );
+    }
+
+    const envelope = (result || {}) as {
+      result?: unknown;
+      error?: unknown;
+    };
+    if (envelope.error) {
+      return jsonResponse(
+        { ok: false, error: JSON.stringify(envelope.error) },
+        200,
+      );
+    }
+    return jsonResponse({ ok: true, result: envelope.result ?? envelope });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "mcp_error",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return jsonResponse(
+      { ok: false, error: "MCP relay failed: " + (error instanceof Error ? error.message : String(error)) },
+      200,
+    );
+  }
+}
+
 async function handleImageRequest(
   request: Request,
   env: Env,
@@ -333,7 +577,7 @@ async function handleImageRequest(
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const limited = checkRateLimit(request);
+    const limited = checkRateLimit(request, env);
     if (limited) return limited;
 
     const body = (await request.json()) as {
