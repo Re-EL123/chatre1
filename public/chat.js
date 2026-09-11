@@ -1149,6 +1149,12 @@
       );
     }
     if (tool === "execute_command") return "$ " + (params.cmd || "");
+    if (tool === "browser_navigate") return "url: " + (params.url || "");
+    if (tool === "browser_click") return "click " + (params.selector || "");
+    if (tool === "browser_type")
+      return (params.selector || "") + " ← " + String(params.text || "").slice(0, 40);
+    if (tool === "http_request")
+      return (params.method || "GET") + " " + (params.url || "");
     if (tool === "create_document") return "title: " + (params.title || "document");
     if (tool === "export_document") return "path: " + (params.path || "");
     if (tool === "use_skill") return "skill: " + (params.name || "");

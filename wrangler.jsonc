@@ -17,5 +17,8 @@
   "ai": {
     "binding": "AI"
   },
+  "browser": {
+    "binding": "BROWSER"
+  },
   "upload_source_maps": true
 }

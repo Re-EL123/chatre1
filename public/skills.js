@@ -77,6 +77,29 @@
         "Final summary with paths and how to run.",
       ],
     },
+    browser: {
+      name: "browser",
+      title: "Browser automation",
+      summary: "Navigate, click, type, and read real web pages like a human.",
+      steps: [
+        "browser_navigate to the target URL.",
+        "Inspect returned text, links, and inputs.",
+        "browser_click / browser_type / browser_press with CSS selectors.",
+        "Confirm with browser_screenshot or browser_read.",
+        "Use http_request for raw APIs when a full browser is unnecessary.",
+      ],
+    },
+    computer: {
+      name: "computer",
+      title: "Computer use",
+      summary: "Operate shell, files, network, and browser as one workstation.",
+      steps: [
+        "Plan with todos for multi-step computer tasks.",
+        "Use execute_command and file tools for the workspace.",
+        "Use http_request for public HTTP; browser_* for interactive sites.",
+        "Verify outputs before finishing.",
+      ],
+    },
   };
 
   /**
@@ -101,8 +124,25 @@
     if (/\b(debug|error|bug|failing|stack.?trace)\b/.test(t)) {
       found.add("debugging");
     }
-    if (/\b(explore|inspect|search|find files|research)\b/.test(t)) {
+    if (
+      /\b(explore|inspect|search|find files|research)\b/.test(t)
+    ) {
       found.add("research");
+    }
+    if (
+      /\b(browser|navigate|click|website|web page|url|screenshot|fill form|login page)\b/.test(
+        t,
+      ) ||
+      /https?:\/\//.test(t)
+    ) {
+      found.add("browser");
+    }
+    if (
+      /\b(computer|desktop|shell|terminal|http request|curl|download|os|system)\b/.test(
+        t,
+      )
+    ) {
+      found.add("computer");
     }
     if (found.has("coding") && (found.has("documents") || found.has("git"))) {
       found.add("project");

@@ -29,6 +29,7 @@ This template demonstrates how to build an AI-powered chat interface using Cloud
 - Optional **chatre-api** (Vercel + Firestore): persisted threads, sandbox exec, SSE agent
 - Auth status badge (Connected / Unauthorized), thread sidebar, file explorer + ZIP export, usage meter
 - Agent: streamed tokens per step, auto skill routing, tool-result summarization
+- **Computer use**: real browser via Cloudflare Browser Rendering (`/api/browser`) + shell/files/HTTP tools
 <!-- dash-content-end -->
 
 ## Remote API (Firestore + sandbox)

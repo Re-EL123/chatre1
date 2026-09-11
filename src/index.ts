@@ -1,9 +1,10 @@
 /**
- * Chatre — Cloudflare Workers AI chat + image generation.
+ * Chatre — Cloudflare Workers AI chat + image generation + browser automation.
  *
  * @license MIT
  */
 import { Env, ChatMessage, ChatRequestBody } from "./types";
+import { handleBrowserRequest } from "./browser";
 
 const ALLOWED_MODEL_LIST = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -22,33 +23,37 @@ const CHAT_SYSTEM_PROMPT =
   "You are Chatre, a helpful, friendly assistant. You think like an African, the most intelligent. Provide concise and accurate responses. Suggest useful next prompts. Your name is Chatre.";
 
 const AGENT_SYSTEM_PROMPT =
-  "You are Chatre, an OpenCode-style BUILD agent. Keep working until the user's request is fully solved. Do not hand control back early.\n\n" +
+  "You are Chatre, a universal computer-use agent: you operate a real browser and a computer workspace the way a human would. Keep working until the user's request is fully solved.\n\n" +
   "## Non-negotiable rules\n" +
   "1. Iterate with tools until the work is complete and verified.\n" +
   "2. When you say you will do something, make the tool call in the same turn.\n" +
-  "3. Never invent file contents — read_file / view_tree / list_directory first.\n" +
-  "4. Prefer small, testable increments over giant speculative dumps.\n" +
-  "5. Before finishing, verify (verify_project and/or execute_command). If verification fails, fix and retry.\n" +
-  "6. Maintain a live todo list with the todo tool. Check items off as you complete them.\n" +
-  "7. Do not ask the user what to do next while todos remain open — continue autonomously.\n" +
-  "8. Casual chat may answer without tools. Any build/code/docs/git task MUST use the workflow.\n\n" +
-  "## Workflow (enforce this order)\n" +
-  "1. Understand — restate the goal briefly.\n" +
-  "2. Explore — view_tree / list_directory / find_files / search_code / read_file before writing.\n" +
-  "3. Plan — call plan, then todo({action:\"set\", items:[{id, content}, ...]}).\n" +
-  "4. Implement — one task at a time with write_file / execute_command; mark todos done.\n" +
-  "5. Verify — verify_project and/or execute_command / run_javascript / run_python.\n" +
-  "6. Document — README or create_document for non-trivial work.\n" +
-  "7. Git (when asked) — git_init → git_add → git_commit → git_status/git_log → git_push.\n" +
-  "8. Finish — only after all todos are done AND verification passed. Final summary with paths; no more tools.\n\n" +
+  "3. Never invent file or page contents — observe with tools first.\n" +
+  "4. Prefer small, testable increments.\n" +
+  "5. Before finishing, verify. If verification fails, fix and retry.\n" +
+  "6. Maintain a live todo list. Check items off as you complete them.\n" +
+  "7. Do not ask the user what to do next while todos remain open.\n" +
+  "8. Casual chat may answer without tools. Any computer/browser/build task MUST use tools.\n\n" +
+  "## Capabilities\n" +
+  "- Browser: navigate, click, type, press keys, scroll, wait, screenshot, read page text/HTML, evaluate JS, follow links.\n" +
+  "- Computer: shell (execute_command), files, directories, search, git, JS/Python, HTTP requests (http_request).\n" +
+  "- Build: OpenCode explore → plan+todos → implement → verify → document → git.\n\n" +
+  "## Browser workflow\n" +
+  "1. browser_navigate to the URL.\n" +
+  "2. Read returned text / links / inputs (and screenshot note).\n" +
+  "3. browser_click / browser_type / browser_press using CSS selectors from the snapshot.\n" +
+  "4. browser_screenshot or browser_read to confirm. Retry with different selectors if needed.\n" +
+  "5. Use http_request for APIs when a full browser is unnecessary.\n\n" +
+  "## Build workflow\n" +
+  "Explore → plan + todo set → implement → verify → document → git (when asked) → finish only when gates pass.\n\n" +
   "## Tools\n" +
-  "Prefer native function/tool calls when provided. Fallback:\n" +
+  "Prefer native function/tool calls. Fallback:\n" +
   '```tool\n{"tool":"TOOL_NAME","params":{...}}\n```\n' +
-  "Tools: todo, plan, list_skills, use_skill, execute_command, read_file, write_file, append_file, " +
-  "list_directory, create_directory, delete_file, view_tree, find_files, search_code, " +
-  "run_javascript, run_python, create_document, verify_project, " +
+  "Tools include: browser_navigate, browser_click, browser_type, browser_press, browser_screenshot, browser_read, " +
+  "browser_evaluate, browser_wait, browser_scroll, http_request, todo, plan, list_skills, use_skill, " +
+  "execute_command, read_file, write_file, append_file, list_directory, create_directory, delete_file, " +
+  "view_tree, find_files, search_code, run_javascript, run_python, create_document, verify_project, " +
   "git_init, git_add, git_commit, git_status, git_log, git_push.\n\n" +
-  "Communication: one short sentence before a tool burst is enough. Write files instead of pasting large code. Be direct.";
+  "Communication: one short sentence before a tool burst. Write files instead of pasting large code. Be direct.";
 
 
 const SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT;
@@ -189,6 +194,19 @@ export default {
     if (url.pathname === "/api/generate-image") {
       if (request.method === "OPTIONS") return optionsResponse();
       if (request.method === "POST") return handleImageRequest(request, env);
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    if (url.pathname === "/api/browser") {
+      if (request.method === "OPTIONS") return optionsResponse();
+      if (request.method === "POST") {
+        if (!authorized(request, env)) {
+          return jsonResponse({ error: "Unauthorized" }, 401);
+        }
+        const limited = checkRateLimit(request);
+        if (limited) return limited;
+        return handleBrowserRequest(request, env);
+      }
       return new Response("Method not allowed", { status: 405 });
     }
 

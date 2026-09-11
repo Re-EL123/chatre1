@@ -32,5 +32,8 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "test": "vitest"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "^1.4.0"
   }
 }

@@ -9,7 +9,17 @@
     { name: "todo", desc: "Manage OpenCode-style todos (set|add|done|list)", params: { action: "string", items: "array", id: "string", content: "string" } },
     { name: "plan", desc: "Create a step-by-step plan before executing", params: { steps: "string" } },
     { name: "list_skills", desc: "List available agent skills", params: {} },
-    { name: "use_skill", desc: "Load a skill playbook (coding|documents|git|debugging|research|project)", params: { name: "string" } },
+    { name: "use_skill", desc: "Load a skill playbook (coding|documents|git|debugging|research|project|browser|computer)", params: { name: "string" } },
+    { name: "browser_navigate", desc: "Open a URL in a real browser", params: { url: "string" } },
+    { name: "browser_click", desc: "Click a CSS selector", params: { selector: "string", url: "string" } },
+    { name: "browser_type", desc: "Type into a CSS selector", params: { selector: "string", text: "string", url: "string" } },
+    { name: "browser_press", desc: "Press a keyboard key", params: { key: "string", url: "string" } },
+    { name: "browser_screenshot", desc: "Screenshot the page", params: { url: "string", fullPage: "boolean" } },
+    { name: "browser_read", desc: "Read page text/HTML", params: { url: "string" } },
+    { name: "browser_evaluate", desc: "Run JS in the page", params: { script: "string", url: "string" } },
+    { name: "browser_wait", desc: "Wait for selector or delay", params: { selector: "string", ms: "string", url: "string" } },
+    { name: "browser_scroll", desc: "Scroll the page", params: { y: "string", url: "string" } },
+    { name: "http_request", desc: "HTTP request to a public URL", params: { url: "string", method: "string", body: "string" } },
     { name: "execute_command", desc: "Run a shell command in the workspace", params: { cmd: "string", cwd: "string" } },
     { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
     { name: "write_file", desc: "Create or overwrite a file", params: { path: "string", content: "string" } },
@@ -196,7 +206,7 @@
 
   // ─── Execution ────────────────────────────────────────────────────
 
-  function executeTool(call, options) {
+  async function executeTool(call, options) {
     const { tool, params } = call;
     const p = params || {};
     const common = {
@@ -217,6 +227,22 @@
 
       case "use_skill":
         return useSkillTool(p.name);
+
+      case "browser_navigate":
+      case "browser_click":
+      case "browser_type":
+      case "browser_press":
+      case "browser_screenshot":
+      case "browser_read":
+      case "browser_content":
+      case "browser_evaluate":
+      case "browser_wait":
+      case "browser_scroll":
+      case "browser":
+        return await browserTool(tool, p);
+
+      case "http_request":
+        return await httpRequestTool(p);
 
       case "execute_command":
         return executeCommand(p.cmd || p.command, p.cwd, common);
@@ -286,6 +312,139 @@
 
       default:
         return { ok: false, tool, error: "Unknown tool: " + tool };
+    }
+  }
+
+  // ─── Browser / HTTP (Worker /api/browser) ─────────────────────────
+
+  let lastBrowserUrl = "";
+  let lastBrowserCookies = [];
+
+  function browserActionFor(tool, p) {
+    const map = {
+      browser_navigate: "navigate",
+      browser_click: "click",
+      browser_type: "type",
+      browser_press: "press",
+      browser_screenshot: "screenshot",
+      browser_read: "content",
+      browser_content: "content",
+      browser_evaluate: "evaluate",
+      browser_wait: "wait",
+      browser_scroll: "scroll",
+    };
+    return map[tool] || String((p && p.action) || "navigate");
+  }
+
+  async function browserTool(tool, p) {
+    const action = browserActionFor(tool, p);
+    const url = String(p.url || (action === "navigate" ? "" : lastBrowserUrl) || "").trim();
+    const body = {
+      action: action === "navigate" ? "navigate" : action,
+      url: action === "navigate" ? String(p.url || "").trim() : url || undefined,
+      selector: p.selector,
+      text: p.text != null ? p.text : p.value,
+      key: p.key,
+      script: p.script || p.code,
+      ms: p.ms != null ? Number(p.ms) : p.timeout != null ? Number(p.timeout) : undefined,
+      fullPage: p.fullPage,
+      y: p.y != null ? Number(p.y) : p.dy != null ? Number(p.dy) : undefined,
+      cookies: lastBrowserCookies.length ? lastBrowserCookies : undefined,
+    };
+
+    if (action === "navigate" && !body.url) {
+      return { ok: false, tool, error: "url required" };
+    }
+    if ((action === "click" || action === "type") && !body.selector) {
+      return { ok: false, tool, error: "selector required" };
+    }
+    if (!body.url && action !== "navigate") {
+      return {
+        ok: false,
+        tool,
+        error: "No page open — call browser_navigate first (or pass url)",
+      };
+    }
+
+    try {
+      const res = await fetch("/api/browser", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(function () {
+        return null;
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          tool,
+          error: (data && data.error) || "Browser HTTP " + res.status,
+        };
+      }
+      if (data && data.url) lastBrowserUrl = data.url;
+      else if (body.url) lastBrowserUrl = body.url;
+      if (data && Array.isArray(data.cookies)) lastBrowserCookies = data.cookies;
+
+      const out = Object.assign({ tool: tool }, data || {});
+      if (out.screenshot_base64) {
+        out.screenshot = {
+          mime: out.mime || "image/jpeg",
+          note: "Screenshot captured (base64 omitted from chat context)",
+          bytesApprox: Math.floor((String(out.screenshot_base64).length * 3) / 4),
+        };
+        // Keep a short data URL tip for UI callbacks if needed
+        out.hasScreenshot = true;
+        delete out.screenshot_base64;
+      }
+      if (out.cookies) {
+        out.cookieCount = Array.isArray(out.cookies) ? out.cookies.length : 0;
+        delete out.cookies;
+      }
+      if (out.text) out.text = String(out.text).slice(0, 12000);
+      if (out.html) out.html = String(out.html).slice(0, 8000);
+      return out;
+    } catch (err) {
+      return {
+        ok: false,
+        tool,
+        error: err && err.message ? err.message : String(err),
+      };
+    }
+  }
+
+  async function httpRequestTool(p) {
+    const url = String(p.url || "").trim();
+    if (!url) return { ok: false, tool: "http_request", error: "url required" };
+    try {
+      const method = String(p.method || "GET").toUpperCase();
+      const init = { method: method, headers: {} };
+      if (p.headers && typeof p.headers === "object") {
+        Object.keys(p.headers).forEach(function (k) {
+          init.headers[k] = String(p.headers[k]);
+        });
+      }
+      if (p.body != null && method !== "GET" && method !== "HEAD") {
+        init.body = typeof p.body === "string" ? p.body : JSON.stringify(p.body);
+        if (!init.headers["Content-Type"] && !init.headers["content-type"]) {
+          init.headers["Content-Type"] = "application/json";
+        }
+      }
+      const res = await fetch(url, init);
+      const text = await res.text();
+      return {
+        ok: res.ok,
+        tool: "http_request",
+        status: res.status,
+        url: res.url || url,
+        body: text.slice(0, 40000) + (text.length > 40000 ? "\n…[truncated]" : ""),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        tool: "http_request",
+        error: err && err.message ? err.message : String(err),
+      };
     }
   }
 

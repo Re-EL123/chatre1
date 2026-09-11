@@ -68,14 +68,14 @@
         messages.push({
           role: "user",
           content:
-            "OPENCODE BUILD MODE — enforce the workflow.\n" +
-            "Order: explore → plan+todos → implement (mark todos done) → verify → summarize.\n" +
+            "UNIVERSAL COMPUTER-USE MODE — enforce the workflow.\n" +
+            "Browser + shell + files + HTTP. Order: explore → plan+todos → act → verify → summarize.\n" +
             "Keep going until todos are complete and verification passes.\n" +
             skillBlock +
-            "1) view_tree / read_file before writes.\n" +
+            "1) Explore with view_tree / read_file / browser_navigate / http_request.\n" +
             "2) plan + todo({action:\"set\", items:[...]}).\n" +
-            "3) Implement with write_file / execute_command; todo({action:\"done\", id}).\n" +
-            "4) verify_project before finishing.\n" +
+            "3) Act with write_file / execute_command / browser_* ; todo({action:\"done\", id}).\n" +
+            "4) Verify (verify_project / browser_read / execute_command) before finishing.\n" +
             "Use ```tool JSON blocks (or native tools). Begin now.",
         });
         callbacks.onSkills && callbacks.onSkills(autoSkills);

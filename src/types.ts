@@ -5,6 +5,8 @@
 export interface Env {
   AI: Ai;
   ASSETS: Fetcher;
+  /** Cloudflare Browser Rendering binding for Puppeteer. */
+  BROWSER?: Fetcher;
   /**
    * Optional shared secret. When set, API POSTs must send
    * Authorization: Bearer <secret> or x-chatre-key: <secret>.
