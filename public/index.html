@@ -43,9 +43,10 @@
         background:
           radial-gradient(ellipse at top, #12122a 0%, transparent 55%),
           var(--light-bg);
-        max-width: 800px;
+        max-width: min(1520px, 100%);
+        width: 100%;
         margin: 0 auto;
-        padding: 1rem;
+        padding: 0.85rem 1.25rem 1.5rem;
         min-height: 100vh;
       }
 
@@ -71,21 +72,21 @@
 
       header {
         text-align: center;
-        margin-bottom: 1rem;
-        padding: 1rem 0;
+        margin-bottom: 0.65rem;
+        padding: 0.55rem 0 0.75rem;
         border-bottom: 1px solid var(--border-color);
       }
 
       h1 {
-        font-size: 1.75rem;
+        font-size: 1.85rem;
         letter-spacing: 0.08em;
-        margin: 0 0 0.35rem;
+        margin: 0 0 0.25rem;
       }
 
       header p {
         margin: 0;
         color: var(--text-light);
-        font-size: 0.95rem;
+        font-size: 0.92rem;
       }
 
       .toolbar {
@@ -93,7 +94,7 @@
         flex-wrap: wrap;
         gap: 0.5rem;
         align-items: center;
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.65rem;
       }
 
       .toolbar label {
@@ -122,8 +123,8 @@
       .chat-container {
         display: flex;
         flex-direction: column;
-        height: calc(100vh - 260px);
-        min-height: 400px;
+        height: calc(100vh - 200px);
+        min-height: 520px;
         border: 1.5px solid var(--border-color);
         border-radius: 16px;
         overflow: hidden;
@@ -789,17 +790,20 @@
 
       .app-shell {
         display: grid;
-        grid-template-columns: 220px minmax(0, 1fr) 260px;
-        gap: 0.75rem;
+        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(280px, 340px);
+        gap: 0.9rem;
         align-items: stretch;
+        width: 100%;
       }
 
       .side-panel {
         background: rgba(20, 22, 44, 0.55);
         border: 1px solid var(--border-color);
         border-radius: 14px;
-        padding: 0.65rem;
-        max-height: calc(100vh - 220px);
+        padding: 0.75rem;
+        height: calc(100vh - 200px);
+        min-height: 520px;
+        max-height: none;
         overflow: auto;
         display: flex;
         flex-direction: column;
@@ -899,8 +903,8 @@
 
       #file-viewer {
         flex: 1;
-        min-height: 120px;
-        max-height: 280px;
+        min-height: 160px;
+        max-height: none;
         overflow: auto;
         background: #0a0a12;
         border: 1px solid var(--border-color);
@@ -948,6 +952,14 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        height: calc(100vh - 200px);
+        min-height: 520px;
+      }
+
+      .main-column .chat-container {
+        flex: 1;
+        height: 100%;
+        min-height: 0;
       }
 
       .diff-modal {
@@ -1043,6 +1055,9 @@
         .panel-toggle-bar {
           display: flex;
         }
+        body {
+          padding: 0.75rem;
+        }
         .app-shell {
           grid-template-columns: 1fr;
         }
@@ -1050,7 +1065,18 @@
           grid-template-columns: 1fr;
         }
         .side-panel {
-          max-height: 240px;
+          height: auto;
+          min-height: 0;
+          max-height: 260px;
+        }
+        .main-column {
+          height: auto;
+          min-height: 0;
+        }
+        .main-column .chat-container,
+        .chat-container {
+          height: calc(100vh - 280px);
+          min-height: 420px;
         }
       }
 
@@ -1058,11 +1084,29 @@
         .message {
           max-width: 95%;
         }
-        .chat-container {
+        .chat-container,
+        .main-column .chat-container {
           height: calc(100vh - 300px);
+          min-height: 360px;
         }
         .terminal-panel {
           height: 200px;
+        }
+      }
+
+      @media (min-width: 1100px) {
+        body {
+          padding: 1rem 1.75rem 1.75rem;
+        }
+      }
+
+      @media (min-width: 1400px) {
+        body {
+          max-width: min(1680px, 98vw);
+        }
+        .app-shell {
+          grid-template-columns: 300px minmax(0, 1fr) 360px;
+          gap: 1rem;
         }
       }
     </style>
