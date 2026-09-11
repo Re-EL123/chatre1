@@ -20,6 +20,85 @@ import {
 const VIEWPORT = { width: 1280, height: 800 };
 const KEEP_ALIVE_MS = 1_800_000; // 30 minutes
 
+type PageDiag = {
+  network: Array<Record<string, unknown>>;
+  console: Array<Record<string, unknown>>;
+  attached: boolean;
+};
+
+const pageDiagByPage = new WeakMap<Page, PageDiag>();
+
+function getOrCreateDiag(page: Page): PageDiag {
+  let d = pageDiagByPage.get(page);
+  if (!d) {
+    d = { network: [], console: [], attached: false };
+    pageDiagByPage.set(page, d);
+  }
+  return d;
+}
+
+function pushRing(
+  arr: Array<Record<string, unknown>>,
+  item: Record<string, unknown>,
+  max = 200,
+) {
+  arr.push(item);
+  if (arr.length > max) arr.splice(0, arr.length - max);
+}
+
+function attachPageDiagnostics(page: Page) {
+  const diag = getOrCreateDiag(page);
+  if (diag.attached) return;
+  diag.attached = true;
+  try {
+    page.on("request", (req) => {
+      pushRing(diag.network, {
+        phase: "request",
+        url: req.url(),
+        method: req.method(),
+        resourceType: req.resourceType(),
+        ts: Date.now(),
+      });
+    });
+    page.on("response", (res) => {
+      pushRing(diag.network, {
+        phase: "response",
+        url: res.url(),
+        status: res.status(),
+        ok: res.ok(),
+        contentType: (res.headers()["content-type"] || "").slice(0, 120),
+        ts: Date.now(),
+      });
+    });
+    page.on("requestfailed", (req) => {
+      pushRing(diag.network, {
+        phase: "failed",
+        url: req.url(),
+        method: req.method(),
+        resourceType: req.resourceType(),
+        error: req.failure()?.errorText || "failed",
+        ts: Date.now(),
+      });
+    });
+    page.on("console", (msg) => {
+      pushRing(diag.console, {
+        type: msg.type(),
+        text: String(msg.text() || "").slice(0, 500),
+        ts: Date.now(),
+      });
+    });
+    page.on("pageerror", (err) => {
+      pushRing(diag.console, {
+        type: "pageerror",
+        text: String(err && err.message ? err.message : err).slice(0, 500),
+        ts: Date.now(),
+      });
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface BrowserRequestBody {
   tool?: string;
   action?: string;
@@ -27,6 +106,7 @@ export interface BrowserRequestBody {
   tab_id?: number;
   thread_id?: string;
   caption?: boolean;
+  prompt?: string;
   url?: string;
   query?: string;
   queries?: string[];
@@ -50,6 +130,9 @@ export interface BrowserRequestBody {
   frame_url?: string;
   frame_index?: number;
   accept_downloads?: boolean;
+  image_base64?: string;
+  limit?: number;
+  failed_only?: boolean;
   /** Legacy aliases */
   selector?: string;
   key?: string;
@@ -95,11 +178,26 @@ export async function handleBrowserRequest(
 
   const tool = normalizeTool(body);
 
-  // search_web does not need a live browser tab
+  // search_web / standalone OCR do not need a live browser tab
   if (tool === "search_web") {
     try {
       const result = await searchWeb(body, env);
       return jsonResponse({ tool, ...result, ok: result.ok !== false });
+    } catch (err) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        500,
+      );
+    }
+  }
+
+  if (tool === "ocr_image" && body.image_base64) {
+    try {
+      const result = await ocrFromBase64(env, String(body.image_base64), body.prompt);
+      return jsonResponse({ tool, ...result });
     } catch (err) {
       return jsonResponse(
         {
@@ -402,6 +500,12 @@ async function dispatch(
         action: "evaluate",
         text: body.script || body.text,
       });
+    case "browser_network":
+      return browserNetwork(browser, body);
+    case "browser_console":
+      return browserConsole(browser, body);
+    case "ocr_image":
+      return ocrImage(browser, body, env);
     default:
       throw new Error("Unknown browser tool: " + tool);
   }
@@ -413,9 +517,11 @@ async function ensureTab(browser: Browser, tabId?: number): Promise<Page> {
     const page = await browser.newPage();
     await page.setViewport(VIEWPORT);
     await stampTab(page, 1);
+    attachPageDiagnostics(page);
     return page;
   }
   await ensureTabIds(pages);
+  for (const p of pages) attachPageDiagnostics(p);
   if (tabId == null) {
     return pages[pages.length - 1];
   }
@@ -487,6 +593,7 @@ async function listTabs(browser: Browser) {
 async function tabsCreate(browser: Browser, url?: string) {
   const page = await browser.newPage();
   await page.setViewport(VIEWPORT);
+  attachPageDiagnostics(page);
   const pages = await browser.pages();
   await ensureTabIds(pages.filter((p) => p !== page));
   let max = 0;
@@ -1178,6 +1285,7 @@ async function attachDownloadListener(
 
 async function listFrames(browser: Browser, body: BrowserRequestBody) {
   const page = await ensureTab(browser, body.tab_id);
+  attachPageDiagnostics(page);
   const frames = page.frames().map((f, index) => ({
     index,
     url: f.url(),
@@ -1191,6 +1299,87 @@ async function listFrames(browser: Browser, body: BrowserRequestBody) {
     health,
     url: page.url(),
     title: await page.title(),
+  };
+}
+
+async function browserNetwork(browser: Browser, body: BrowserRequestBody) {
+  const page = await ensureTab(browser, body.tab_id);
+  attachPageDiagnostics(page);
+  const diag = getOrCreateDiag(page);
+  const limit = Math.min(Number(body.limit) || 50, 200);
+  let entries = diag.network.slice(-limit);
+  if (body.failed_only) {
+    entries = entries.filter(
+      (e) =>
+        e.phase === "failed" ||
+        (typeof e.status === "number" && Number(e.status) >= 400),
+    );
+  }
+  const tabId = await getTabId(page);
+  return {
+    ok: true,
+    tab_id: tabId,
+    url: page.url(),
+    count: entries.length,
+    entries,
+  };
+}
+
+async function browserConsole(browser: Browser, body: BrowserRequestBody) {
+  const page = await ensureTab(browser, body.tab_id);
+  attachPageDiagnostics(page);
+  const diag = getOrCreateDiag(page);
+  const limit = Math.min(Number(body.limit) || 50, 200);
+  const entries = diag.console.slice(-limit);
+  const tabId = await getTabId(page);
+  return {
+    ok: true,
+    tab_id: tabId,
+    url: page.url(),
+    count: entries.length,
+    entries,
+  };
+}
+
+async function ocrFromBase64(
+  env: Env | undefined,
+  imageBase64: string,
+  prompt?: string,
+) {
+  if (!env) return { ok: false, error: "AI env missing" };
+  const q =
+    prompt ||
+    "OCR this image. Transcribe all visible text accurately. Also list key UI labels briefly.";
+  const cap = await captionScreenshot(env, imageBase64, q);
+  return {
+    ok: !!cap.ok,
+    text: cap.caption || "",
+    model: cap.model,
+    error: cap.error,
+  };
+}
+
+async function ocrImage(
+  browser: Browser,
+  body: BrowserRequestBody,
+  env?: Env,
+) {
+  if (body.image_base64) {
+    return ocrFromBase64(env, String(body.image_base64), body.prompt);
+  }
+  const page = await ensureTab(browser, body.tab_id);
+  const shot = (await page.screenshot({
+    type: "jpeg",
+    quality: 70,
+    encoding: "base64",
+  })) as string;
+  const ocr = await ocrFromBase64(env, shot, body.prompt);
+  const tabId = await getTabId(page);
+  return {
+    ...ocr,
+    tab_id: tabId,
+    url: page.url(),
+    screenshot_note: "Captured current tab for OCR",
   };
 }
 

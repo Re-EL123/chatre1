@@ -40,6 +40,9 @@ const CAPS = [
   'clipboard_set',
   'notify',
   'status',
+  'type',
+  'hotkey',
+  'click',
 ];
 
 function json(res, code, body) {
@@ -267,6 +270,188 @@ function notify(title, body) {
   }
 }
 
+function desktopType(text) {
+  const value = String(text == null ? '' : text);
+  if (!value) return { ok: false, error: 'text required' };
+  try {
+    if (process.platform === 'darwin') {
+      // Prefer clipboard paste for unicode safety
+      clipboardSet(value);
+      execFileSync('osascript', [
+        '-e',
+        'tell application "System Events" to keystroke "v" using command down',
+      ]);
+      return { ok: true, method: 'paste', bytes: Buffer.byteLength(value) };
+    }
+    if (process.platform === 'win32') {
+      clipboardSet(value);
+      execFileSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^v")',
+        ],
+        { timeout: 8000 },
+      );
+      return { ok: true, method: 'paste', bytes: Buffer.byteLength(value) };
+    }
+    const r = tryExec('xdotool', ['type', '--clearmodifiers', '--', value]);
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: 'Need xdotool for desktop_type on Linux: ' + (r.error || ''),
+      };
+    }
+    return { ok: true, method: 'xdotool', bytes: Buffer.byteLength(value) };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function normalizeHotkey(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/command/g, 'cmd')
+    .replace(/control/g, 'ctrl')
+    .replace(/option/g, 'alt');
+}
+
+function desktopHotkey(keys) {
+  const combo = normalizeHotkey(keys);
+  if (!combo) return { ok: false, error: 'keys required' };
+  const parts = combo.split('+').filter(Boolean);
+  try {
+    if (process.platform === 'darwin') {
+      const mods = [];
+      let key = '';
+      parts.forEach((p) => {
+        if (p === 'cmd' || p === 'command') mods.push('command down');
+        else if (p === 'ctrl') mods.push('control down');
+        else if (p === 'alt') mods.push('option down');
+        else if (p === 'shift') mods.push('shift down');
+        else key = p;
+      });
+      if (!key) return { ok: false, error: 'No key in combo' };
+      const using = mods.length ? ' using {' + mods.join(', ') + '}' : '';
+      execFileSync('osascript', [
+        '-e',
+        'tell application "System Events" to keystroke ' +
+          JSON.stringify(key) +
+          using,
+      ]);
+      return { ok: true, keys: combo };
+    }
+    if (process.platform === 'win32') {
+      const map = { ctrl: '^', alt: '%', shift: '+', cmd: '^' };
+      let seq = '';
+      let key = '';
+      parts.forEach((p) => {
+        if (map[p]) seq += map[p];
+        else key = p.length === 1 ? p : '{' + p.toUpperCase() + '}';
+      });
+      execFileSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(' +
+            JSON.stringify(seq + key) +
+            ')',
+        ],
+        { timeout: 8000 },
+      );
+      return { ok: true, keys: combo };
+    }
+    const mods = [];
+    let key = '';
+    parts.forEach((p) => {
+      if (p === 'ctrl' || p === 'alt' || p === 'shift' || p === 'super' || p === 'cmd') {
+        mods.push(p === 'cmd' ? 'super' : p);
+      } else key = p;
+    });
+    if (!key) return { ok: false, error: 'No key in combo' };
+    const args =
+      mods.length > 0
+        ? ['key', mods.concat([key]).join('+')]
+        : ['key', key];
+    const r = tryExec('xdotool', args);
+    if (!r.ok) {
+      return { ok: false, error: 'Need xdotool: ' + (r.error || '') };
+    }
+    return { ok: true, keys: combo };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function desktopClick(x, y, button) {
+  const xi = Math.round(Number(x));
+  const yi = Math.round(Number(y));
+  if (!Number.isFinite(xi) || !Number.isFinite(yi)) {
+    return { ok: false, error: 'x and y required' };
+  }
+  const btn = String(button || 'left').toLowerCase();
+  try {
+    if (process.platform === 'darwin') {
+      // cliclick if present; else AppleScript click at position
+      let r = tryExec('cliclick', ['c:' + xi + ',' + yi]);
+      if (!r.ok) {
+        execFileSync('osascript', [
+          '-e',
+          'tell application "System Events" to click at {' + xi + ', ' + yi + '}',
+        ]);
+      }
+      return { ok: true, x: xi, y: yi, button: btn };
+    }
+    if (process.platform === 'win32') {
+      const flags =
+        btn === 'right'
+          ? { down: 0x0008, up: 0x0010 }
+          : { down: 0x0002, up: 0x0004 };
+      const ps =
+        'Add-Type -MemberDefinition @"\n[DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);\n[DllImport("user32.dll")] public static extern void mouse_event(int f,int a,int b,int c,int d);\n"@ -Name U -Namespace W; [W.U]::SetCursorPos(' +
+        xi +
+        ',' +
+        yi +
+        '); [W.U]::mouse_event(' +
+        flags.down +
+        ',0,0,0,0); [W.U]::mouse_event(' +
+        flags.up +
+        ',0,0,0,0)';
+      execFileSync('powershell', ['-NoProfile', '-Command', ps], {
+        timeout: 8000,
+      });
+      return { ok: true, x: xi, y: yi, button: btn };
+    }
+    const map = { left: '1', middle: '2', right: '3' };
+    const r = tryExec('xdotool', [
+      'mousemove',
+      '--sync',
+      String(xi),
+      String(yi),
+      'click',
+      map[btn] || '1',
+    ]);
+    if (!r.ok) {
+      return { ok: false, error: 'Need xdotool: ' + (r.error || '') };
+    }
+    return { ok: true, x: xi, y: yi, button: btn };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 async function runAction(action, params) {
   const p = params || {};
   switch (String(action || '')) {
@@ -289,6 +474,12 @@ async function runAction(action, params) {
       return clipboardSet(p.text);
     case 'notify':
       return notify(p.title, p.body || p.text);
+    case 'type':
+      return desktopType(p.text);
+    case 'hotkey':
+      return desktopHotkey(p.keys || p.key);
+    case 'click':
+      return desktopClick(p.x, p.y, p.button);
     default:
       return { ok: false, error: 'Unknown action: ' + action };
   }

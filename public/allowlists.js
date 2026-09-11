@@ -20,6 +20,19 @@
     "desktop_clipboard_get",
     "desktop_clipboard_set",
     "desktop_notify",
+    "desktop_type",
+    "desktop_hotkey",
+    "desktop_click",
+    "memory_get",
+    "memory_set",
+    "memory_delete",
+    "schedule_create",
+    "remind",
+    "schedule_list",
+    "schedule_cancel",
+    "schedule_due",
+    "test_connection",
+    "fetch_url",
   ];
 
   const BY_TYPE = {
@@ -27,6 +40,7 @@
     question: ALWAYS.concat([
       "search_web",
       "http_request",
+      "download_file",
       "read_file",
       "list_directory",
       "find_files",
@@ -36,10 +50,14 @@
       "navigate",
       "tabs_create",
       "read_page",
+      "csv_read",
+      "csv_query",
     ]),
     research: ALWAYS.concat([
       "search_web",
       "http_request",
+      "download_file",
+      "upload_artifact",
       "tabs_create",
       "navigate",
       "computer",
@@ -50,6 +68,12 @@
       "read_file",
       "create_document",
       "view_tree",
+      "csv_read",
+      "csv_query",
+      "csv_write",
+      "browser_network",
+      "browser_console",
+      "ocr_image",
     ]),
     browser: ALWAYS.concat([
       "search_web",
@@ -61,15 +85,26 @@
       "find",
       "form_input",
       "get_page_text",
+      "browser_network",
+      "browser_console",
+      "ocr_image",
+      "download_file",
     ]),
     document: ALWAYS.concat([
       "search_web",
       "read_file",
       "write_file",
+      "append_file",
+      "patch_file",
       "create_document",
       "create_pdf",
       "view_tree",
       "execute_command",
+      "csv_read",
+      "csv_write",
+      "csv_query",
+      "upload_artifact",
+      "download_file",
     ]),
     git: ALWAYS.concat([
       "git_init",
@@ -80,6 +115,8 @@
       "git_push",
       "execute_command",
       "read_file",
+      "write_file",
+      "patch_file",
       "view_tree",
     ]),
     run: ALWAYS.concat([
@@ -89,6 +126,8 @@
       "verify_project",
       "read_file",
       "view_tree",
+      "browser_network",
+      "browser_console",
     ]),
     build: null,
     debug: null,
@@ -108,5 +147,8 @@
     };
   }
 
-  window.ChatreAllowlists = { assertToolAllowed: assertToolAllowed, BY_TYPE: BY_TYPE };
+  window.ChatreAllowlists = {
+    assertToolAllowed: assertToolAllowed,
+    BY_TYPE: BY_TYPE,
+  };
 })();

@@ -279,6 +279,9 @@
       case "desktop_clipboard_get":
       case "desktop_clipboard_set":
       case "desktop_notify":
+      case "desktop_type":
+      case "desktop_hotkey":
+      case "desktop_click":
         return await desktopTool(tool, p);
 
       case "await_login":
@@ -314,10 +317,45 @@
       case "browser_wait":
       case "browser_scroll":
       case "browser":
+      case "browser_network":
+      case "browser_console":
+      case "ocr_image":
         return await browserTool(tool, p);
 
       case "http_request":
         return await httpRequestTool(p);
+
+      case "fetch_url":
+        return await fetchUrlTool(p);
+
+      case "download_file":
+        return await downloadFileTool(p, common);
+
+      case "upload_artifact":
+        return uploadArtifactTool(p, common);
+
+      case "patch_file":
+        return patchFileTool(p, common);
+
+      case "csv_read":
+        return csvReadTool(p);
+
+      case "csv_write":
+        return csvWriteTool(p, common);
+
+      case "csv_query":
+        return csvQueryTool(p);
+
+      case "memory_get":
+      case "memory_set":
+      case "memory_delete":
+      case "schedule_create":
+      case "remind":
+      case "schedule_list":
+      case "schedule_cancel":
+      case "schedule_due":
+      case "test_connection":
+        return await remoteUserTool(tool, p);
 
       case "execute_command":
         return executeCommand(p.cmd || p.command, p.cwd, common);
@@ -428,6 +466,27 @@
         method: "POST",
         path: "/notify",
         body: { title: p.title, body: p.body || p.text },
+      },
+      type: {
+        method: "POST",
+        path: "/action",
+        body: { action: "type", params: { text: p.text } },
+      },
+      hotkey: {
+        method: "POST",
+        path: "/action",
+        body: {
+          action: "hotkey",
+          params: { keys: p.keys || p.key },
+        },
+      },
+      click: {
+        method: "POST",
+        path: "/action",
+        body: {
+          action: "click",
+          params: { x: p.x, y: p.y, button: p.button },
+        },
       },
     };
     const spec = pathMap[action];
@@ -665,6 +724,227 @@
         };
       }),
     });
+  }
+
+  async function fetchUrlTool(p) {
+    const res = await httpRequestTool({ url: p.url, method: "GET" });
+    if (!res.ok && !res.body) return Object.assign({ tool: "fetch_url" }, res);
+    const raw = String(res.body || "");
+    const titleMatch = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch
+      ? titleMatch[1].replace(/<[^>]+>/g, "").trim().slice(0, 300)
+      : "";
+    const text = raw
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, Number(p.max_chars) || 24000);
+    return {
+      ok: true,
+      tool: "fetch_url",
+      url: res.url,
+      status: res.status,
+      title: title,
+      text: text,
+    };
+  }
+
+  async function downloadFileTool(p, common) {
+    const url = String(p.url || "").trim();
+    if (!url) return { ok: false, tool: "download_file", error: "url required" };
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      const name = String(p.filename || "download.txt").replace(
+        /[^a-zA-Z0-9._-]+/g,
+        "_",
+      );
+      const path =
+        String(p.dest_dir || "/home/user/downloads").replace(/\/$/, "") +
+        "/" +
+        name;
+      return writeFileTool(path, text, common);
+    } catch (err) {
+      return {
+        ok: false,
+        tool: "download_file",
+        error: err && err.message ? err.message : String(err),
+      };
+    }
+  }
+
+  function uploadArtifactTool(p, common) {
+    const src = resolve(p.path || p.file);
+    const fileSys = fs();
+    if (!src || !fileSys[src] || fileSys[src].type !== "file") {
+      return { ok: false, tool: "upload_artifact", error: "file not found" };
+    }
+    const base = src.split("/").pop() || "artifact";
+    const dest =
+      "/home/user/artifacts/" +
+      String(p.title || base).replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const written = writeFileTool(dest, fileSys[src].content || "", common);
+    if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
+      window.ChatreUIAdv.pushArtifact({
+        kind: "file",
+        path: dest,
+        title: p.title || base,
+      });
+    }
+    return Object.assign({ tool: "upload_artifact", artifact: true, path: dest }, written);
+  }
+
+  function patchFileTool(p, common) {
+    const path = resolve(p.path || p.file);
+    const fileSys = fs();
+    if (!path || !fileSys[path] || fileSys[path].type !== "file") {
+      return { ok: false, tool: "patch_file", error: "file not found" };
+    }
+    const src = String(fileSys[path].content || "");
+    const oldS = String(p.old_string != null ? p.old_string : "");
+    const newS = String(p.new_string != null ? p.new_string : "");
+    if (!oldS) return { ok: false, tool: "patch_file", error: "old_string required" };
+    if (!src.includes(oldS)) {
+      return { ok: false, tool: "patch_file", error: "old_string not found" };
+    }
+    const next = p.replace_all
+      ? src.split(oldS).join(newS)
+      : src.replace(oldS, newS);
+    return writeFileTool(path, next, common);
+  }
+
+  function parseCsvSimple(text) {
+    return String(text || "")
+      .replace(/^\uFEFF/, "")
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map(function (line) {
+        return line.split(",");
+      });
+  }
+
+  function csvReadTool(p) {
+    const path = resolve(p.path || p.file);
+    const fileSys = fs();
+    if (!path || !fileSys[path] || fileSys[path].type !== "file") {
+      return { ok: false, tool: "csv_read", error: "file not found" };
+    }
+    const rows = parseCsvSimple(fileSys[path].content || "");
+    const headers = rows[0] || [];
+    const objects = rows.slice(1).map(function (r) {
+      const o = {};
+      headers.forEach(function (h, i) {
+        o[h] = r[i] != null ? r[i] : "";
+      });
+      return o;
+    });
+    return {
+      ok: true,
+      tool: "csv_read",
+      path: path,
+      headers: headers,
+      rows: objects.slice(0, Number(p.limit) || 200),
+      rowCount: objects.length,
+    };
+  }
+
+  function csvWriteTool(p, common) {
+    const path = resolve(p.path || p.file);
+    if (!path) return { ok: false, tool: "csv_write", error: "path required" };
+    const rows = Array.isArray(p.rows) ? p.rows : [];
+    let content = "";
+    if (rows.length && typeof rows[0] === "object" && !Array.isArray(rows[0])) {
+      const headers =
+        (p.headers && p.headers.length && p.headers) || Object.keys(rows[0]);
+      content =
+        headers.join(",") +
+        "\n" +
+        rows
+          .map(function (o) {
+            return headers
+              .map(function (h) {
+                return o[h] != null ? String(o[h]) : "";
+              })
+              .join(",");
+          })
+          .join("\n");
+    } else {
+      content = rows
+        .map(function (r) {
+          return (Array.isArray(r) ? r : [r]).join(",");
+        })
+        .join("\n");
+    }
+    return writeFileTool(path, content, common);
+  }
+
+  function csvQueryTool(p) {
+    const read = csvReadTool(p);
+    if (!read.ok) return read;
+    let rows = read.rows || [];
+    if (p.column && p.value != null) {
+      rows = rows.filter(function (r) {
+        return String(r[p.column]) === String(p.value);
+      });
+    }
+    return {
+      ok: true,
+      tool: "csv_query",
+      path: read.path,
+      rows: rows.slice(0, Number(p.limit) || 100),
+      matchCount: rows.length,
+    };
+  }
+
+  async function remoteUserTool(tool, p) {
+    if (!window.ChatreRemote || !window.ChatreRemote.hasAuth || !window.ChatreRemote.hasAuth()) {
+      if (tool.indexOf("memory_") === 0) {
+        try {
+          const bag = JSON.parse(localStorage.getItem("chatre_memory") || "{}");
+          if (tool === "memory_get") {
+            if (p.key) return { ok: true, tool: tool, key: p.key, value: bag[p.key] || null };
+            return {
+              ok: true,
+              tool: tool,
+              items: Object.keys(bag).map(function (k) {
+                return { key: k, value: bag[k] };
+              }),
+            };
+          }
+          if (tool === "memory_set") {
+            bag[String(p.key)] = p.value;
+            localStorage.setItem("chatre_memory", JSON.stringify(bag));
+            return { ok: true, tool: tool, key: p.key };
+          }
+          if (tool === "memory_delete") {
+            delete bag[String(p.key)];
+            localStorage.setItem("chatre_memory", JSON.stringify(bag));
+            return { ok: true, tool: tool, key: p.key, deleted: true };
+          }
+        } catch (e) {
+          /* fall through */
+        }
+      }
+      return {
+        ok: false,
+        tool: tool,
+        error: "Sign in required for " + tool + " (or use remote agent)",
+      };
+    }
+    if (tool === "test_connection" && window.ChatreRemote.testByok) {
+      return window.ChatreRemote.testByok(p.provider);
+    }
+    // Memory/schedule via agent API is server-side; local fallback already handled.
+    return {
+      ok: false,
+      tool: tool,
+      error:
+        "Use the remote agent for " +
+        tool +
+        " (persisted on the API). Local mode supports memory_* via browser storage only.",
+    };
   }
 
   async function httpRequestTool(p) {

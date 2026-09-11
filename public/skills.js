@@ -97,9 +97,98 @@
       steps: [
         "Track work with todo_write.",
         "Use execute_command and file tools for the workspace.",
-        "Use search_web / http_request for network; browser tools for interactive sites.",
-        "For real OS actions (open desktop browser, desktop screenshot, clipboard), use desktop_* tools (companion must be running).",
+        "Use search_web / http_request / fetch_url for network; browser tools for interactive sites.",
+        "For real OS actions use desktop_* (open, screenshot, clipboard, type, hotkey, click) when companion is running.",
         "Verify outputs before finishing.",
+      ],
+    },
+    byok_setup: {
+      name: "byok_setup",
+      title: "BYOK setup",
+      summary: "Connect a provider key and verify it safely.",
+      steps: [
+        "Confirm the user is signed in.",
+        "Save the provider key in Settings → BYOK (never echo it back).",
+        "Call test_connection(provider).",
+        "Select a provider:model and run a tiny task.",
+      ],
+    },
+    web_research: {
+      name: "web_research",
+      title: "Web research",
+      summary: "Search, fetch readable pages, and cite sources.",
+      steps: [
+        "search_web with focused queries (max 3).",
+        "fetch_url top sources for clean text.",
+        "Synthesize with [web:N] citations.",
+        "Use the browser only if login or JS is required.",
+      ],
+    },
+    form_workflow: {
+      name: "form_workflow",
+      title: "Form / login workflow",
+      summary: "Fill forms and pause for login walls safely.",
+      steps: [
+        "navigate then list_frames/switch_frame if needed.",
+        "read_page before acting.",
+        "form_input / computer for fields.",
+        "await_login on CAPTCHA/2FA; never invent credentials.",
+        "Screenshot to verify.",
+      ],
+    },
+    code_pr: {
+      name: "code_pr",
+      title: "Code change / PR",
+      summary: "Surgical edits, verify, and commit.",
+      steps: [
+        "Explore with view_tree / search_code / read_file.",
+        "patch_file for minimal diffs (prefer over full rewrite).",
+        "verify_project / execute_command.",
+        "git_add + git_commit with a why-focused message.",
+        "git_push only if the user asked.",
+      ],
+    },
+    data_cleanup: {
+      name: "data_cleanup",
+      title: "Data cleanup",
+      summary: "Clean CSV/tabular data with csv tools.",
+      steps: [
+        "csv_read the source file.",
+        "csv_query to filter or inspect.",
+        "csv_write the cleaned result.",
+        "upload_artifact for the UI rail.",
+      ],
+    },
+    ops_debug: {
+      name: "ops_debug",
+      title: "Ops / site debug",
+      summary: "Diagnose failing pages with network and console.",
+      steps: [
+        "Reproduce the issue in the browser.",
+        "browser_network(failed_only) and browser_console.",
+        "ocr_image if text is only in screenshots.",
+        "Report or apply a minimal fix.",
+      ],
+    },
+    account_safe: {
+      name: "account_safe",
+      title: "Account safety",
+      summary: "Handle secrets and logins without leaking data.",
+      steps: [
+        "Never invent or echo passwords or API keys.",
+        "Use await_login / ask_user_input for credentials.",
+        "memory_set only for non-secret preferences.",
+        "Prefer test_connection over printing keys.",
+      ],
+    },
+    memory_schedule: {
+      name: "memory_schedule",
+      title: "Memory & reminders",
+      summary: "Durable notes and timed reminders.",
+      steps: [
+        "memory_set / memory_get for cross-thread notes.",
+        "remind / schedule_create for timed messages.",
+        "schedule_due to deliver; schedule_list / schedule_cancel to manage.",
       ],
     },
   };
@@ -146,6 +235,50 @@
     ) {
       found.add("computer");
     }
+    if (
+      /\b(byok|api key|openrouter|anthropic|openai|gemini|bring your own)\b/.test(
+        t,
+      )
+    ) {
+      found.add("byok_setup");
+    }
+    if (
+      /\b(web research|research the web|cite sources|summarize articles|fetch.?url)\b/.test(
+        t,
+      )
+    ) {
+      found.add("web_research");
+    }
+    if (
+      /\b(login|sign in|2fa|captcha|fill (the )?form|checkout|submit form)\b/.test(
+        t,
+      )
+    ) {
+      found.add("form_workflow");
+    }
+    if (/\b(pull request|pr\b|code review|patch|commit message)\b/.test(t)) {
+      found.add("code_pr");
+    }
+    if (/\b(csv|spreadsheet|table data|cleanup data|data clean)\b/.test(t)) {
+      found.add("data_cleanup");
+    }
+    if (
+      /\b(network error|console error|ops debug|site broken|har\b|failed request)\b/.test(
+        t,
+      )
+    ) {
+      found.add("ops_debug");
+    }
+    if (
+      /\b(password|secret|credential|api token|never share|account safe)\b/.test(
+        t,
+      )
+    ) {
+      found.add("account_safe");
+    }
+    if (/\b(remember|memory|note that|remind me|schedule)\b/.test(t)) {
+      found.add("memory_schedule");
+    }
     if (found.has("coding") && (found.has("documents") || found.has("git"))) {
       found.add("project");
     }
@@ -182,6 +315,22 @@
     "list_mcp_tools",
     "search_web",
     "http_request",
+    "fetch_url",
+    "download_file",
+    "upload_artifact",
+    "patch_file",
+    "csv_read",
+    "csv_write",
+    "csv_query",
+    "memory_get",
+    "memory_set",
+    "memory_delete",
+    "schedule_create",
+    "remind",
+    "schedule_list",
+    "schedule_cancel",
+    "schedule_due",
+    "test_connection",
     "execute_command",
     "read_file",
     "write_file",
@@ -205,6 +354,15 @@
     "git_status",
     "git_log",
     "git_push",
+    "desktop_status",
+    "desktop_open",
+    "desktop_screenshot",
+    "desktop_clipboard_get",
+    "desktop_clipboard_set",
+    "desktop_notify",
+    "desktop_type",
+    "desktop_hotkey",
+    "desktop_click",
   ];
 
   /**
@@ -216,9 +374,20 @@
     const namesList = names || [];
     if (
       namesList.indexOf("browser") !== -1 ||
-      namesList.indexOf("computer") !== -1
+      namesList.indexOf("computer") !== -1 ||
+      namesList.indexOf("form_workflow") !== -1 ||
+      namesList.indexOf("ops_debug") !== -1 ||
+      namesList.indexOf("web_research") !== -1
     ) {
       list.push(...BROWSER_CONTROL_TOOLS);
+      list.push(
+        "browser_network",
+        "browser_console",
+        "ocr_image",
+        "list_frames",
+        "switch_frame",
+        "await_login",
+      );
     }
     return list;
   }

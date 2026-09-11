@@ -243,6 +243,36 @@
           });
       });
     }
+    if ($("byok-test")) {
+      $("byok-test").addEventListener("click", function () {
+        var provider = $("byok-provider") && $("byok-provider").value;
+        if (!window.ChatreRemote || !window.ChatreRemote.testByok) return;
+        window.ChatreRemote
+          .testByok(provider)
+          .then(function (r) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(
+                r && r.ok
+                  ? "Connected to " + provider
+                  : (r && r.error) || "Test failed",
+                r && r.ok ? "success" : "error",
+              );
+            }
+            var el = $("byok-status");
+            if (el) {
+              el.textContent =
+                r && r.ok
+                  ? "Test OK: " + provider + (r.sample ? " → " + r.sample : "")
+                  : "Test failed: " + ((r && r.error) || "unknown");
+            }
+          })
+          .catch(function (e) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(e.message || String(e), "error");
+            }
+          });
+      });
+    }
   }
 
   async function refreshModelCatalog() {

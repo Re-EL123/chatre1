@@ -1104,7 +1104,7 @@
           (result && result.tool) ||
           (card && card.querySelector(".tool-name") && card.querySelector(".tool-name").textContent) ||
           "";
-        if (/create_document|create_pdf|write_file/.test(toolName)) {
+        if (/create_document|create_pdf|write_file|download_file|upload_artifact|csv_write/.test(toolName) || result.artifact) {
           window.ChatreUIAdv.pushArtifact({
             kind: toolName || "document",
             title: result.title || result.path || "Document",

@@ -174,6 +174,13 @@
     );
   }
 
+  async function testByok(provider) {
+    return request("/api/me?action=byok&op=test", {
+      method: "POST",
+      body: JSON.stringify({ provider: provider }),
+    });
+  }
+
   async function listModels() {
     return request("/api/models", { method: "GET" });
   }
@@ -412,6 +419,7 @@
     patchMe,
     saveByok,
     deleteByok,
+    testByok,
     listModels,
     companionStatus,
     createThread,
