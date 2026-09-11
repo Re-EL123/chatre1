@@ -57,27 +57,14 @@
           )) ||
         [];
 
-      // Kick off with an OpenCode-style Build brief.
+      // Soft focus hint only — system prompt carries identity.
       if (forcePlan) {
-        const skillBlock =
-          autoSkills.length && window.ChatreSkills.skillBrief
-            ? "Auto-selected skills:\n" +
-              window.ChatreSkills.skillBrief(autoSkills) +
-              "\n"
-            : "";
-        messages.push({
-          role: "user",
-          content:
-            "UNIVERSAL COMPUTER-USE MODE — enforce the workflow.\n" +
-            "Browser + shell + files + HTTP. Order: explore → plan+todos → act → verify → summarize.\n" +
-            "Keep going until todos are complete and verification passes.\n" +
-            skillBlock +
-            "1) Explore with view_tree / read_file / browser_navigate / http_request.\n" +
-            "2) plan + todo({action:\"set\", items:[...]}).\n" +
-            "3) Act with write_file / execute_command / browser_* ; todo({action:\"done\", id}).\n" +
-            "4) Verify (verify_project / browser_read / execute_command) before finishing.\n" +
-            "Use ```tool JSON blocks (or native tools). Begin now.",
-        });
+        if (autoSkills.length) {
+          messages.push({
+            role: "user",
+            content: "Focus: " + autoSkills.join(", ") + ".",
+          });
+        }
         callbacks.onSkills && callbacks.onSkills(autoSkills);
       }
 
@@ -184,7 +171,7 @@
               messages.push({
                 role: "user",
                 content:
-                  "You have not used tools yet. Start with a plan tool call, then use_skill if useful, then implement with write_file / execute_command. Do not finish yet.",
+                  "Continue with tools — do not stop yet.",
               });
               if (cleanText.trim()) {
                 callbacks.onStepText && callbacks.onStepText(cleanText, false);

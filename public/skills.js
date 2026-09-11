@@ -67,7 +67,7 @@
     project: {
       name: "project",
       title: "Full project delivery",
-      summary: "OpenCode Build: plan → build → verify → document → commit.",
+      summary: "Plan, build, verify, document, and commit.",
       steps: [
         "Explore, then plan + todo set.",
         "Build the full project structure with complete files.",

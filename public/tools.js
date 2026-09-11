@@ -6,7 +6,7 @@
   "use strict";
 
   const TOOL_DEFINITIONS = [
-    { name: "todo", desc: "Manage OpenCode-style todos (set|add|done|list)", params: { action: "string", items: "array", id: "string", content: "string" } },
+    { name: "todo", desc: "Manage todos (set|add|done|list)", params: { action: "string", items: "array", id: "string", content: "string" } },
     { name: "plan", desc: "Create a step-by-step plan before executing", params: { steps: "string" } },
     { name: "list_skills", desc: "List available agent skills", params: {} },
     { name: "use_skill", desc: "Load a skill playbook (coding|documents|git|debugging|research|project|browser|computer)", params: { name: "string" } },
@@ -972,7 +972,7 @@
     };
   }
 
-  // ─── Todo (OpenCode-style) ────────────────────────────────────────
+  // ─── Todo ─────────────────────────────────────────────────────────
 
   const todoState = { items: [] };
 
