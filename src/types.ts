@@ -24,6 +24,8 @@ export interface ChatRequestBody {
   max_tokens?: number;
   /** Use the thorough agent system prompt and ignore client system messages. */
   agent?: boolean;
+  /** OpenAI-style tool definitions for structured function calling. */
+  tools?: unknown[];
 }
 
 export interface ImageRequest {

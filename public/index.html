@@ -986,12 +986,71 @@
         min-height: 1.2em;
       }
 
+      .panel-toggle-bar {
+        display: none;
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .thread-item {
+        position: relative;
+      }
+
+      .thread-item .thread-open {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        padding: 0.2rem 0.15rem;
+        font: inherit;
+      }
+
+      .thread-actions {
+        display: flex;
+        gap: 0.25rem;
+        justify-content: flex-end;
+      }
+
+      .thread-actions button,
+      .file-item .file-ask {
+        background: #12121c;
+        border: 1px solid var(--border-color);
+        color: var(--text-light);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.75rem;
+        min-width: 1.6rem;
+      }
+
+      #agent-resume {
+        background: #1a3a28;
+        border-color: #3a9a5a;
+        color: #9dffb0;
+      }
+
+      .app-shell.hide-threads #threads-panel,
+      .app-shell.hide-files #files-panel {
+        display: none;
+      }
+
       @media (max-width: 960px) {
+        .panel-toggle-bar {
+          display: flex;
+        }
         .app-shell {
           grid-template-columns: 1fr;
         }
+        .app-shell:not(.hide-threads):not(.hide-files) {
+          grid-template-columns: 1fr;
+        }
         .side-panel {
-          max-height: 220px;
+          max-height: 240px;
         }
       }
 
@@ -1036,6 +1095,9 @@
       <button type="button" class="btn" id="terminal-toggle" title="Toggle terminal">
         Terminal
       </button>
+      <button type="button" class="btn" id="agent-resume" hidden title="Resume interrupted agent run">
+        Resume
+      </button>
       <label for="api-key-input" class="api-key-label">API key</label>
       <input
         id="api-key-input"
@@ -1048,8 +1110,13 @@
       <span id="usage-meter" hidden></span>
       <p class="hint">
         Remote API: <code>https://chatre-api.vercel.app</code>. Status shows Connected/Unauthorized.
-        Threads &amp; files sync from Firestore when authorized.
+        Threads &amp; files sync from Firestore when authorized. Interrupted runs can Resume.
       </p>
+    </div>
+
+    <div class="panel-toggle-bar">
+      <button type="button" class="btn" id="toggle-threads">Threads</button>
+      <button type="button" class="btn" id="toggle-files">Files</button>
     </div>
 
     <div class="app-shell">

@@ -894,24 +894,23 @@
       if (window.ChatreRemote && window.ChatreRemote.enabled()) {
         const remoteState = window.__chatreRemote || {};
         let tokenEl = null;
-        await window.ChatreRemote.runAgentStream({
-          message,
-          threadId: remoteState.threadId || null,
-          workspaceId: remoteState.workspaceId || null,
-          model: modelSelect.value,
-          signal: activeAbort.signal,
-          onEvent: (ev) => {
+        const handleAgentEvent = (ev) => {
             if (ev.type === "start") {
               window.__chatreRemote = {
                 threadId: ev.threadId,
                 workspaceId: ev.workspaceId,
               };
-              startThinking("Remote agent connected");
+              startThinking(
+                ev.resume ? "Resuming remote agent" : "Remote agent connected",
+              );
               if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(false);
                 window.ChatrePanels.refreshThreads();
                 window.ChatrePanels.refreshFiles();
                 window.ChatrePanels.refreshAuthStatus();
               }
+            } else if (ev.type === "resume") {
+              startThinking("Resumed at step " + ev.step + "/" + ev.max);
             } else if (ev.type === "skills") {
               showStep(
                 "Skills: " + ((ev.skills && ev.skills.join(", ")) || "none"),
@@ -976,7 +975,32 @@
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
             } else if (ev.type === "error") {
               showStep("Agent error: " + (ev.error || "unknown"), true);
+            } else if (ev.type === "interrupted") {
+              stopThinking();
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
+              showStep(
+                (ev.response || "Agent paused for durability.") +
+                  "\n\nClick **Resume** to continue from the last checkpoint.",
+                true,
+              );
+              if (ev.usage && window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  ...ev.usage,
+                  model: modelSelect.value,
+                });
+              }
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true);
+                window.ChatrePanels.refreshThreads();
+                window.ChatrePanels.refreshFiles();
+              }
             } else if (ev.type === "done") {
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(false);
+              }
               if (ev.usage && window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
                   ...ev.usage,
@@ -993,7 +1017,15 @@
                 window.ChatrePanels.refreshFiles();
               }
             }
-          },
+        };
+
+        await window.ChatreRemote.runAgentStream({
+          message,
+          threadId: remoteState.threadId || null,
+          workspaceId: remoteState.workspaceId || null,
+          model: modelSelect.value,
+          signal: activeAbort.signal,
+          onEvent: handleAgentEvent,
         });
       } else if (window.ChatreAgent && window.ChatreTools) {
         let tokenEl = null;
@@ -1645,6 +1677,196 @@
     },
     getHistory: function () {
       return chatHistory.slice();
+    },
+    composeAndSend: function (text) {
+      const msg = String(text || "").trim();
+      if (!msg) return;
+      userInput.value = msg;
+      autoResize();
+      if (typeof sendMessage === "function") {
+        sendMessage();
+      } else {
+        document.getElementById("send-button").click();
+      }
+    },
+    resumeAgent: async function () {
+      if (!window.ChatreRemote || !window.ChatreRemote.enabled()) return;
+      const remoteState = window.__chatreRemote || {};
+      if (!remoteState.threadId) {
+        addMessage("assistant", "No thread to resume.");
+        return;
+      }
+      if (busy) return;
+      setBusy(true, "agent");
+      startThinking("Resuming agent from checkpoint");
+
+      const agentBody = document.createElement("div");
+      agentBody.className = "agent-body";
+      const agentEl = document.createElement("div");
+      agentEl.className = "message assistant-message agent-run";
+      agentEl.appendChild(agentBody);
+      chatMessages.appendChild(agentEl);
+      scrollToBottom();
+
+      let finalText = "";
+      const showStep = (text, isFinal) => {
+        const p = document.createElement("div");
+        p.className = "agent-text" + (isFinal ? " agent-final" : "");
+        p.innerHTML = renderMarkdown(text);
+        enhanceCodeBlocks(p);
+        agentBody.appendChild(p);
+        scrollToBottom();
+        if (isFinal) finalText = text;
+      };
+      const showTool = (call) => {
+        const card = document.createElement("div");
+        card.className = "tool-call";
+        card.dataset.toolId = call.id || call.tool;
+        const params = call.params || {};
+        const detail = formatToolParams(call.tool, params);
+        card.innerHTML =
+          '<div class="tool-call-header">' +
+          '<span class="tool-icon">⚒</span>' +
+          '<span class="tool-name">' +
+          escapeHtml(call.tool) +
+          "</span>" +
+          '<span class="tool-status running">running…</span>' +
+          '</div><div class="tool-call-detail">' +
+          escapeHtml(detail) +
+          "</div>" +
+          '<div class="tool-call-result"></div>';
+        agentBody.appendChild(card);
+        scrollToBottom();
+        return card;
+      };
+      const updateTool = (card, result) => {
+        const status = card.querySelector(".tool-status");
+        const resultDiv = card.querySelector(".tool-call-result");
+        if (result && result.ok === false) {
+          status.textContent = "error";
+          status.className = "tool-status error";
+          resultDiv.className = "tool-call-result error";
+          resultDiv.textContent = result.error || "failed";
+        } else {
+          status.textContent = "done";
+          status.className = "tool-status done";
+          const outText =
+            (result &&
+              (result.guide || result.text || result.output || result.content)) ||
+            "ok";
+          resultDiv.textContent =
+            typeof outText === "string" && outText.length > 500
+              ? outText.slice(0, 500) + "\n…(truncated)"
+              : outText;
+        }
+        scrollToBottom();
+      };
+
+      activeAbort = new AbortController();
+      const toolCards = {};
+      let tokenEl = null;
+
+      try {
+        await window.ChatreRemote.runAgentStream({
+          resume: true,
+          threadId: remoteState.threadId,
+          workspaceId: remoteState.workspaceId || null,
+          model: modelSelect.value,
+          signal: activeAbort.signal,
+          onEvent: (ev) => {
+            if (ev.type === "start") {
+              window.__chatreRemote = {
+                threadId: ev.threadId,
+                workspaceId: ev.workspaceId,
+              };
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(false);
+              }
+              startThinking("Resuming remote agent");
+            } else if (ev.type === "resume") {
+              startThinking("Resumed at step " + ev.step + "/" + ev.max);
+            } else if (ev.type === "thinking") {
+              startThinking("Agent step " + ev.step + "/" + ev.max);
+              if (ev.usage && window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  ...ev.usage,
+                  model: modelSelect.value,
+                });
+              }
+            } else if (ev.type === "token") {
+              stopThinking();
+              if (!tokenEl) {
+                tokenEl = document.createElement("div");
+                tokenEl.className = "token-stream";
+                agentBody.appendChild(tokenEl);
+              }
+              tokenEl.textContent += ev.delta || "";
+              scrollToBottom();
+            } else if (ev.type === "text") {
+              stopThinking();
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
+              showStep(ev.text, !!ev.final);
+              if (ev.final) {
+                chatHistory.push({ role: "assistant", content: ev.text });
+                trimHistory();
+              }
+            } else if (ev.type === "tool_start") {
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
+              toolCards[ev.id || ev.tool] = showTool(ev);
+            } else if (ev.type === "tool_result") {
+              const card = toolCards[ev.id || ev.tool];
+              if (card) updateTool(card, ev.result);
+              if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+            } else if (ev.type === "interrupted") {
+              showStep(
+                (ev.response || "Paused again.") +
+                  "\n\nClick **Resume** to continue.",
+                true,
+              );
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true);
+              }
+            } else if (ev.type === "done") {
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(false);
+              }
+              if (ev.response && !finalText) {
+                showStep(ev.response, true);
+                chatHistory.push({ role: "assistant", content: ev.response });
+                trimHistory();
+              }
+              if (ev.usage && window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  ...ev.usage,
+                  model: modelSelect.value,
+                });
+              }
+              if (window.ChatrePanels) {
+                window.ChatrePanels.refreshThreads();
+                window.ChatrePanels.refreshFiles();
+              }
+            } else if (ev.type === "error") {
+              showStep("Resume error: " + (ev.error || "unknown"), true);
+            }
+          },
+        });
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          showStep("*(resume stopped)*", true);
+        } else {
+          showStep("Resume failed: " + (e.message || String(e)), true);
+        }
+      } finally {
+        stopThinking();
+        setBusy(false);
+        userInput.focus();
+      }
     },
   };
 })();

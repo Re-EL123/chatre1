@@ -1,5 +1,6 @@
 /**
- * Chatre panels — threads sidebar, file explorer, diff modal, ZIP export, usage meter, auth status.
+ * Chatre panels — threads sidebar, file explorer, diff modal, ZIP export,
+ * usage meter, auth status, mobile collapse, rename/delete, explain file.
  */
 (function () {
   "use strict";
@@ -9,8 +10,9 @@
     files: {},
     workspaceId: null,
     selectedPath: null,
-    fileSnapshots: {}, // path -> last known content for diffs
+    fileSnapshots: {},
     usage: null,
+    canResume: false,
   };
 
   function $(id) {
@@ -76,6 +78,14 @@
       " tok";
   }
 
+  function setResumeAvailable(on) {
+    state.canResume = !!on;
+    const btn = $("agent-resume");
+    if (!btn) return;
+    btn.hidden = !on;
+    btn.disabled = !on;
+  }
+
   async function refreshThreads() {
     const list = $("thread-list");
     if (!list || !remote() || !remote().enabled()) return;
@@ -89,18 +99,44 @@
       }
       const active = remoteState().threadId;
       state.threads.forEach((thr) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className =
+        const wrap = document.createElement("div");
+        wrap.className =
           "thread-item" + (thr.id === active ? " active" : "");
-        btn.innerHTML =
+        const interrupted =
+          thr.agentRun && thr.agentRun.status === "interrupted";
+        const usageHint =
+          thr.lastUsage && thr.lastUsage.totalTokensEst
+            ? " · ~" + thr.lastUsage.totalTokensEst + " tok"
+            : "";
+        wrap.innerHTML =
+          '<button type="button" class="thread-open">' +
           "<strong>" +
           escapeHtml(thr.title || "Untitled") +
           "</strong><span>" +
           escapeHtml((thr.updatedAt || "").slice(0, 19).replace("T", " ")) +
-          "</span>";
-        btn.addEventListener("click", () => loadThread(thr.id));
-        list.appendChild(btn);
+          (interrupted ? " · interrupted" : "") +
+          escapeHtml(usageHint) +
+          "</span></button>" +
+          '<div class="thread-actions">' +
+          '<button type="button" class="thread-rename" title="Rename">✎</button>' +
+          '<button type="button" class="thread-delete" title="Delete">×</button>' +
+          "</div>";
+        wrap.querySelector(".thread-open").addEventListener("click", () => {
+          loadThread(thr.id);
+        });
+        wrap
+          .querySelector(".thread-rename")
+          .addEventListener("click", (e) => {
+            e.stopPropagation();
+            renameThread(thr);
+          });
+        wrap
+          .querySelector(".thread-delete")
+          .addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteThread(thr);
+          });
+        list.appendChild(wrap);
       });
     } catch (e) {
       list.innerHTML =
@@ -117,8 +153,16 @@
       remoteState().workspaceId = thr.thread.workspaceId;
       state.workspaceId = thr.thread.workspaceId;
     }
-    const chatMessages = $("chat-messages");
-    if (chatMessages && window.ChatreUI && window.ChatreUI.resetChat) {
+    if (thr && thr.thread && thr.thread.lastUsage) {
+      updateUsageMeter(thr.thread.lastUsage);
+    }
+    const interrupted =
+      thr &&
+      thr.thread &&
+      thr.thread.agentRun &&
+      thr.thread.agentRun.status === "interrupted";
+    setResumeAvailable(interrupted);
+    if (window.ChatreUI && window.ChatreUI.resetChat) {
       window.ChatreUI.resetChat(data.messages || []);
     }
     await refreshThreads();
@@ -127,14 +171,48 @@
 
   async function newThread() {
     if (!remote() || !remote().enabled()) return;
-    const data = await remote().createThread("New chat");
+    const modelEl = $("model-select");
+    const data = await remote().createThread(
+      "New chat",
+      modelEl ? modelEl.value : "",
+    );
     if (data.thread) {
       remoteState().threadId = data.thread.id;
       remoteState().workspaceId = data.workspace && data.workspace.id;
       state.workspaceId = remoteState().workspaceId;
     }
+    setResumeAvailable(false);
     if (window.ChatreUI && window.ChatreUI.resetChat) {
       window.ChatreUI.resetChat([]);
+    }
+    await refreshThreads();
+    await refreshFiles();
+  }
+
+  async function renameThread(thr) {
+    if (!remote()) return;
+    const next = window.prompt("Rename thread", thr.title || "Untitled");
+    if (next == null) return;
+    const title = String(next).trim();
+    if (!title) return;
+    await remote().updateThread(thr.id, { title: title.slice(0, 120) });
+    await refreshThreads();
+  }
+
+  async function deleteThread(thr) {
+    if (!remote()) return;
+    if (!window.confirm('Delete thread "' + (thr.title || "Untitled") + '"?')) {
+      return;
+    }
+    await remote().deleteThread(thr.id);
+    if (remoteState().threadId === thr.id) {
+      remoteState().threadId = null;
+      remoteState().workspaceId = null;
+      state.workspaceId = null;
+      setResumeAvailable(false);
+      if (window.ChatreUI && window.ChatreUI.resetChat) {
+        window.ChatreUI.resetChat([]);
+      }
     }
     await refreshThreads();
     await refreshFiles();
@@ -180,9 +258,11 @@
         '<button type="button" class="file-open">' +
         escapeHtml(p) +
         "</button>" +
+        '<button type="button" class="file-ask" title="Explain in chat">?</button>' +
         '<button type="button" class="file-diff" title="Diff">Δ</button>' +
         '<button type="button" class="file-dl" title="Download">↓</button>';
       row.querySelector(".file-open").addEventListener("click", () => openFile(p));
+      row.querySelector(".file-ask").addEventListener("click", () => askAboutFile(p));
       row.querySelector(".file-diff").addEventListener("click", () => showDiff(p));
       row.querySelector(".file-dl").addEventListener("click", () => downloadFile(p));
       root.appendChild(row);
@@ -196,10 +276,32 @@
     if (!viewer) return;
     const f = state.files[path];
     const content = f && f.content != null ? f.content : "";
-    if (!state.fileSnapshots[path]) state.fileSnapshots[path] = content;
     viewer.textContent = content;
     if (meta) meta.textContent = path;
     await refreshFiles();
+  }
+
+  function askAboutFile(path) {
+    const f = state.files[path];
+    const snippet =
+      f && f.content != null
+        ? String(f.content).slice(0, 4000)
+        : "(empty or unread)";
+    const prompt =
+      "Explain this file and suggest improvements:\n\nPath: " +
+      path +
+      "\n\n```\n" +
+      snippet +
+      "\n```";
+    if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+      window.ChatreUI.composeAndSend(prompt);
+      return;
+    }
+    const input = $("user-input");
+    if (input) {
+      input.value = prompt;
+      input.focus();
+    }
   }
 
   function downloadFile(path) {
@@ -213,26 +315,44 @@
     URL.revokeObjectURL(a.href);
   }
 
-  function showDiff(path) {
-    const f = state.files[path];
-    if (!f) return;
-    const previous = state.fileSnapshots[path] != null ? state.fileSnapshots[path] : "";
-    const current = f.content || "";
-    // Update snapshot after viewing so next diff is incremental
+  async function showDiff(path) {
     const modal = $("diff-modal");
     const body = $("diff-modal-body");
     const title = $("diff-modal-title");
     if (!modal || !body) return;
     if (title) title.textContent = "Diff · " + path;
-    body.textContent = makeUnifiedDiff(previous, current, path);
+    body.textContent = "Loading…";
     modal.classList.add("open");
-    state.fileSnapshots[path] = current;
+
+    const wsId = remoteState().workspaceId || state.workspaceId;
+    try {
+      if (remote() && remote().getDiff && wsId) {
+        const data = await remote().getDiff(wsId, path);
+        body.textContent =
+          data.unified ||
+          makeUnifiedDiff(data.previous || "", data.current || "", path);
+        return;
+      }
+    } catch (e) {
+      body.textContent = "Server diff failed: " + (e.message || e) + "\n\n";
+    }
+
+    const f = state.files[path];
+    const previous =
+      f && f.previousContent != null
+        ? f.previousContent
+        : state.fileSnapshots[path] != null
+          ? state.fileSnapshots[path]
+          : "";
+    const current = (f && f.content) || "";
+    body.textContent =
+      (body.textContent || "") + makeUnifiedDiff(previous, current, path);
   }
 
   function makeUnifiedDiff(a, b, path) {
     const aLines = String(a).split("\n");
     const bLines = String(b).split("\n");
-    const out = ["--- a" + path, "+++ b" + path];
+    const out = ["--- a/" + path, "+++ b/" + path];
     const max = Math.max(aLines.length, bLines.length);
     for (let i = 0; i < max; i++) {
       const left = aLines[i];
@@ -294,9 +414,35 @@
       state.fileSnapshots[path] = previous;
     }
     if (next != null) {
-      // keep previous snapshot for diff; update file cache
-      if (!state.files[path]) state.files[path] = { path: path, type: "file", content: next };
-      else state.files[path].content = next;
+      if (!state.files[path]) {
+        state.files[path] = {
+          path: path,
+          type: "file",
+          content: next,
+          previousContent: previous,
+        };
+      } else {
+        if (previous != null) state.files[path].previousContent = previous;
+        state.files[path].content = next;
+      }
+    }
+  }
+
+  function togglePanel(which) {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    if (which === "threads") {
+      shell.classList.toggle("hide-threads");
+    } else if (which === "files") {
+      shell.classList.toggle("hide-files");
+    }
+  }
+
+  function initMobileDefaults() {
+    const shell = document.querySelector(".app-shell");
+    if (!shell || !window.matchMedia) return;
+    if (window.matchMedia("(max-width: 960px)").matches) {
+      shell.classList.add("hide-threads", "hide-files");
     }
   }
 
@@ -306,6 +452,9 @@
     const filesRefresh = $("files-refresh");
     const zipBtn = $("files-export-zip");
     const closeDiff = $("diff-modal-close");
+    const resumeBtn = $("agent-resume");
+    const toggleThreads = $("toggle-threads");
+    const toggleFiles = $("toggle-files");
 
     if (refreshBtn) refreshBtn.addEventListener("click", refreshThreads);
     if (newBtn) newBtn.addEventListener("click", newThread);
@@ -316,6 +465,19 @@
         $("diff-modal").classList.remove("open");
       });
     }
+    if (resumeBtn) {
+      resumeBtn.addEventListener("click", () => {
+        if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+          window.ChatreUI.resumeAgent();
+        }
+      });
+    }
+    if (toggleThreads) {
+      toggleThreads.addEventListener("click", () => togglePanel("threads"));
+    }
+    if (toggleFiles) {
+      toggleFiles.addEventListener("click", () => togglePanel("files"));
+    }
 
     const apiKeyInput = $("api-key-input");
     if (apiKeyInput) {
@@ -323,13 +485,13 @@
       apiKeyInput.addEventListener("change", refreshAuthStatus);
     }
 
+    initMobileDefaults();
     refreshAuthStatus();
     if (remote() && remote().enabled() && remote().apiKey()) {
       refreshThreads();
       refreshFiles();
     }
 
-    // periodic light ping
     setInterval(refreshAuthStatus, 60000);
   }
 
@@ -340,6 +502,8 @@
     refreshFiles,
     updateUsageMeter,
     rememberWrite,
+    setResumeAvailable,
+    askAboutFile,
     state,
   };
 

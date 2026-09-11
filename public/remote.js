@@ -126,6 +126,19 @@
     });
   }
 
+  async function updateThread(threadId, patch) {
+    return request("/api/threads?id=" + encodeURIComponent(threadId), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteThread(threadId) {
+    return request("/api/threads?id=" + encodeURIComponent(threadId), {
+      method: "DELETE",
+    });
+  }
+
   async function getMessages(threadId) {
     return request(
       "/api/threads?id=" + encodeURIComponent(threadId) + "&action=messages",
@@ -154,6 +167,16 @@
     );
   }
 
+  async function getDiff(workspaceId, filePath) {
+    return request(
+      "/api/workspace?action=diff&id=" +
+        encodeURIComponent(workspaceId) +
+        "&path=" +
+        encodeURIComponent(filePath),
+      { method: "GET" },
+    );
+  }
+
   async function exec(cmd, workspaceId, cwd) {
     return request("/api/exec", {
       method: "POST",
@@ -168,6 +191,7 @@
     model,
     onEvent,
     signal,
+    resume,
   }) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
@@ -179,17 +203,23 @@
       );
     }
 
+    const body = {
+      threadId,
+      workspaceId,
+      model,
+      stream: true,
+    };
+    if (resume) {
+      body.resume = true;
+    } else {
+      body.message = message;
+    }
+
     const res = await fetch(base + "/api/agent", {
       method: "POST",
       headers: headers(),
       signal,
-      body: JSON.stringify({
-        message,
-        threadId,
-        workspaceId,
-        model,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -215,6 +245,9 @@
       workspaceId: workspaceId || null,
       response: "",
       usage: null,
+      status: "done",
+      interrupted: false,
+      runId: null,
     };
 
     while (true) {
@@ -238,9 +271,18 @@
           if (ev.type === "done") {
             meta.response = ev.response || meta.response;
             meta.usage = ev.usage || meta.usage;
+            meta.status = "done";
+          }
+          if (ev.type === "interrupted") {
+            meta.interrupted = true;
+            meta.status = "interrupted";
+            meta.runId = ev.runId || meta.runId;
+            meta.response = ev.response || meta.response;
+            meta.usage = ev.usage || meta.usage;
           }
           if (ev.type === "text" && ev.final) meta.response = ev.text;
           if (ev.usage) meta.usage = ev.usage;
+          if (ev.runId) meta.runId = ev.runId;
           onEvent && onEvent(ev);
         } catch {
           /* ignore */
@@ -260,10 +302,13 @@
     createThread,
     listThreads,
     getThread,
+    updateThread,
+    deleteThread,
     getMessages,
     getWorkspace,
     exportWorkspace,
     getFile,
+    getDiff,
     exec,
     runAgentStream,
   };
