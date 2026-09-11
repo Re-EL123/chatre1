@@ -412,31 +412,49 @@
     const tool = mapped.tool;
     const p = mapped.params || {};
 
-    const body = {
-      tool: tool,
-      session_id: browserSessionId || undefined,
-      tab_id: p.tab_id != null ? Number(p.tab_id) : lastTabId != null ? lastTabId : undefined,
-      url: p.url,
-      query: p.query,
-      queries: p.queries,
-      ref: p.ref,
-      value: p.value,
-      text: p.text != null ? p.text : p.value,
-      action: p.action,
-      coordinate: p.coordinate || (p.x != null && p.y != null ? [Number(p.x), Number(p.y)] : undefined),
-      depth: p.depth != null ? Number(p.depth) : undefined,
-      filter: p.filter,
-      ref_id: p.ref_id,
-      scroll_parameters: p.scroll_parameters,
-      actions: p.actions,
-      fullPage: p.fullPage,
-      selector: p.selector,
-      key: p.key,
-      script: p.script || p.code,
-      ms: p.ms != null ? Number(p.ms) : undefined,
-    };
+    function buildBody(sessionId, tabOverride) {
+      const remote =
+        (window.__chatreRemote && window.__chatreRemote.threadId) || undefined;
+      return {
+        tool: tool,
+        session_id: sessionId || undefined,
+        thread_id: remote,
+        tab_id:
+          p.tab_id != null
+            ? Number(p.tab_id)
+            : tabOverride != null
+              ? tabOverride
+              : lastTabId != null
+                ? lastTabId
+                : undefined,
+        wait_stable: p.wait_stable !== false,
+        caption: p.caption !== false,
+        url: p.url,
+        query: p.query,
+        queries: p.queries,
+        ref: p.ref,
+        value: p.value,
+        text: p.text != null ? p.text : p.value,
+        action: p.action,
+        coordinate:
+          p.coordinate ||
+          (p.x != null && p.y != null
+            ? [Number(p.x), Number(p.y)]
+            : undefined),
+        depth: p.depth != null ? Number(p.depth) : undefined,
+        filter: p.filter,
+        ref_id: p.ref_id,
+        scroll_parameters: p.scroll_parameters,
+        actions: p.actions,
+        fullPage: p.fullPage,
+        selector: p.selector,
+        key: p.key,
+        script: p.script || p.code,
+        ms: p.ms != null ? Number(p.ms) : undefined,
+      };
+    }
 
-    try {
+    async function once(body) {
       const res = await fetch("/api/browser", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -450,27 +468,58 @@
           ok: false,
           tool: rawTool,
           error: (data && data.error) || "Browser HTTP " + res.status,
+          status: res.status,
         };
       }
-      if (data && data.session_id) browserSessionId = data.session_id;
-      if (data && data.tab_id != null) lastTabId = data.tab_id;
+      return Object.assign({ tool: rawTool, ok: true }, data || {});
+    }
 
-      const out = Object.assign({ tool: rawTool }, data || {});
-      if (out.screenshot_base64) {
+    function retryable(out) {
+      if (!out || out.ok === false) {
+        const err = String((out && out.error) || "").toLowerCase();
+        return /session|disconnected|target closed|browser has been closed|unknown tab|protocol error|timeout|navigating frame/.test(
+          err,
+        );
+      }
+      return false;
+    }
+
+    function sanitize(out) {
+      if (out && out.session_id) browserSessionId = out.session_id;
+      if (out && out.tab_id != null) lastTabId = out.tab_id;
+      if (out && out.session_recovered) {
+        out.note =
+          (out.note ? out.note + " " : "") +
+          "Browser session was relaunched; re-read the page before using old refs.";
+      }
+      if (out && out.screenshot_base64) {
         out.screenshot = {
           mime: out.mime || "image/jpeg",
           note: "Screenshot captured (base64 omitted from chat context)",
-          bytesApprox: Math.floor((String(out.screenshot_base64).length * 3) / 4),
+          bytesApprox: Math.floor(
+            (String(out.screenshot_base64).length * 3) / 4,
+          ),
           id: out.id || "screenshot:1",
         };
         out.hasScreenshot = true;
         delete out.screenshot_base64;
       }
-      if (out.text) out.text = String(out.text).slice(0, 12000);
-      if (Array.isArray(out.elements) && out.elements.length > 80) {
+      if (out && out.text) out.text = String(out.text).slice(0, 12000);
+      if (out && Array.isArray(out.elements) && out.elements.length > 80) {
         out.elements = out.elements.slice(0, 80);
       }
       return out;
+    }
+
+    try {
+      let out = await once(buildBody(browserSessionId, lastTabId));
+      if (retryable(out)) {
+        browserSessionId = "";
+        lastTabId = null;
+        out = await once(buildBody("", null));
+        if (out) out.retried = true;
+      }
+      return sanitize(out);
     } catch (err) {
       return {
         ok: false,

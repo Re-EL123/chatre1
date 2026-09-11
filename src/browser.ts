@@ -6,9 +6,19 @@ import type { Browser, Page, ElementHandle } from "@cloudflare/puppeteer";
 import puppeteer from "@cloudflare/puppeteer";
 import type { Env } from "./types";
 import { captionScreenshot } from "./vision";
+import {
+  buildFormInputScript,
+  buildReadPageScript,
+  clearRefs,
+  clickViaRef,
+  pageHealth,
+  scrollIntoViewHandle,
+  sleep,
+  waitForStable,
+} from "./browser-dom";
 
 const VIEWPORT = { width: 1280, height: 800 };
-const KEEP_ALIVE_MS = 600_000;
+const KEEP_ALIVE_MS = 900_000;
 
 export interface BrowserRequestBody {
   tool?: string;
@@ -35,6 +45,7 @@ export interface BrowserRequestBody {
   };
   actions?: Array<Record<string, unknown>>;
   fullPage?: boolean;
+  wait_stable?: boolean;
   /** Legacy aliases */
   selector?: string;
   key?: string;
@@ -98,6 +109,7 @@ export async function handleBrowserRequest(
 
   let browser: Browser | null = null;
   let launched = false;
+  let sessionRecovered = false;
 
   try {
     // Restore session_id from Durable Object when thread_id is provided.
@@ -106,24 +118,35 @@ export async function handleBrowserRequest(
         const id = env.BROWSER_SESSIONS.idFromName(String(body.thread_id));
         const stub = env.BROWSER_SESSIONS.get(id);
         const stored = await stub.fetch("https://do/get");
-        const j = (await stored.json()) as { sessionId?: string; lastTabId?: number };
+        const j = (await stored.json()) as {
+          sessionId?: string;
+          lastTabId?: number;
+        };
         if (j && j.sessionId) body.session_id = j.sessionId;
-        if (body.tab_id == null && j && j.lastTabId != null) body.tab_id = j.lastTabId;
+        if (body.tab_id == null && j && j.lastTabId != null) {
+          body.tab_id = j.lastTabId;
+        }
       } catch {
         /* ignore DO errors */
       }
     }
 
+    const priorSession = body.session_id;
     const opened = await openBrowser(env, body.session_id);
     browser = opened.browser;
     launched = opened.launched;
+    sessionRecovered = !!(priorSession && opened.launched);
+    if (sessionRecovered) {
+      // Old tab_id is meaningless after a fresh launch.
+      body.tab_id = undefined;
+    }
     const sessionId = browserSessionId(browser);
 
     let result = await dispatch(browser, tool, body, env);
 
     // Optional vision caption for screenshots (computer / navigate snaps).
     if (
-      (body.caption !== false) &&
+      body.caption !== false &&
       result &&
       typeof result.screenshot_base64 === "string" &&
       result.screenshot_base64
@@ -134,7 +157,11 @@ export async function handleBrowserRequest(
           String(result.screenshot_base64),
         );
         if (cap.ok && cap.caption) {
-          result = { ...result, vision_caption: cap.caption, vision_model: cap.model };
+          result = {
+            ...result,
+            vision_caption: cap.caption,
+            vision_model: cap.model,
+          };
         }
       } catch {
         /* ignore vision failures */
@@ -151,7 +178,8 @@ export async function handleBrowserRequest(
           method: "POST",
           body: JSON.stringify({
             sessionId,
-            lastTabId: result && result.tab_id != null ? result.tab_id : body.tab_id,
+            lastTabId:
+              result && result.tab_id != null ? result.tab_id : body.tab_id,
           }),
         });
       } catch {
@@ -164,6 +192,7 @@ export async function handleBrowserRequest(
       tool,
       session_id: sessionId,
       launched,
+      session_recovered: sessionRecovered || undefined,
       ...result,
     });
   } catch (err) {
@@ -324,7 +353,8 @@ async function ensureTab(browser: Browser, tabId?: number): Promise<Page> {
   // Fallback: treat tab_id as 1-based index
   const idx = Number(tabId) - 1;
   if (idx >= 0 && idx < pages.length) return pages[idx];
-  throw new Error("Unknown tab_id: " + tabId);
+  // After session recovery, fall back to newest tab instead of failing hard.
+  return pages[pages.length - 1];
 }
 
 async function ensureTabIds(pages: Page[]) {
@@ -397,11 +427,13 @@ async function tabsCreate(browser: Browser, url?: string) {
   const target = normalizeUrl(url || "about:blank");
   if (target && target !== "about:blank") {
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await waitForStable(page, { quietMs: 350, timeoutMs: 5000 });
   }
   return {
     tab_id: tabId,
     url: page.url(),
     title: await page.title(),
+    health: await pageHealth(page),
     tabs: await listTabs(browser),
   };
 }
@@ -419,6 +451,7 @@ async function navigate(browser: Browser, body: BrowserRequestBody) {
   const page = await ensureTab(browser, body.tab_id);
   const raw = String(body.url || "").trim();
   if (!raw) throw new Error("url required");
+  await clearRefs(page);
   if (raw === "back") {
     await page.goBack({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(
       () => undefined,
@@ -433,11 +466,18 @@ async function navigate(browser: Browser, body: BrowserRequestBody) {
       timeout: 45000,
     });
   }
+  const stable =
+    body.wait_stable === false
+      ? { stable: true, url: page.url(), waitedMs: 0 }
+      : await waitForStable(page, { quietMs: 400, timeoutMs: 6000 });
+  const health = await pageHealth(page);
   const snap = await snapshot(page, false);
   const tabId = await getTabId(page);
   return {
     tab_id: tabId,
     ...snap,
+    stable,
+    health,
     id: "web:" + (tabId || 1),
     tabs: await listTabs(browser),
   };
@@ -451,6 +491,7 @@ async function computer(browser: Browser, body: BrowserRequestBody) {
       : [body];
 
   let lastClick: { x: number; y: number } | null = null;
+  const actionNotes: string[] = [];
   for (const act of actions) {
     const action = String(
       (act as BrowserRequestBody).action || body.action || "screenshot",
@@ -463,10 +504,33 @@ async function computer(browser: Browser, body: BrowserRequestBody) {
 
     if (action === "screenshot") {
       /* snapshot at end */
-    } else if (action === "wait") {
-      const ms = Math.min(Math.max(Number(a.ms || body.ms) || 800, 100), 15000);
-      if (selector) await page.waitForSelector(selector, { timeout: ms });
-      else await sleep(ms);
+    } else if (action === "wait" || action === "wait_stable") {
+      if (action === "wait_stable" || (!selector && !text)) {
+        const st = await waitForStable(page, {
+          quietMs: Number(a.ms || body.ms) || 450,
+          timeoutMs: 8000,
+        });
+        actionNotes.push(
+          "wait_stable:" + (st.stable ? "ok" : "timeout") + ":" + st.waitedMs + "ms",
+        );
+      } else {
+        const ms = Math.min(Math.max(Number(a.ms || body.ms) || 800, 100), 15000);
+        if (selector) await page.waitForSelector(selector, { timeout: ms });
+        else if (text) {
+          await page
+            .waitForFunction(
+              "document.body && document.body.innerText.toLowerCase().includes(" +
+                JSON.stringify(text.toLowerCase()) +
+                ")",
+              { timeout: ms },
+            )
+            .catch(() => undefined);
+        } else await sleep(ms);
+      }
+    } else if (action === "hover") {
+      const point = await resolvePoint(page, { coord, ref, selector });
+      await page.mouse.move(point.x, point.y);
+      await sleep(120);
     } else if (action === "evaluate") {
       await page.evaluate(
         "new Function(" + JSON.stringify(text || body.script || "") + ")()",
@@ -478,31 +542,64 @@ async function computer(browser: Browser, body: BrowserRequestBody) {
       action === "double_click" ||
       action === "triple_click"
     ) {
-      const point = await resolvePoint(page, { coord, ref, selector });
-      lastClick = point;
       const button = action === "right_click" ? "right" : "left";
       const count =
         action === "triple_click" ? 3 : action === "double_click" ? 2 : 1;
-      await page.mouse.click(point.x, point.y, { button, clickCount: count });
-      await sleep(250);
+      if (ref) {
+        let via = await clickViaRef(page, ref, { button, clickCount: count });
+        if (!via.ok) {
+          // Refresh refs once, then retry by text/role match from find tokens.
+          await readPage(browser, {
+            ...body,
+            filter: "interactive",
+            depth: 18,
+          });
+          via = await clickViaRef(page, ref, { button, clickCount: count });
+        }
+        if (via.ok && via.point) {
+          lastClick = via.point;
+          actionNotes.push("click:ref:" + ref);
+        } else {
+          const point = await resolvePoint(page, { coord, ref: "", selector });
+          lastClick = point;
+          await page.mouse.click(point.x, point.y, { button, clickCount: count });
+          actionNotes.push("click:coord_fallback");
+        }
+      } else {
+        const point = await resolvePoint(page, { coord, ref, selector });
+        lastClick = point;
+        await page.mouse.click(point.x, point.y, { button, clickCount: count });
+        actionNotes.push("click:coord");
+      }
+      await sleep(200);
+      if (body.wait_stable !== false) {
+        await waitForStable(page, { quietMs: 350, timeoutMs: 5000 });
+      }
     } else if (action === "type") {
       if (ref || selector) {
         const el = await resolveElement(page, ref, selector);
         if (el) {
+          await scrollIntoViewHandle(el);
           await el.click({ clickCount: 3 }).catch(() => undefined);
-          await el.type(text, { delay: 15 });
+          await el.type(text, { delay: 12 });
         } else {
-          await page.keyboard.type(text, { delay: 15 });
+          await page.keyboard.type(text, { delay: 12 });
         }
       } else {
-        await page.keyboard.type(text, { delay: 15 });
+        await page.keyboard.type(text, { delay: 12 });
       }
     } else if (action === "key") {
       await pressKeys(page, text || String(body.key || "Enter"));
+      if (body.wait_stable !== false) {
+        await waitForStable(page, { quietMs: 300, timeoutMs: 4000 });
+      }
     } else if (action === "scroll") {
       const params = a.scroll_parameters || body.scroll_parameters || {};
       const dir = String(params.scroll_direction || "down").toLowerCase();
-      const amount = Math.min(Math.max(Number(params.scroll_amount) || 3, 1), 20);
+      const amount = Math.min(
+        Math.max(Number(params.scroll_amount) || 3, 1),
+        20,
+      );
       const delta = amount * 240;
       const dx = dir === "left" ? -delta : dir === "right" ? delta : 0;
       const dy = dir === "up" ? -delta : dir === "down" ? delta : 0;
@@ -514,11 +611,14 @@ async function computer(browser: Browser, body: BrowserRequestBody) {
     }
   }
 
+  const health = await pageHealth(page);
   const snap = await snapshot(page, !!body.fullPage, lastClick);
   const tabId = await getTabId(page);
   return {
     tab_id: tabId,
     ...snap,
+    health,
+    action_notes: actionNotes.length ? actionNotes : undefined,
     id: "screenshot:" + (tabId || 1),
     tabs: await listTabs(browser),
   };
@@ -552,9 +652,13 @@ async function resolvePoint(
   if (opts.coord) return opts.coord;
   const el = await resolveElement(page, opts.ref, opts.selector);
   if (!el) throw new Error("Need coordinate, ref, or selector to click");
+  await scrollIntoViewHandle(el);
   const box = await el.boundingBox();
   if (!box) throw new Error("Element has no bounding box");
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  return {
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + box.height / 2),
+  };
 }
 
 async function resolveElement(
@@ -618,76 +722,17 @@ async function readPage(browser: Browser, body: BrowserRequestBody) {
   const focusRef = String(body.ref_id || "");
 
   const tree = await page.evaluate(
-    `(function(){
-      var depth = ${depth};
-      var filter = ${JSON.stringify(filter)};
-      var focusRef = ${JSON.stringify(focusRef)};
-      var refs = {};
-      var n = 0;
-      function isInteractive(el) {
-        if (!el || el.nodeType !== 1) return false;
-        var tag = el.tagName.toLowerCase();
-        if (["a","button","input","select","textarea","summary"].indexOf(tag) >= 0) return true;
-        var role = (el.getAttribute("role") || "").toLowerCase();
-        if (["button","link","textbox","checkbox","radio","menuitem","tab","switch"].indexOf(role) >= 0) return true;
-        if (el.tabIndex >= 0) return true;
-        if (typeof el.onclick === "function") return true;
-        return false;
-      }
-      function visible(el) {
-        try {
-          var s = window.getComputedStyle(el);
-          if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return false;
-          var r = el.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        } catch (e) { return false; }
-      }
-      function walk(el, d, out) {
-        if (!el || d > depth || out.length > 250) return;
-        if (el.nodeType !== 1) return;
-        if (!visible(el)) return;
-        var interactive = isInteractive(el);
-        if (filter === "interactive" && !interactive && d > 0) {
-          var kids = el.children || [];
-          for (var i = 0; i < kids.length; i++) walk(kids[i], d + 1, out);
-          return;
-        }
-        n += 1;
-        var ref = "ref_" + n;
-        refs[ref] = el;
-        var r = el.getBoundingClientRect();
-        out.push({
-          ref: ref,
-          tag: el.tagName.toLowerCase(),
-          role: el.getAttribute("role") || "",
-          name: el.getAttribute("name") || "",
-          id: el.id || "",
-          type: el.getAttribute("type") || "",
-          text: ((el.innerText || el.value || el.getAttribute("aria-label") || el.getAttribute("placeholder") || "").trim()).slice(0, 120),
-          href: el.href || "",
-          coordinate: [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)],
-          depth: d
-        });
-        var children = el.children || [];
-        for (var j = 0; j < children.length; j++) walk(children[j], d + 1, out);
-      }
-      var root = document.body;
-      if (focusRef && window.__CHATRE_REFS__ && window.__CHATRE_REFS__[focusRef]) {
-        root = window.__CHATRE_REFS__[focusRef];
-      }
-      var out = [];
-      walk(root, 0, out);
-      window.__CHATRE_REFS__ = refs;
-      return out;
-    })()`,
+    buildReadPageScript(depth, filter, focusRef),
   );
 
+  const health = await pageHealth(page);
   const tabId = await getTabId(page);
   return {
     tab_id: tabId,
     url: page.url(),
     title: await page.title(),
     elements: tree,
+    health,
     id: "web:" + (tabId || 1),
     tabs: await listTabs(browser),
   };
@@ -698,8 +743,7 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
   const query = String(body.query || "").trim().toLowerCase();
   if (!query) throw new Error("query required");
 
-  // Build / refresh refs then filter by query tokens
-  const read = await readPage(browser, { ...body, filter: "all", depth: 20 });
+  const read = await readPage(browser, { ...body, filter: "all", depth: 22 });
   const elements = Array.isArray(read.elements) ? read.elements : [];
   const tokens = query.split(/\s+/).filter(Boolean);
   const scored = elements
@@ -716,7 +760,13 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
         .join(" ")
         .toLowerCase();
       let score = 0;
-      for (const t of tokens) if (hay.includes(t)) score += 1;
+      if (hay.includes(query)) score += tokens.length + 3;
+      for (const t of tokens) {
+        if (hay.includes(t)) score += 1;
+        if (String(el.text || "").toLowerCase() === t) score += 2;
+        if (String(el.text || "").toLowerCase().startsWith(t)) score += 1;
+      }
+      if (el.disabled) score -= 2;
       return { el, score };
     })
     .filter((x: { score: number }) => x.score > 0)
@@ -724,7 +774,10 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
       (a: { score: number }, b: { score: number }) => b.score - a.score,
     )
     .slice(0, 20)
-    .map((x: { el: Record<string, unknown> }) => x.el);
+    .map((x: { el: Record<string, unknown>; score: number }) => ({
+      ...x.el,
+      score: x.score,
+    }));
 
   return {
     tab_id: read.tab_id,
@@ -732,6 +785,7 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
     title: read.title,
     query,
     matches: scored,
+    health: read.health,
     id: read.id,
     tabs: read.tabs,
   };
@@ -739,46 +793,51 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
 
 async function formInput(browser: Browser, body: BrowserRequestBody) {
   const page = await ensureTab(browser, body.tab_id);
-  const ref = String(body.ref || "");
+  let ref = String(body.ref || "");
   if (!ref) throw new Error("ref required");
   const value = body.value;
 
-  const ok = await page.evaluate(
-    `(function(){
-      var el = (window.__CHATRE_REFS__ || {})[${JSON.stringify(ref)}];
-      if (!el) return { ok: false, error: "Unknown ref" };
-      var tag = el.tagName.toLowerCase();
-      var type = (el.getAttribute("type") || "").toLowerCase();
-      var val = ${JSON.stringify(value)};
-      if (type === "checkbox" || type === "radio" || tag === "input" && (type === "checkbox" || type === "radio")) {
-        el.checked = !!val;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        return { ok: true, kind: "check", checked: !!el.checked };
-      }
-      if (tag === "select") {
-        el.value = String(val);
-        var opts = Array.from(el.options || []);
-        var hit = opts.find(function(o){ return o.value === String(val) || o.text === String(val); });
-        if (hit) el.value = hit.value;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        return { ok: true, kind: "select", value: el.value };
-      }
-      el.focus();
-      el.value = String(val == null ? "" : val);
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-      return { ok: true, kind: "text", value: el.value };
-    })()`,
-  );
+  let ok = await page.evaluate(buildFormInputScript(ref, value));
+  if (
+    ok &&
+    typeof ok === "object" &&
+    (ok as { ok?: boolean }).ok === false
+  ) {
+    // Stale ref — refresh interactive tree once and retry same ref id if present,
+    // else try best text match when value looks like a label request.
+    await readPage(browser, { ...body, filter: "interactive", depth: 18 });
+    ok = await page.evaluate(buildFormInputScript(ref, value));
+  }
 
+  if (
+    ok &&
+    typeof ok === "object" &&
+    (ok as { ok?: boolean }).ok === false &&
+    !/^ref_\d+$/i.test(ref)
+  ) {
+    const found = await findElements(browser, {
+      ...body,
+      query: String(ref),
+    });
+    const first =
+      Array.isArray(found.matches) && found.matches[0]
+        ? (found.matches[0] as { ref?: string })
+        : null;
+    if (first && first.ref) {
+      ref = String(first.ref);
+      ok = await page.evaluate(buildFormInputScript(ref, value));
+    }
+  }
+
+  await waitForStable(page, { quietMs: 250, timeoutMs: 2500 });
+  const health = await pageHealth(page);
   const snap = await snapshot(page, false);
   const tabId = await getTabId(page);
   return {
     tab_id: tabId,
     ref,
     result: ok,
+    health,
     ...snap,
     id: "web:" + (tabId || 1),
     tabs: await listTabs(browser),
@@ -797,6 +856,7 @@ async function getPageText(browser: Browser, body: BrowserRequestBody) {
     url: page.url(),
     title: await page.title(),
     text: String(text).slice(0, 60000),
+    health: await pageHealth(page),
     id: "web:" + (tabId || 1),
     tabs: await listTabs(browser),
   };
@@ -985,8 +1045,4 @@ async function snapshot(
     screenshot_base64: screenshot,
     mime: "image/jpeg",
   };
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
 }

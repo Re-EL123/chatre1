@@ -9,7 +9,7 @@
       name: "browser",
       label: "Browser specialist",
       prompt:
-        "You are Chatre's browser specialist. Prefer tabs_create, navigate, read_page, find, form_input, computer, search_web. Verify pages before claiming done.",
+        "You are Chatre's browser specialist. Prefer tabs_create → navigate → read_page/find → computer/form_input with fresh refs. Re-read after navigation. Never bypass CAPTCHA.",
     },
     coder: {
       name: "coder",
