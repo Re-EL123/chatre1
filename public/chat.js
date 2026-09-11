@@ -1077,6 +1077,18 @@
                 "Skills: " + ((ev.skills && ev.skills.join(", ")) || "none"),
                 false,
               );
+            } else if (ev.type === "phase") {
+              startThinking(ev.text || ev.phase || "Working…");
+            } else if (ev.type === "analysis") {
+              stopThinking();
+              const b = ev.briefing || {};
+              const bits = [];
+              if (b.task_type) bits.push(b.task_type);
+              if (b.goal) bits.push(b.goal);
+              showStep(
+                "Plan: " + (bits.join(" — ") || "ready").slice(0, 160),
+                false,
+              );
             } else if (ev.type === "todos") {
               showStep(
                 "Todos:\n" +
@@ -1220,6 +1232,20 @@
               if (skills && skills.length) {
                 showStep("Skills: " + skills.join(", "), false);
               }
+            },
+            onPhase: (phase, text) => {
+              startThinking(text || (phase === "analyze" ? "Analyzing…" : "Working…"));
+            },
+            onAnalysis: (briefing) => {
+              stopThinking();
+              if (!briefing) return;
+              const bits = [];
+              if (briefing.task_type) bits.push(briefing.task_type);
+              if (briefing.goal) bits.push(briefing.goal);
+              showStep(
+                "Plan: " + (bits.join(" — ") || "ready").slice(0, 160),
+                false,
+              );
             },
             onThinking: (iter, max) => {
               startThinking("Agent step " + iter + "/" + max);

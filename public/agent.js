@@ -90,35 +90,96 @@
 
       const lastUser =
         [...messages].reverse().find((m) => m.role === "user") || null;
+      const userText = (lastUser && lastUser.content) || "";
       const autoSkills =
         (window.ChatreSkills &&
           window.ChatreSkills.detectSkills &&
-          window.ChatreSkills.detectSkills(
-            (lastUser && lastUser.content) || "",
-          )) ||
+          window.ChatreSkills.detectSkills(userText)) ||
         [];
 
-      // Understand the request BEFORE doing anything: decide what kind of
-      // task this is and expose only tools that fit (question → no file
-      // writes; pdf/research → no mutations; build → full toolset).
+      if (autoSkills.length && callbacks.onSkills) {
+        callbacks.onSkills(autoSkills);
+      }
+
+      // ── Analyst phase: tailor a brief for THIS request ──
+      callbacks.onPhase && callbacks.onPhase("analyze", "Analyzing request…");
+      let briefing = null;
+      try {
+        if (window.ChatreAnalyst && window.ChatreAnalyst.runAnalysis) {
+          briefing = await window.ChatreAnalyst.runAnalysis(userText, {
+            model: model,
+            signal: signal,
+            history: messages.slice(0, -1),
+          });
+        }
+      } catch (err) {
+        briefing = null;
+      }
+      if (!briefing) {
+        briefing = window.ChatreAnalyst
+          ? window.ChatreAnalyst.normalizeBriefing(null, userText)
+          : {
+              understanding: "",
+              goal: userText.slice(0, 200),
+              task_type: "mixed",
+              success_criteria: [],
+              approach: [],
+              todos: [],
+              tools_priority: [],
+              do_not: [],
+              constraints: [],
+              needs_clarification: false,
+              clarification_question: "",
+              executor_brief:
+                "Complete the user request thoroughly. Match tools to the request — do not use a generic script.",
+            };
+        if (!briefing.executor_brief) {
+          briefing.executor_brief =
+            "Complete the user request thoroughly. Match tools to the request — do not use a generic script.";
+        }
+      }
+
+      callbacks.onAnalysis && callbacks.onAnalysis(briefing);
+
+      if (briefing.needs_clarification && briefing.clarification_question) {
+        const q = briefing.clarification_question;
+        callbacks.onStepText && callbacks.onStepText(q, true);
+        callbacks.onDone &&
+          callbacks.onDone({
+            response: q,
+            iterations: 0,
+            cancelled: false,
+            toolsUsed: 0,
+            clarification: true,
+          });
+        this.running = false;
+        return {
+          response: q,
+          iterations: 0,
+          cancelled: false,
+          clarification: true,
+        };
+      }
+
+      // Heuristic intent still scopes which tools are allowed.
       const intent =
         window.ChatreIntent && window.ChatreIntent.classifyIntent
-          ? window.ChatreIntent.classifyIntent(
-              (lastUser && lastUser.content) || "",
-              autoSkills,
-            )
+          ? window.ChatreIntent.classifyIntent(userText, autoSkills)
           : null;
 
       const forcePlan =
         (options && options.forcePlan !== false) &&
-        (!intent || intent.planFirst);
+        ["build", "debug", "document", "git", "mixed", "run", "browser"].indexOf(
+          briefing.task_type,
+        ) !== -1;
 
-      // Real skill playbooks + intent-scoped tool availability, injected
-      // every turn (includes the "understand first" instruction).
-      const preamble = buildPreamble(autoSkills, intent);
-      if (autoSkills.length && callbacks.onSkills) {
-        callbacks.onSkills(autoSkills);
-      }
+      const executorOrders =
+        window.ChatreAnalyst && window.ChatreAnalyst.formatExecutorPrompt
+          ? window.ChatreAnalyst.formatExecutorPrompt(briefing, userText)
+          : "";
+
+      // Slim skill context + analyst orders (not a generic workflow dump).
+      const preamble = buildPreamble(autoSkills, intent, executorOrders);
 
       const enabledList =
         intent && intent.tools
@@ -128,9 +189,28 @@
             : null;
       const enabledSet = enabledList ? new Set(enabledList) : null;
 
+      // Seed todos from the analyst when present.
+      if (
+        briefing.todos &&
+        briefing.todos.length &&
+        window.ChatreTools &&
+        window.ChatreTools.executeTool
+      ) {
+        try {
+          await window.ChatreTools.executeTool({
+            tool: "todo_write",
+            params: { todos: briefing.todos },
+          });
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      callbacks.onPhase && callbacks.onPhase("execute", "Executing brief…");
+
       let fullAssistantText = "";
       let cancelled = false;
-      let planned = false;
+      let planned = !!briefing.approach.length || !!briefing.todos.length;
       let usedTools = 0;
 
       try {
@@ -639,7 +719,7 @@
    * intent-scoped task description, skill playbooks, and the list of
    * enabled tools so the model knows exactly what it may do.
    */
-  function buildPreamble(skills, intent) {
+  function buildPreamble(skills, intent, executorOrders) {
     const parts = [];
     const enabled =
       intent && intent.tools
@@ -648,70 +728,26 @@
           ? window.ChatreSkills.toolsForSkills(skills || [])
           : [];
 
-    // 1. Understand before act
-    parts.push(
-      "# Understand the user's request first\n" +
-        '- Before using ANY tool, restate your understanding of the request in 1–3 sentences, starting with "My understanding:". Say what the user is asking for, the expected outcome, and any constraints you know.\n' +
-        "- If the request is ambiguous or key details are missing, ask ONE short clarifying question and STOP. Do not guess and do not call tools yet.\n" +
-        "- You may inspect the workspace (read-only) or search the web first to answer anything you can find yourself, before asking the user.\n" +
-        "- Never start implementing, writing files, or running commands on a vague or underspecified request.",
-    );
+    // Analyst orders first — this is the task-specific prompt for the executor.
+    if (executorOrders && String(executorOrders).trim()) {
+      parts.push(String(executorOrders).trim());
+    }
 
-    // 2. Intent-aware task framing
     if (intent) {
       parts.push(
-        "## Task type: " +
-          intent.name.toUpperCase() +
-          "\n" +
-          "The user's message requires " +
-          intent.label +
-          ".\n" +
-          (intent.mutative
-            ? "This task may modify files or run commands — plan, implement, and verify.\n"
-            : "This task must NOT modify files or run commands. Keep it read-only; answer directly.\n") +
-          "Enabled tools for this task: " +
+        "## Enabled tools for this task\n" +
           (enabled.length
             ? enabled.join(", ")
             : "(none — answer directly without tools)") +
-          ".\n" +
-          "Calls to any other tool will be rejected — pick from the enabled list only.",
+          ".\nCalls to any other tool will be rejected.",
       );
     }
 
-    // 3. Elicitation + integrations guidance
-    const elicit = [
-      "When the user's request needs preferences, constraints, or goals you cannot infer, use the ask_user_input tool to show tappable option buttons instead of asking in prose bullets.",
-      "Keep to ONE question, with 2-4 short, mutually exclusive options. Before asking, check the conversation for the answer; if it is already there, use it and proceed.",
-      "If the user asks 'A or B?', asks for your opinion, is venting, or the question is factual — do NOT use ask_user_input; answer directly.",
-      "If reading the user's data (email, calendar, tasks, tickets, files) would help and no tool covers it, call search_mcp_registry with product or task keywords, then suggest_connectors to present the matches.",
-      "After suggest_connectors, your turn is done — the user's choice arrives as their next message.",
-    ];
-    parts.push(
-      "## Elicitation and integrations\n" + elicit.map((s) => "- " + s).join("\n"),
-    );
-
-    if (window.ChatreMCP) {
-      const connected = window.ChatreMCP.listConnected();
-      if (connected.length) {
-        parts.push(
-          "## Connected integrations\n" +
-            "These MCP servers are connected and their tools are reachable via call_mcp(server=uuid, tool=name, arguments={...}). Use list_mcp_tools(server) to discover what each exposes.\n" +
-            connected
-              .map(function (c) {
-                return "- " + c.name + " (server: " + c.uuid + ")";
-              })
-              .join("\n") +
-            "\nNote: public MCP endpoints often require credentials; connect after confirming with the user.",
-        );
-      }
-    }
-
-    // 4. Full skill playbooks (real workflow guidance)
     const known = (skills || []).filter(function (name) {
       return window.ChatreSkills && window.ChatreSkills.getSkill(name);
     });
     if (known.length) {
-      parts.push("# Task context — apply these skill playbooks");
+      parts.push("# Skill playbooks (apply only if they fit the brief above)");
       known.forEach(function (name) {
         const skill = window.ChatreSkills.getSkill(name);
         parts.push(

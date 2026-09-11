@@ -6,6 +6,7 @@
 import { Env, ChatMessage, ChatRequestBody } from "./types";
 import { handleBrowserRequest } from "./browser";
 import { AGENT_SYSTEM_PROMPT } from "./agent-prompt";
+import { ANALYST_SYSTEM_PROMPT } from "./analyst-prompt";
 
 const ALLOWED_MODEL_LIST = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -276,8 +277,19 @@ async function handleChatRequest(
     if (limited) return limited;
 
     const body = (await request.json()) as ChatRequestBody;
-    const agentMode = body.agent === true;
-    const systemPrompt = agentMode ? AGENT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT;
+    const mode =
+      body.mode === "analyst" || body.mode === "agent" || body.mode === "chat"
+        ? body.mode
+        : body.agent === true
+          ? "agent"
+          : "chat";
+    const agentMode = mode === "agent";
+    const systemPrompt =
+      mode === "analyst"
+        ? ANALYST_SYSTEM_PROMPT
+        : mode === "agent"
+          ? AGENT_SYSTEM_PROMPT
+          : CHAT_SYSTEM_PROMPT;
 
     // Never trust client-supplied system messages — always inject ours.
     let messages = (Array.isArray(body.messages) ? body.messages : []).filter(
@@ -290,10 +302,16 @@ async function handleChatRequest(
       body.model && ALLOWED_MODELS.has(body.model)
         ? (body.model as ChatModelId)
         : MODEL_ID;
-    const tools = Array.isArray(body.tools) ? body.tools : null;
-    const wantStream = body.stream !== false && !tools;
+    const tools =
+      mode === "analyst"
+        ? null
+        : Array.isArray(body.tools)
+          ? body.tools
+          : null;
+    const wantStream = body.stream !== false && !tools && mode !== "analyst";
     const maxTokens = clampMaxTokens(
-      body.max_tokens ?? (agentMode ? 3072 : DEFAULT_MAX_TOKENS),
+      body.max_tokens ??
+        (mode === "analyst" ? 2048 : agentMode ? 3072 : DEFAULT_MAX_TOKENS),
     );
 
     console.log(
@@ -302,6 +320,7 @@ async function handleChatRequest(
         model: modelId,
         stream: wantStream,
         agent: agentMode,
+        mode,
         tools: tools ? tools.length : 0,
         messageCount: messages.length,
         maxTokens,

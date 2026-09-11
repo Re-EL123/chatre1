@@ -26,6 +26,8 @@ export interface ChatRequestBody {
   max_tokens?: number;
   /** Use the thorough agent system prompt and ignore client system messages. */
   agent?: boolean;
+  /** chat (default) | analyst (plan/brief only) | agent (executor). */
+  mode?: "chat" | "analyst" | "agent";
   /** OpenAI-style tool definitions for structured function calling. */
   tools?: unknown[];
 }
