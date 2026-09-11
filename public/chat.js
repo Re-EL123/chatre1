@@ -28,7 +28,7 @@
 
   const SLASH_COMMANDS = [
     { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
-    { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
+    { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
     { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle agent mode (ON by default — plan, build, code, commit, documents)") },
     { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`\nAgent mode: **" + (agentMode ? "ON" : "OFF") + "**") },
     { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
@@ -409,12 +409,48 @@
       return generateImage(imagePrompt);
     }
 
-    // Agent routing: forced via /agent or auto-detected for build/code tasks
-    const useAgent = agentMode || (window.ChatreAgent && window.ChatreAgent.looksAgentic(message));
-    if (useAgent && window.ChatreAgent && window.ChatreTools) {
+    // ── Intent-aware routing ─────────────────────────────────────
+    const intentInfo =
+      window.ChatreIntent && window.ChatreIntent.classifyIntent
+        ? window.ChatreIntent.classifyIntent(message)
+        : null;
+
+    // If the agent asked a clarifying question last turn, the next message
+    // is an answer — resume the existing thread automatically.
+    let resumeBecauseClarification = false;
+    if (window.__pendingClarification && window.__localResumeMessages) {
+      resumeBecauseClarification = true;
+      window.__pendingClarification = false;
+    }
+
+    const stashed = window.__localResumeMessages;
+    const continueIntent =
+      stashed &&
+      /^\s*(?:continue|resume|keep going|keep working|go on|proceed|carry on|pick up|finish it|finish)\b/i.test(
+        message,
+      );
+    const wantsAgent =
+      window.ChatreAgent && window.ChatreTools &&
+      (agentMode ||
+        resumeBecauseClarification ||
+        (intentInfo && intentInfo.suggestsWeb && intentInfo.name !== "chat") ||
+        window.ChatreAgent.looksAgentic(message));
+    // Short greetings and knowledge-only questions get a fast plain-chat
+    // answer — no agent loop, no tools, no "planning" indicator.
+    const fastChat =
+      !wantsAgent &&
+      window.ChatreAgent &&
+      intentInfo &&
+      !resumeBecauseClarification &&
+      (intentInfo.name === "chat" ||
+        (intentInfo.name === "question" && !intentInfo.suggestsWeb));
+
+    if (wantsAgent && window.ChatreAgent && window.ChatreTools) {
       userInput.value = "";
       userInput.style.height = "auto";
-      return runAgentTask(message);
+      return runAgentTask(message, {
+        resumeMessages: resumeBecauseClarification || continueIntent ? stashed : null,
+      });
     }
 
     setBusy(true);
@@ -814,11 +850,19 @@
 
   // ── Agentic mode ──────────────────────────────────────────────────
 
-  async function runAgentTask(message) {
+  async function runAgentTask(message, opts) {
+    opts = opts || {};
     setBusy(true, "agent");
-    addMessage("user", message);
-    chatHistory.push({ role: "user", content: message });
-    trimHistory();
+    if (!opts.resumeMessages) {
+      // Starting fresh (or a brand-new task): discard any stale resume state.
+      window.__localResumeMessages = null;
+      if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false);
+    }
+    if (message) {
+      addMessage("user", message);
+      chatHistory.push({ role: "user", content: message });
+      trimHistory();
+    }
 
     startThinking("Chatre is planning");
 
@@ -1043,10 +1087,17 @@
         });
       } else if (window.ChatreAgent && window.ChatreTools) {
         let tokenEl = null;
-        await window.ChatreAgent.run([...chatHistory], {
+        const resumeMsgs = (opts && opts.resumeMessages) || null;
+        const initialMessages = resumeMsgs && resumeMsgs.length
+          ? resumeMsgs.map((m) => ({ role: m.role, content: m.content }))
+          : [...chatHistory];
+        if (resumeMsgs && resumeMsgs.length && message) {
+          initialMessages.push({ role: "user", content: message });
+        }
+
+        const agentResult = await window.ChatreAgent.run(initialMessages, {
           model: modelSelect.value,
           maxTokens: 3072,
-          forcePlan: true,
           callbacks: {
             onSkills: (skills) => {
               if (skills && skills.length) {
@@ -1097,6 +1148,7 @@
             onToolResult: (call, result) => {
               const card = toolCards[call.id];
               if (card) updateTool(card, result);
+              if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
             },
             onDone: (res) => {
               if (window.ChatrePanels) {
@@ -1109,6 +1161,20 @@
                   ),
                 });
               }
+              // Surface usage directly in the agent card.
+              if (!agentEl.querySelector(".agent-meta")) {
+                const meta = document.createElement("div");
+                meta.className = "agent-meta";
+                meta.textContent =
+                  "Ran " +
+                  (res.iterations || 0) +
+                  " steps · " +
+                  (res.toolsUsed || 0) +
+                  " tool calls" +
+                  (res.intent ? " · " + res.intent : "") +
+                  (res.cancelled ? " · interrupted" : "");
+                agentEl.appendChild(meta);
+              }
               if (res.cancelled && !finalText) {
                 showStep(res.response || "(stopped)", true);
               }
@@ -1119,6 +1185,38 @@
             },
           },
         });
+
+        // Local resume bookkeeping: persist interrupted runs so /Resume works.
+        const interrupted = !!(
+          agentResult &&
+          (agentResult.cancelled || agentResult.error)
+        );
+        if (interrupted && agentResult.messages && agentResult.messages.length) {
+          window.__localResumeMessages = agentResult.messages;
+          window.__pendingClarification = false;
+          if (window.ChatrePanels) {
+            window.ChatrePanels.setResumeAvailable(true);
+          }
+        } else if (
+          agentResult &&
+          agentResult.askedClarification &&
+          agentResult.messages &&
+          agentResult.messages.length
+        ) {
+          // Agent stopped to ask a question — the next user message is the
+          // answer and should resume this thread automatically.
+          window.__localResumeMessages = agentResult.messages;
+          window.__pendingClarification = true;
+          if (window.ChatrePanels) {
+            window.ChatrePanels.setResumeAvailable(true);
+          }
+        } else {
+          window.__localResumeMessages = null;
+          window.__pendingClarification = false;
+          if (window.ChatrePanels) {
+            window.ChatrePanels.setResumeAvailable(false);
+          }
+        }
       } else {
         showStep("Agent runtime not loaded.", true);
       }
@@ -1162,6 +1260,14 @@
     if (tool === "http_request")
       return (params.method || "GET") + " " + (params.url || "");
     if (tool === "create_document") return "title: " + (params.title || "document");
+    if (tool === "create_pdf")
+      return (
+        "title: " +
+        (params.title || "document") +
+        "  (" +
+        String(params.content || "").length +
+        " chars → PDF)"
+      );
     if (tool === "export_document") return "path: " + (params.path || "");
     if (tool === "use_skill") return "skill: " + (params.name || "");
     if (tool === "git_commit") return "message: " + (params.message || "");
@@ -1716,13 +1822,19 @@
       }
     },
     resumeAgent: async function () {
+      if (isProcessing) return;
+      if (window.__localResumeMessages && window.__localResumeMessages.length) {
+        return runAgentTask(null, {
+          resumeMessages: window.__localResumeMessages,
+        });
+      }
       if (!window.ChatreRemote || !window.ChatreRemote.enabled()) return;
       const remoteState = window.__chatreRemote || {};
       if (!remoteState.threadId) {
         addMessage("assistant", "No thread to resume.");
         return;
       }
-      if (busy) return;
+      if (isProcessing) return;
       setBusy(true, "agent");
       startThinking("Resuming agent from checkpoint");
 

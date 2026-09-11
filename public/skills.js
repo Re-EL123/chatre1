@@ -22,11 +22,12 @@
     documents: {
       name: "documents",
       title: "Document authoring",
-      summary: "Produce polished markdown documents users can download.",
+      summary: "Produce polished markdown or PDF documents users can download.",
       steps: [
         "Outline sections and set todos.",
         "Write complete content with headings, lists, and examples.",
-        "Use create_document so the file is saved under /home/user/documents/.",
+        "For a PDF/report/guide request, use create_pdf(title, content) to generate a downloadable PDF.",
+        "Use create_document to save markdown under /home/user/documents/.",
         "Offer a short summary of what was written.",
       ],
     },
@@ -115,7 +116,7 @@
     ) {
       found.add("coding");
     }
-    if (/\b(document|readme|markdown|docs|write.?up|spec)\b/.test(t)) {
+    if (/\b(document|readme|markdown|docs|write.?up|spec|pdf|report|guide|manual|essay|proposal|slide)\b/.test(t)) {
       found.add("documents");
     }
     if (/\b(git|commit|push|repo|repository|version control)\b/.test(t)) {
@@ -151,6 +152,69 @@
       found.add("coding");
     }
     return [...found];
+  }
+
+  // ─── Skill-scoped tool availability ─────────────────────────────
+
+  // Browser control tools are only enabled for browse/computer-driven skills;
+  // they tempt the model off-track during coding/git tasks and cost tokens.
+  const BROWSER_CONTROL_TOOLS = [
+    "tabs_create",
+    "navigate",
+    "computer",
+    "read_page",
+    "find",
+    "form_input",
+    "get_page_text",
+  ];
+
+  const CORE_TOOLS = [
+    "todo",
+    "todo_write",
+    "plan",
+    "list_skills",
+    "use_skill",
+    "search_web",
+    "http_request",
+    "execute_command",
+    "read_file",
+    "write_file",
+    "append_file",
+    "list_directory",
+    "create_directory",
+    "delete_file",
+    "copy_file",
+    "find_files",
+    "search_code",
+    "run_javascript",
+    "run_python",
+    "create_document",
+    "create_pdf",
+    "export_document",
+    "verify_project",
+    "view_tree",
+    "git_init",
+    "git_add",
+    "git_commit",
+    "git_status",
+    "git_log",
+    "git_push",
+  ];
+
+  /**
+   * Return the tool names the model may use for the detected skills.
+   * Browser control tools require the "browser" or "computer" skill.
+   */
+  function toolsForSkills(names) {
+    const list = CORE_TOOLS.slice();
+    const namesList = names || [];
+    if (
+      namesList.indexOf("browser") !== -1 ||
+      namesList.indexOf("computer") !== -1
+    ) {
+      list.push(...BROWSER_CONTROL_TOOLS);
+    }
+    return list;
   }
 
   function skillBrief(names) {
@@ -198,5 +262,6 @@
     formatSkill,
     detectSkills,
     skillBrief,
+    toolsForSkills,
   };
 })();

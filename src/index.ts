@@ -104,7 +104,7 @@ function optionsResponse(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-const MAX_CONTEXT_TOKENS = 6000;
+const MAX_CONTEXT_TOKENS = 24000;
 
 function estimateTokens(text: string): number {
   if (!text) return 0;

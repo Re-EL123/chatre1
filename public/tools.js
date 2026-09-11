@@ -33,6 +33,7 @@
     { name: "run_javascript", desc: "Execute JavaScript code", params: { code: "string" } },
     { name: "run_python", desc: "Execute Python code", params: { code: "string" } },
     { name: "create_document", desc: "Create a markdown document (saved + downloadable)", params: { title: "string", content: "string" } },
+    { name: "create_pdf", desc: "Create a downloadable PDF file (Latin script text; use create_document for other scripts)", params: { title: "string", content: "string" } },
     { name: "export_document", desc: "Download an existing workspace file", params: { path: "string" } },
     { name: "verify_project", desc: "Sanity-check a project directory", params: { path: "string" } },
     { name: "view_tree", desc: "Show the workspace file tree", params: { path: "string" } },
@@ -295,6 +296,9 @@
 
       case "create_document":
         return createDocTool(p.title, p.content, common);
+
+      case "create_pdf":
+        return await createPdfTool(p.title, p.content);
 
       case "export_document":
         return exportDocTool(p.path || p.file, common);
@@ -961,6 +965,213 @@
       downloaded: true,
       text: "Created and downloaded document: " + path,
     });
+  }
+
+  // ─── PDF creation (client-side, free, export-ready) ────────────────
+
+  let pdfLibPromise = null;
+
+  function loadPdfLib() {
+    if (window.jspdf && window.jspdf.jsPDF) {
+      return Promise.resolve(true);
+    }
+    if (pdfLibPromise) return pdfLibPromise;
+    pdfLibPromise = new Promise(function (resolve) {
+      try {
+        const s = document.createElement("script");
+        s.src =
+          "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
+        s.onload = function () {
+          resolve(!!(window.jspdf && window.jspdf.jsPDF));
+        };
+        s.onerror = function () {
+          pdfLibPromise = null;
+          resolve(false);
+        };
+        document.head.appendChild(s);
+      } catch (e) {
+        resolve(false);
+      }
+    });
+    return pdfLibPromise;
+  }
+
+  function pdfSlug(title) {
+    return (
+      String(title || "document")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "document"
+    );
+  }
+
+  /**
+   * Render a small, clean PDF from markdown-ish content using jsPDF.
+   * jsPDF's built-in fonts are Latin-only, so non-Latin text degrades to
+   * create_document (a downloadable markdown file) instead of garbled glyphs.
+   */
+  async function createPdfTool(title, content) {
+    const loaded = await loadPdfLib();
+    if (!loaded) {
+      return {
+        ok: false,
+        tool: "create_pdf",
+        error:
+          "PDF engine could not be loaded (offline?). Use create_document to produce a downloadable markdown document instead.",
+      };
+    }
+    const fullText = String(title || "") + "\n" + String(content || "");
+    if (/[^\x00-\x7F]/.test(fullText)) {
+      return {
+        ok: false,
+        tool: "create_pdf",
+        error:
+          "The PDF builder currently supports Latin text only. Use create_document to create a downloadable markdown file that keeps all scripts intact.",
+      };
+    }
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const margin = 48;
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const maxW = pageW - margin * 2;
+      let y = margin;
+
+      const spaceFor = function (h, size) {
+        if (y + h > pageH - margin) {
+          doc.addPage();
+          y = margin;
+          doc.setFontSize(size || 11);
+        }
+      };
+
+      // Title
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text(String(title || "Document"), margin, y, { maxWidth: maxW });
+      y += 30;
+      doc.setDrawColor(200);
+      doc.setLineWidth(1);
+      doc.line(margin, y, pageW - margin, y);
+      y += 20;
+
+      // Parse content into light blocks.
+      const blocks = [];
+      let code = [];
+      let inCode = false;
+      String(content || "")
+        .split("\n")
+        .forEach(function (line) {
+          const fence = line.trim().startsWith("```");
+          if (fence) {
+            if (inCode) {
+              blocks.push({ t: "code", lines: code });
+              code = [];
+              inCode = false;
+            } else {
+              inCode = true;
+              code = [];
+            }
+            return;
+          }
+          if (inCode) {
+            code.push(line);
+            return;
+          }
+          const h = line.match(/^(#{1,3})\s+(.*)/);
+          if (h) {
+            blocks.push({ t: "h" + h[1].length, text: h[2] });
+            return;
+          }
+          const b = line.match(/^\s*[-*]\s+(.*)/);
+          if (b) {
+            blocks.push({ t: "bullet", text: b[1] });
+            return;
+          }
+          const n = line.match(/^\s*(\d+)[.)]?\s+(.*)/);
+          if (n) {
+            blocks.push({ t: "num", prefix: n[1] + ".", text: n[2] });
+            return;
+          }
+          if (line.trim()) blocks.push({ t: "p", text: line });
+        });
+      if (code.length) blocks.push({ t: "code", lines: code });
+      if (!blocks.length) blocks.push({ t: "p", text: String(content || "") });
+
+      blocks.forEach(function (b) {
+        if (b.t === "code") {
+          y += 6;
+          doc.setFont("courier", "normal");
+          doc.setFontSize(8);
+          b.lines.forEach(function (ln) {
+            const ls = doc.splitTextToSize(ln, maxW - 14);
+            ls.forEach(function (l) {
+              spaceFor(10, 8);
+              doc.text(l, margin + 7, y);
+              y += 10;
+            });
+          });
+          y += 6;
+        } else if (b.t === "h1" || b.t === "h2" || b.t === "h3") {
+          const size = b.t === "h1" ? 16 : b.t === "h2" ? 14 : 12;
+          y += 10;
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(size);
+          doc.splitTextToSize(b.text, maxW).forEach(function (l) {
+            spaceFor(size + 6, size);
+            doc.text(l, margin, y);
+            y += size + 6;
+          });
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(11);
+        } else {
+          const prefix = b.t === "bullet" ? "•  " : b.t === "num" ? b.prefix + "  " : "";
+          const size = 11;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(size);
+          if (prefix) {
+            doc.text(prefix, margin, y);
+            doc.splitTextToSize(b.text, maxW - doc.getTextWidth(prefix) - 4).forEach(function (l) {
+              spaceFor(size + 5, size);
+              doc.text(l, margin + doc.getTextWidth(prefix) + 2, y);
+              y += size + 5;
+            });
+          } else {
+            doc.splitTextToSize(b.text, maxW).forEach(function (l) {
+              spaceFor(size + 5, size);
+              doc.text(l, margin, y);
+              y += size + 5;
+            });
+          }
+        }
+      });
+
+      const pages = doc.getNumberOfPages();
+      const fname = pdfSlug(title) + ".pdf";
+      doc.save(fname);
+      return {
+        ok: true,
+        tool: "create_pdf",
+        path: fname,
+        pages,
+        downloaded: true,
+        text:
+          "Created and downloaded PDF: " +
+          fname +
+          " (" +
+          pages +
+          " page" +
+          (pages === 1 ? "" : "s") +
+          ")",
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        tool: "create_pdf",
+        error: "PDF generation failed: " + (e && e.message ? e.message : String(e)),
+      };
+    }
   }
 
   function exportDocTool(path, common) {
