@@ -727,18 +727,19 @@
       const r = remote();
       if (!r || !r.enabled() || !r.putFile) {
         window.alert("Connect the API key to upload into a remote workspace.");
-        return;
+        return [];
       }
       const wsId = remoteState().workspaceId || state.workspaceId;
       if (!wsId) {
         window.alert("Start an agent chat first so a workspace exists.");
-        return;
+        return [];
       }
       const files = Array.from(fileList || []);
       if (progress) {
         progress.hidden = false;
         progress.textContent = "Uploading 0/" + files.length;
       }
+      const paths = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (progress) {
@@ -747,6 +748,7 @@
         const text = await file.text();
         const path = "/home/user/uploads/" + file.name.replace(/[^\w.\-]+/g, "_");
         await r.putFile(wsId, path, text, "file");
+        paths.push(path);
         if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
           window.ChatreUIAdv.pushArtifact({
             kind: "upload",
@@ -768,6 +770,7 @@
         );
       }
       await refreshFiles();
+      return paths;
     }
     uploadLocalFilesFn = uploadLocalFiles;
     if (drop) {

@@ -297,7 +297,8 @@
   function setBusy(busy, mode) {
     isProcessing = busy;
     sendButton.disabled = busy;
-    userInput.disabled = busy;
+    // Keep input enabled while busy so guidance / queue can be typed.
+    userInput.disabled = false;
     document.body.classList.toggle("is-working", busy);
     if (chatContainer) {
       chatContainer.classList.toggle("processing", busy);
@@ -309,6 +310,12 @@
     } else {
       stopButton.classList.remove("visible");
       activeAbort = null;
+    }
+    if (window.ChatreComposer && window.ChatreComposer.setBusyUi) {
+      window.ChatreComposer.setBusyUi(busy, mode || "chat");
+    }
+    if (!busy && window.ChatreComposer && window.ChatreComposer.flushQueue) {
+      window.ChatreComposer.flushQueue();
     }
   }
 
@@ -495,9 +502,32 @@
 
   async function sendMessage() {
     let message = userInput.value.trim();
-    if (!message || isProcessing) return;
-    if (window.ChatreUX && window.ChatreUX.prefixFromFlags) {
+    if (!message) return;
+
+    if (
+      window.ChatreComposer &&
+      window.ChatreComposer.shouldQueueInsteadOfSend &&
+      window.ChatreComposer.shouldQueueInsteadOfSend()
+    ) {
+      window.ChatreComposer.enqueue(message);
+      userInput.value = "";
+      userInput.style.height = "auto";
+      if (window.ChatreComposer.clearDraft) window.ChatreComposer.clearDraft();
+      return;
+    }
+
+    if (isProcessing) return;
+
+    if (window.ChatreComposer && window.ChatreComposer.resolveInlineMentions) {
+      await window.ChatreComposer.resolveInlineMentions(message);
+    }
+    if (window.ChatreComposer && window.ChatreComposer.enrichMessage) {
+      message = window.ChatreComposer.enrichMessage(message);
+    } else if (window.ChatreUX && window.ChatreUX.prefixFromFlags) {
       message = window.ChatreUX.prefixFromFlags(message);
+    }
+    if (window.ChatreComposer && window.ChatreComposer.rememberRecent) {
+      window.ChatreComposer.rememberRecent(userInput.value.trim());
     }
 
     if (window.ChatreUIAdv && window.ChatreUIAdv.hideStarterChips) {
@@ -513,6 +543,9 @@
       const arg = message.slice(slashMatch.cmd.length).trim();
       userInput.value = "";
       userInput.style.height = "auto";
+      if (window.ChatreComposer && window.ChatreComposer.clearDraft) {
+        window.ChatreComposer.clearDraft();
+      }
       if (slashMatch.cmd === "/image") {
         return generateImage(arg || "A futuristic city skyline");
       }
@@ -555,9 +588,14 @@
       /^\s*(?:continue|resume|keep going|keep working|go on|proceed|carry on|pick up|finish it|finish)\b/i.test(
         message,
       );
+    const modeWantsAgent =
+      window.ChatreComposer && window.ChatreComposer.wantsAgentFromMode
+        ? window.ChatreComposer.wantsAgentFromMode()
+        : agentMode;
     const wantsAgent =
       window.ChatreAgent && window.ChatreTools &&
-      (agentMode ||
+      (modeWantsAgent ||
+        agentMode ||
         resumeBecauseClarification ||
         (intentInfo && intentInfo.suggestsWeb && intentInfo.name !== "chat") ||
         window.ChatreAgent.looksAgentic(message));
@@ -574,6 +612,12 @@
     if (wantsAgent && window.ChatreAgent && window.ChatreTools) {
       userInput.value = "";
       userInput.style.height = "auto";
+      if (window.ChatreComposer) {
+        if (window.ChatreComposer.clearDraft) window.ChatreComposer.clearDraft();
+        if (window.ChatreComposer.clearAttachmentsAfterSend) {
+          window.ChatreComposer.clearAttachmentsAfterSend();
+        }
+      }
       return runAgentTask(message, {
         resumeMessages: resumeBecauseClarification || continueIntent ? stashed : null,
       });
@@ -582,6 +626,12 @@
     setBusy(true);
     userInput.value = "";
     userInput.style.height = "auto";
+    if (window.ChatreComposer) {
+      if (window.ChatreComposer.clearDraft) window.ChatreComposer.clearDraft();
+      if (window.ChatreComposer.clearAttachmentsAfterSend) {
+        window.ChatreComposer.clearAttachmentsAfterSend();
+      }
+    }
 
     addMessage("user", message);
     chatHistory.push({ role: "user", content: message });
@@ -917,8 +967,15 @@
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+      const meta = e.metaKey || e.ctrlKey;
+      const enterSends =
+        window.ChatreComposer &&
+        window.ChatreComposer.state &&
+        window.ChatreComposer.state.enterSends;
+      if (enterSends || meta) {
+        e.preventDefault();
+        sendMessage();
+      }
     }
   });
 
@@ -1691,6 +1748,7 @@
       }
     } finally {
       stopThinking();
+      if (window.ChatreUX) window.ChatreUX.endRun();
       setBusy(false);
       userInput.focus();
       if (!skipChips) {
@@ -2434,10 +2492,34 @@
           b.classList.toggle("active", active);
         });
       }
+      if (
+        window.ChatreComposer &&
+        window.ChatreComposer.setMode &&
+        !window.ChatreComposer._syncingMode
+      ) {
+        const want = agentMode ? "agent" : "chat";
+        const cur = window.ChatreComposer.getMode && window.ChatreComposer.getMode();
+        // Only sync when toggling legacy agent button — don't overwrite browse/desktop/code
+        if (
+          (agentMode && cur === "chat") ||
+          (!agentMode && cur && cur !== "chat")
+        ) {
+          if (!agentMode) {
+            window.ChatreComposer._syncingMode = true;
+            window.ChatreComposer.setMode("chat", { skipAgent: true });
+            window.ChatreComposer._syncingMode = false;
+          } else if (cur === "chat") {
+            window.ChatreComposer._syncingMode = true;
+            window.ChatreComposer.setMode("agent", { skipAgent: true });
+            window.ChatreComposer._syncingMode = false;
+          }
+        }
+      }
     },
     formatToolParams: formatToolParams,
     stopGeneration: stopGeneration,
     sendMessage: sendMessage,
+    runShell: runShellCommand,
     resetChat: function (messages) {
       chatHistory = [];
       chatMessages.innerHTML = "";
@@ -2461,6 +2543,18 @@
     },
     getHistory: function () {
       return chatHistory.slice();
+    },
+    injectGuidance: function (text) {
+      const msg = String(text || "").trim();
+      if (!msg) return;
+      const note = "[Guidance for current run] " + msg;
+      addMessage("user", note);
+      chatHistory.push({ role: "user", content: note });
+      trimHistory();
+      window.__pendingGuidance = (window.__pendingGuidance || []).concat([note]);
+      if (window.ChatreKit) {
+        window.ChatreKit.toast("Guidance added to run", "success");
+      }
     },
     composeAndSend: function (text) {
       const msg = String(text || "").trim();

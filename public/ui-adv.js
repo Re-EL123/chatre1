@@ -400,12 +400,28 @@
   }
 
   // ── Artifacts ───────────────────────────────────────────────────────
+  const artifactStore = [];
+
+  function listArtifacts() {
+    return artifactStore.slice();
+  }
+
   function pushArtifact(item) {
     const rail = $("artifact-rail");
     if (!rail) return;
+    const entry = {
+      kind: item.kind || "file",
+      title: item.title || item.path || item.kind || "Artifact",
+      path: item.path || "",
+      dataUrl: item.dataUrl || "",
+      downloadUrl: item.downloadUrl || "",
+      filename: item.filename || "",
+    };
+    artifactStore.unshift(entry);
+    if (artifactStore.length > 40) artifactStore.length = 40;
     rail.hidden = false;
     const card = el("div", "artifact-card enter");
-    const title = item.title || item.path || item.kind || "Artifact";
+    const title = entry.title;
     card.innerHTML =
       '<div class="artifact-kind"></div><div class="artifact-title"></div><div class="artifact-actions"></div>';
     const kindIcon =
@@ -571,6 +587,7 @@
     clearLoginChip: clearLoginChip,
     updateBudgetBar: updateBudgetBar,
     pushArtifact: pushArtifact,
+    listArtifacts: listArtifacts,
     renderEmptyState: renderEmptyState,
     openPlanDrawer: openPlanDrawer,
     hideStarterChips: hideStarterChips,

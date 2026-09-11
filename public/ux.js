@@ -388,6 +388,16 @@
     state.phase = phase || state.phase;
     if (text) state.step = text;
     updateRunCenter();
+    if (
+      state.running &&
+      window.ChatreComposer &&
+      window.ChatreComposer.setBusyUi
+    ) {
+      window.ChatreComposer.setBusyUi(true, {
+        phase: text || phase || "Working…",
+        tool: state.lastTool || "",
+      });
+    }
   }
 
   function setBudget(usage) {
@@ -440,58 +450,23 @@
     }
   }
 
-  // ── Composer toggles + attach ───────────────────────────────────────
+  // ── Composer toggles + attach (delegates to ChatreComposer) ─────────
   function composerFlags() {
-    return {
-      useBrowser: !!( $("composer-use-browser") && $("composer-use-browser").checked ),
-      useDesktop: !!( $("composer-use-desktop") && $("composer-use-desktop").checked ),
-    };
+    if (window.ChatreComposer && window.ChatreComposer.composerFlags) {
+      return window.ChatreComposer.composerFlags();
+    }
+    return { useBrowser: false, useDesktop: false };
   }
 
   function prefixFromFlags(message) {
-    var f = composerFlags();
-    var bits = [];
-    if (f.useBrowser) bits.push("[Use the cloud browser tools for this task.]");
-    if (f.useDesktop) bits.push("[Use desktop companion tools when helpful.]");
-    if (!bits.length) return message;
-    return bits.join(" ") + "\n\n" + message;
+    if (window.ChatreComposer && window.ChatreComposer.enrichMessage) {
+      return window.ChatreComposer.enrichMessage(message);
+    }
+    return message;
   }
 
   function initComposer() {
-    var attach = $("composer-attach");
-    var fileInput = $("composer-file-input");
-    var chips = $("composer-attach-chips");
-    if (attach && fileInput) {
-      attach.addEventListener("click", function () {
-        fileInput.click();
-      });
-      fileInput.addEventListener("change", function () {
-        var files = Array.from(fileInput.files || []);
-        if (!files.length) return;
-        if (window.ChatrePanels && window.ChatrePanels.uploadLocalFiles) {
-          window.ChatrePanels.uploadLocalFiles(files).then(function () {
-            if (kit()) kit().toast("Uploaded " + files.length + " file(s)", "success");
-          });
-        } else if (kit()) {
-          kit().toast("Connect API key to upload files", "error");
-        }
-        if (chips) {
-          chips.innerHTML = files
-            .map(function (f) {
-              return (
-                '<span class="attach-chip">' +
-                iconHtml("paperclip", 12) +
-                " " +
-                f.name +
-                "</span>"
-              );
-            })
-            .join("");
-          if (kit()) kit().refreshIcons(chips);
-        }
-        fileInput.value = "";
-      });
-    }
+    // Attach / modes / chips live in composer.js — avoid duplicate wiring.
   }
 
   // ── Onboarding wizard ───────────────────────────────────────────────

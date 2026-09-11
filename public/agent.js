@@ -265,6 +265,15 @@
           callbacks.onThinking &&
             callbacks.onThinking(i + 1, this.maxIterations);
 
+          if (
+            Array.isArray(window.__pendingGuidance) &&
+            window.__pendingGuidance.length
+          ) {
+            window.__pendingGuidance.splice(0).forEach(function (g) {
+              messages.push({ role: "user", content: g });
+            });
+          }
+
           // Pace non-first iterations so tool rounds don't burst all of the
           // minute's AI requests at once (Workers AI has per-minute caps).
           if (i > 0) {
