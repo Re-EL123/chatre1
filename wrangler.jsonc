@@ -32,7 +32,7 @@
   "migrations": [
     {
       "tag": "v1-browser-sessions",
-      "new_classes": ["BrowserSessionDO"]
+      "new_sqlite_classes": ["BrowserSessionDO"]
     }
   ],
   "upload_source_maps": true
