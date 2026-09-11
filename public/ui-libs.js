@@ -173,7 +173,7 @@
     });
 
     const panels = [
-      ["#threads-panel > h2", "messages-square", "Threads"],
+      ["#threads-panel .panel-head h2", "messages-square", "Threads"],
       ["#files-panel > h2", "folder-open", "Workspace"],
       ["#browser-panel > h2", "globe", "Browser"],
       ["#plan-drawer-panel > h2", "list-checks", "Plan"],
@@ -183,6 +183,15 @@
       if (!h) return;
       h.innerHTML = labelWithIcon(row[1], row[2], 16);
     });
+
+    const collapse = document.getElementById("threads-collapse");
+    if (collapse && !collapse.querySelector("[data-lucide], svg")) {
+      collapse.innerHTML = iconHtml("panel-left-close", 15);
+    }
+    const rail = document.getElementById("threads-rail");
+    if (rail && !rail.querySelector("[data-lucide], svg")) {
+      rail.innerHTML = iconHtml("panel-left-open", 16);
+    }
 
     const more = document.querySelector(".toolbar-more > summary");
     if (more) more.innerHTML = labelWithIcon("more-horizontal", "More", 14);

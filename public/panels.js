@@ -563,10 +563,48 @@
     }
   }
 
+  function syncThreadsToggleUi() {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    const mobile =
+      window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    const open = mobile
+      ? shell.classList.contains("show-threads")
+      : !shell.classList.contains("hide-threads");
+    ["toggle-threads", "toggle-threads-bar"].forEach(function (id) {
+      const btn = $(id);
+      if (!btn) return;
+      btn.setAttribute("aria-pressed", open ? "true" : "false");
+      btn.classList.toggle("active", open);
+    });
+    const rail = $("threads-rail");
+    if (rail) {
+      rail.setAttribute("aria-expanded", open ? "true" : "false");
+      rail.hidden = mobile;
+    }
+  }
+
+  function persistThreadsCollapsed(collapsed) {
+    try {
+      localStorage.setItem("chatre.threadsCollapsed", collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function readThreadsCollapsed() {
+    try {
+      return localStorage.getItem("chatre.threadsCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  }
+
   function togglePanel(which) {
     const shell = document.querySelector(".app-shell");
     if (!shell) return;
-    const mobile = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    const mobile =
+      window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
     if (mobile) {
       const cls =
         which === "threads"
@@ -580,15 +618,36 @@
       const on = !shell.classList.contains(cls);
       shell.classList.remove("show-threads", "show-files", "show-browser");
       if (on) shell.classList.add(cls);
+      if (which === "threads") syncThreadsToggleUi();
       return;
     }
     if (which === "threads") {
       shell.classList.toggle("hide-threads");
+      persistThreadsCollapsed(shell.classList.contains("hide-threads"));
+      syncThreadsToggleUi();
     } else if (which === "files") {
       shell.classList.toggle("hide-files");
     } else if (which === "browser") {
       shell.classList.toggle("hide-browser");
     }
+  }
+
+  function setThreadsCollapsed(collapsed) {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    const mobile =
+      window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    if (mobile) {
+      if (collapsed) shell.classList.remove("show-threads");
+      else {
+        shell.classList.remove("show-files", "show-browser");
+        shell.classList.add("show-threads");
+      }
+    } else {
+      shell.classList.toggle("hide-threads", !!collapsed);
+      persistThreadsCollapsed(!!collapsed);
+    }
+    syncThreadsToggleUi();
   }
 
   function initMobileDefaults() {
@@ -599,7 +658,10 @@
       shell.classList.remove("show-threads", "show-files", "show-browser");
     } else {
       shell.classList.add("hide-browser");
+      if (readThreadsCollapsed()) shell.classList.add("hide-threads");
+      else shell.classList.remove("hide-threads");
     }
+    syncThreadsToggleUi();
   }
 
   function init() {
@@ -714,6 +776,25 @@
     bindToggle($("toggle-threads-bar"), "threads");
     bindToggle($("toggle-files-bar"), "files");
     bindToggle($("toggle-browser-bar"), "browser");
+
+    const collapseBtn = $("threads-collapse");
+    if (collapseBtn) {
+      collapseBtn.addEventListener("click", function () {
+        setThreadsCollapsed(true);
+      });
+    }
+    const railBtn = $("threads-rail");
+    if (railBtn) {
+      railBtn.addEventListener("click", function () {
+        setThreadsCollapsed(false);
+      });
+    }
+    if (window.matchMedia) {
+      window.matchMedia("(max-width: 900px)").addEventListener("change", function () {
+        initMobileDefaults();
+      });
+    }
+
     if (backdrop) {
       backdrop.addEventListener("click", function () {
         const shell = document.querySelector(".app-shell");
@@ -749,6 +830,8 @@
     setResumeAvailable,
     askAboutFile,
     togglePanel,
+    setThreadsCollapsed,
+    syncThreadsToggleUi,
     state,
   };
 

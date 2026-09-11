@@ -996,6 +996,84 @@
         gap: 0.9rem;
         align-items: stretch;
         width: 100%;
+        position: relative;
+      }
+
+      .sheet-backdrop {
+        display: none;
+      }
+
+      .app-shell:not(.hide-threads).hide-files.hide-browser {
+        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+      }
+      .app-shell:not(.hide-threads).hide-files:not(.hide-browser) {
+        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(260px, 300px);
+      }
+      .app-shell.hide-threads:not(.hide-files).hide-browser {
+        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(280px, 340px);
+      }
+      .app-shell.hide-threads:not(.hide-files):not(.hide-browser) {
+        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(280px, 320px) minmax(260px, 300px);
+      }
+      .app-shell.hide-threads.hide-files.hide-browser {
+        grid-template-columns: 2.1rem minmax(0, 1fr);
+      }
+      .app-shell.hide-threads.hide-files:not(.hide-browser) {
+        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(260px, 300px);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.4rem;
+      }
+      .panel-head h2 {
+        margin: 0;
+      }
+      .panel-collapse {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.85rem;
+        height: 1.85rem;
+        padding: 0;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: #12121c;
+        color: var(--text-light);
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .panel-collapse:hover {
+        color: var(--text-color);
+        border-color: #3a3a48;
+      }
+      .threads-rail {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 2.1rem;
+        min-height: 4rem;
+        padding: 0.4rem 0;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: rgba(20, 22, 44, 0.85);
+        color: var(--text-light);
+        cursor: pointer;
+        align-self: start;
+        position: sticky;
+        top: 0.5rem;
+        z-index: 5;
+      }
+      .app-shell.hide-threads .threads-rail {
+        display: inline-flex;
+      }
+      #toggle-threads[aria-pressed="true"],
+      #toggle-threads-bar[aria-pressed="true"] {
+        color: var(--text-color);
+        border-color: #4a4a5a;
+        background: rgba(76, 184, 232, 0.12);
       }
 
       .side-panel {
@@ -1306,7 +1384,7 @@
         body {
           max-width: min(1680px, 98vw);
         }
-        .app-shell {
+        .app-shell:not(.hide-threads):not(.hide-files):not(.hide-browser) {
           grid-template-columns: 280px minmax(0, 1fr) 320px 300px;
           gap: 1rem;
         }
@@ -1718,6 +1796,10 @@
         .app-shell.show-browser .sheet-backdrop {
           display: block;
         }
+        .threads-rail,
+        .panel-collapse {
+          display: none !important;
+        }
       }
     </style>
   </head>
@@ -1788,8 +1870,28 @@
 
     <div class="app-shell hide-browser">
       <div class="sheet-backdrop" id="sheet-backdrop"></div>
+      <button
+        type="button"
+        class="threads-rail"
+        id="threads-rail"
+        aria-label="Show threads"
+        data-tip="Show threads"
+      >
+        <i data-lucide="panel-left-open" style="width:16px;height:16px" aria-hidden="true"></i>
+      </button>
       <aside class="side-panel" id="threads-panel" aria-label="Threads">
-        <h2>Threads</h2>
+        <div class="panel-head">
+          <h2>Threads</h2>
+          <button
+            type="button"
+            class="panel-collapse"
+            id="threads-collapse"
+            aria-label="Collapse threads"
+            data-tip="Collapse threads"
+          >
+            <i data-lucide="panel-left-close" style="width:15px;height:15px" aria-hidden="true"></i>
+          </button>
+        </div>
         <div class="panel-actions">
           <button type="button" class="btn" id="threads-new">New</button>
           <button type="button" class="btn" id="threads-refresh">Refresh</button>
