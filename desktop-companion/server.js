@@ -43,7 +43,13 @@ const CAPS = [
   'type',
   'hotkey',
   'click',
+  'exec',
+  'pty',
 ];
+
+const ptySessions = new Map();
+const DENY_EXEC =
+  /\b(rm\s+-rf\s+\/|mkfs|dd\s+if=|shutdown|reboot|curl\s+[^\n]*\|\s*(ba)?sh)\b/i;
 
 function json(res, code, body) {
   const origin = '*';
@@ -452,6 +458,122 @@ function desktopClick(x, y, button) {
   }
 }
 
+function desktopExec(params) {
+  const p = params || {};
+  if (!p.approved) {
+    return {
+      ok: false,
+      needs_approval: true,
+      error: 'desktop_exec requires approved=true (user confirmation)',
+    };
+  }
+  const cmd = String(p.cmd || p.command || '').trim();
+  if (!cmd) return { ok: false, error: 'cmd required' };
+  if (DENY_EXEC.test(cmd)) {
+    return { ok: false, error: 'Command blocked by local deny list' };
+  }
+  const cwd = p.cwd && fs.existsSync(p.cwd) ? p.cwd : os.homedir();
+  const started = Date.now();
+  try {
+    const out = execFileSync(
+      process.platform === 'win32' ? 'cmd' : 'bash',
+      process.platform === 'win32' ? ['/c', cmd] : ['-lc', cmd],
+      {
+        cwd,
+        encoding: 'utf8',
+        timeout: Math.min(Number(p.timeoutMs) || 60000, 180000),
+        maxBuffer: 2 * 1024 * 1024,
+        env: process.env,
+      },
+    );
+    return {
+      ok: true,
+      code: 0,
+      output: String(out || '').slice(0, 100000),
+      cwd,
+      durationMs: Date.now() - started,
+      mode: 'local',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      code: err && typeof err.status === 'number' ? err.status : 1,
+      output: String((err && (err.stdout || err.stderr)) || '').slice(0, 100000),
+      error: err && err.message ? err.message : String(err),
+      cwd,
+      durationMs: Date.now() - started,
+      mode: 'local',
+    };
+  }
+}
+
+function desktopPty(params) {
+  const p = params || {};
+  const action = String(p.action || 'open').toLowerCase();
+  if (action === 'open') {
+    if (!p.approved) {
+      return {
+        ok: false,
+        needs_approval: true,
+        error: 'desktop_pty open requires approved=true',
+      };
+    }
+    const { spawn } = require('child_process');
+    const id = 'pty_' + Date.now().toString(36);
+    const cwd = p.cwd && fs.existsSync(p.cwd) ? p.cwd : os.homedir();
+    const child = spawn(
+      process.platform === 'win32' ? 'cmd.exe' : 'bash',
+      process.platform === 'win32' ? [] : ['-i'],
+      { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    const state = { id, child, buffer: '', closed: false };
+    child.stdout.on('data', (b) => {
+      state.buffer += b.toString('utf8');
+      if (state.buffer.length > 200000) state.buffer = state.buffer.slice(-200000);
+    });
+    child.stderr.on('data', (b) => {
+      state.buffer += b.toString('utf8');
+    });
+    child.on('close', () => {
+      state.closed = true;
+    });
+    ptySessions.set(id, state);
+    return { ok: true, session_id: id, cwd, action: 'open' };
+  }
+  const s = ptySessions.get(String(p.session_id || ''));
+  if (!s) return { ok: false, error: 'No PTY session' };
+  if (action === 'write') {
+    try {
+      const data = String(p.data || p.text || '');
+      s.child.stdin.write(data.endsWith('\n') ? data : data + '\n');
+      return { ok: true, session_id: s.id, action: 'write' };
+    } catch (err) {
+      return { ok: false, error: String(err.message || err) };
+    }
+  }
+  if (action === 'read') {
+    const out = s.buffer;
+    s.buffer = '';
+    return {
+      ok: true,
+      session_id: s.id,
+      output: out.slice(0, 40000),
+      closed: s.closed,
+      action: 'read',
+    };
+  }
+  if (action === 'close') {
+    try {
+      s.child.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
+    ptySessions.delete(s.id);
+    return { ok: true, session_id: s.id, closed: true, action: 'close' };
+  }
+  return { ok: false, error: 'Unknown pty action' };
+}
+
 async function runAction(action, params) {
   const p = params || {};
   switch (String(action || '')) {
@@ -480,6 +602,10 @@ async function runAction(action, params) {
       return desktopHotkey(p.keys || p.key);
     case 'click':
       return desktopClick(p.x, p.y, p.button);
+    case 'exec':
+      return desktopExec(p);
+    case 'pty':
+      return desktopPty(p);
     default:
       return { ok: false, error: 'Unknown action: ' + action };
   }

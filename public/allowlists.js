@@ -33,6 +33,13 @@
     "schedule_due",
     "test_connection",
     "fetch_url",
+    "execute_command_cancel",
+    "shell_open",
+    "shell_write",
+    "shell_read",
+    "shell_close",
+    "desktop_exec",
+    "desktop_pty",
   ];
 
   const BY_TYPE = {
@@ -121,6 +128,11 @@
     ]),
     run: ALWAYS.concat([
       "execute_command",
+      "execute_command_cancel",
+      "shell_open",
+      "shell_write",
+      "shell_read",
+      "shell_close",
       "run_javascript",
       "run_python",
       "verify_project",
@@ -128,6 +140,8 @@
       "view_tree",
       "browser_network",
       "browser_console",
+      "desktop_exec",
+      "desktop_pty",
     ]),
     build: null,
     debug: null,

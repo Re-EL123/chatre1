@@ -310,11 +310,72 @@
     );
   }
 
-  async function exec(cmd, workspaceId, cwd) {
+  async function exec(cmd, workspaceId, cwd, opts) {
+    const o = opts || {};
     return request("/api/exec", {
       method: "POST",
-      body: JSON.stringify({ cmd, workspaceId, cwd }),
+      body: JSON.stringify({
+        cmd: cmd,
+        workspaceId: workspaceId,
+        cwd: cwd,
+        mode: o.mode || "workspace",
+        stream: false,
+        timeoutMs: o.timeoutMs,
+      }),
     });
+  }
+
+  async function execStream({
+    cmd,
+    workspaceId,
+    cwd,
+    mode,
+    onEvent,
+    signal,
+    timeoutMs,
+  }) {
+    const base = apiBase();
+    if (!base) throw new Error("CHATRE_API_BASE not set");
+    const h = await authHeaders();
+    const res = await fetch(base + "/api/exec", {
+      method: "POST",
+      headers: h,
+      signal: signal,
+      body: JSON.stringify({
+        cmd: cmd,
+        workspaceId: workspaceId,
+        cwd: cwd,
+        mode: mode || "workspace",
+        stream: true,
+        timeoutMs: timeoutMs,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      throw new Error((data && data.error) || "exec " + res.status);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (let i = 0; i < parts.length; i++) {
+        const line = parts[i].trim();
+        if (!line.startsWith("data:")) continue;
+        try {
+          const ev = JSON.parse(line.slice(5).trim());
+          if (onEvent) onEvent(ev);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   }
 
   async function runAgentStream({
@@ -484,6 +545,7 @@
     putFile,
     getDiff,
     exec,
+    execStream,
     runAgentStream,
   };
 })();

@@ -125,6 +125,9 @@ If companion is offline, tell the user to run npm run companion:start.
 ## Research & files
 Prefer search_web + fetch_url for static docs. Use download_file / upload_artifact, patch_file, csv_* , memory_* , remind/schedule_* , browser_network / browser_console, ocr_image, and test_connection as needed.
 
+## Shell
+execute_command streams (modes: workspace|sandbox|local). Prefer workspace; local/desktop_exec needs approved=true. Interactive: shell_open/write/read/close. Cancel hangs with execute_command_cancel. Pause on needs_input.
+
 ## Login / 2FA
 If a login wall, CAPTCHA, or OTP appears, call await_login and wait for resume. Never bypass CAPTCHA.
 

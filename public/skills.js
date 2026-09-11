@@ -191,6 +191,18 @@
         "schedule_due to deliver; schedule_list / schedule_cancel to manage.",
       ],
     },
+    shell_debug: {
+      name: "shell_debug",
+      title: "Shell / build debug",
+      summary: "Reproduce failures in the shell, fix, and re-run.",
+      steps: [
+        "Reproduce with execute_command (note exit code + duration).",
+        "Read logs and related files; prefer patch_file for minimal fixes.",
+        "Re-run the failing command; use execute_command_cancel if hung.",
+        "Use shell_open/write/read only for interactive installers.",
+        "local/desktop_exec only with approved=true.",
+      ],
+    },
   };
 
   /**
@@ -279,6 +291,13 @@
     if (/\b(remember|memory|note that|remind me|schedule)\b/.test(t)) {
       found.add("memory_schedule");
     }
+    if (
+      /\b(shell|terminal|npm (test|run|install)|pytest|make |cargo |go test|debug (the )?build|exit code)\b/.test(
+        t,
+      )
+    ) {
+      found.add("shell_debug");
+    }
     if (found.has("coding") && (found.has("documents") || found.has("git"))) {
       found.add("project");
     }
@@ -332,6 +351,13 @@
     "schedule_due",
     "test_connection",
     "execute_command",
+    "execute_command_cancel",
+    "shell_open",
+    "shell_write",
+    "shell_read",
+    "shell_close",
+    "desktop_exec",
+    "desktop_pty",
     "read_file",
     "write_file",
     "append_file",

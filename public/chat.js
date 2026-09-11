@@ -1104,12 +1104,25 @@
           (result && result.tool) ||
           (card && card.querySelector(".tool-name") && card.querySelector(".tool-name").textContent) ||
           "";
-        if (/create_document|create_pdf|write_file|download_file|upload_artifact|csv_write/.test(toolName) || result.artifact) {
-          window.ChatreUIAdv.pushArtifact({
-            kind: toolName || "document",
-            title: result.title || result.path || "Document",
-            path: result.path,
-          });
+        if (/create_document|create_pdf|write_file|download_file|upload_artifact|csv_write|execute_command/.test(toolName) || result.artifact) {
+          if (toolName === "execute_command" || result.command) {
+            window.ChatreUIAdv.pushArtifact({
+              kind: "shell",
+              title:
+                (result.command || result.cmd || "command") +
+                (result.code != null ? " · exit " + result.code : ""),
+              path: result.cwd || "",
+              meta:
+                (result.durationMs != null ? result.durationMs + "ms" : "") +
+                (result.mode ? " · " + result.mode : ""),
+            });
+          } else {
+            window.ChatreUIAdv.pushArtifact({
+              kind: toolName || "document",
+              title: result.title || result.path || "Document",
+              path: result.path,
+            });
+          }
         }
       }
       const status = card.querySelector(".tool-status");
@@ -1375,6 +1388,33 @@
                 );
               }
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+              if (
+                (ev.tool === "execute_command" ||
+                  (ev.result && ev.result.tool === "execute_command")) &&
+                window.ChatreUX &&
+                window.ChatreUX.pinShellResult
+              ) {
+                window.ChatreUX.pinShellResult(ev.result);
+              }
+              echoShellToTerminal(ev.result);
+            } else if (ev.type === "shell_chunk") {
+              echoShellChunk(ev);
+            } else if (ev.type === "awaiting_shell") {
+              stopThinking();
+              showStep(
+                (ev.reason || "Shell needs your input.") +
+                  (ev.command ? "\n\nCommand: `" + ev.command + "`" : "") +
+                  "\n\nType the response in the terminal or chat, then **Resume**.",
+                true,
+              );
+              if (window.ChatreUX) {
+                window.ChatreUX.updateRunCenter({
+                  running: true,
+                  pauseReason: ev.reason || "Shell input needed",
+                  lastFailed: ev.command || "",
+                });
+              }
+              openTerminalPanel();
             } else if (ev.type === "error") {
               showStep("Agent error: " + (ev.error || "unknown"), true);
             } else if (ev.type === "interrupted") {
@@ -1734,6 +1774,49 @@
 
   // ── Terminal ──────────────────────────────────────────────────────
 
+  function openTerminalPanel() {
+    const panel = document.getElementById("terminal-panel");
+    if (panel && panel.hidden) toggleTerminal();
+    else if (!terminalReady) {
+      const p = document.getElementById("terminal-panel");
+      if (p) p.hidden = false;
+      initTerminal();
+    }
+  }
+
+  function echoShellChunk(ev) {
+    if (!ev || !ev.chunk) return;
+    openTerminalPanel();
+    if (!xtermTerminal) return;
+    const color = ev.stream === "stderr" ? "\x1b[31m" : "";
+    const reset = ev.stream === "stderr" ? "\x1b[0m" : "";
+    xtermTerminal.write(color + ev.chunk.replace(/\n/g, "\r\n") + reset);
+  }
+
+  function echoShellToTerminal(result) {
+    if (!result || !(result.output || result.command)) return;
+    openTerminalPanel();
+    if (!xtermTerminal) return;
+    if (result.command) {
+      xtermTerminal.writeln("\r\n\x1b[36m$ " + result.command + "\x1b[0m");
+    }
+    if (result.output) {
+      xtermTerminal.write(String(result.output).replace(/\n/g, "\r\n"));
+      if (!String(result.output).endsWith("\n")) xtermTerminal.writeln("");
+    }
+    if (result.code != null || result.durationMs != null) {
+      xtermTerminal.writeln(
+        "\x1b[90m[exit " +
+          (result.code != null ? result.code : "?") +
+          (result.durationMs != null ? " · " + result.durationMs + "ms" : "") +
+          (result.mode ? " · " + result.mode : "") +
+          (result.truncated ? " · truncated" : "") +
+          "]\x1b[0m",
+      );
+    }
+    writePrompt();
+  }
+
   function toggleTerminal() {
     const panel = document.getElementById("terminal-panel");
     const btn = document.getElementById("terminal-toggle");
@@ -1768,8 +1851,11 @@
     xtermTerminal.open(container);
     fitAddon.fit();
 
-    xtermTerminal.writeln("\x1b[1;36mChatre Terminal\x1b[0m v1.0");
-    xtermTerminal.writeln("Type \x1b[1mhelp\x1b[0m for commands. Shell, JS, and Python.\n");
+    xtermTerminal.writeln("\x1b[1;36mChatre Terminal\x1b[0m v2.0");
+    xtermTerminal.writeln(
+      "Signed-in: remote workspace shell by default. Type \x1b[1mhelp\x1b[0m · \x1b[1mlocal\x1b[0m for virtual FS.\n",
+    );
+    window.__chatreTerminalRemote = true;
     writePrompt();
 
     let currentLine = "";
@@ -1835,11 +1921,55 @@
     const parts = cmd.split(/\s+/);
     const command = parts[0];
     const args = parts.slice(1).join(" ");
+    const localBuiltins = {
+      help: 1,
+      clear: 1,
+      whoami: 1,
+      pwd: 1,
+      cd: 1,
+      ls: 1,
+      dir: 1,
+      cat: 1,
+      echo: 1,
+      touch: 1,
+      mkdir: 1,
+      rm: 1,
+      js: 1,
+      py: 1,
+      remote: 1,
+      local: 1,
+    };
+
+    if (command === "remote") {
+      window.__chatreTerminalRemote = true;
+      xtermTerminal.writeln("Terminal mode: remote (API workspace shell)");
+      return;
+    }
+    if (command === "local") {
+      window.__chatreTerminalRemote = false;
+      xtermTerminal.writeln("Terminal mode: local (virtual FS)");
+      return;
+    }
+
+    const preferRemote =
+      window.__chatreTerminalRemote !== false &&
+      window.ChatreRemote &&
+      window.ChatreRemote.enabled() &&
+      window.ChatreRemote.hasAuth() &&
+      (!localBuiltins[command] || command === "npm" || cmd.startsWith("!"));
+
+    if (preferRemote) {
+      const remoteCmd = cmd.startsWith("!") ? cmd.slice(1).trim() : cmd;
+      runRemoteInTerminal(remoteCmd);
+      return;
+    }
 
     switch (command) {
       case "help":
         xtermTerminal.writeln("Available commands:");
         xtermTerminal.writeln("  help              Show this help");
+        xtermTerminal.writeln("  remote / local    Switch API shell vs virtual FS");
+        xtermTerminal.writeln("  ! <cmd>           Force remote execute_command");
         xtermTerminal.writeln("  ls [dir]          List directory contents");
         xtermTerminal.writeln("  cd <dir>          Change directory");
         xtermTerminal.writeln("  pwd               Print working directory");
@@ -2072,6 +2202,57 @@
   }
 
   // ── Chat slash commands for terminal ─────────────────────────────
+
+  async function runRemoteInTerminal(cmd) {
+    if (!window.ChatreRemote || !window.ChatreRemote.execStream) {
+      xtermTerminal.writeln("Remote shell unavailable");
+      return;
+    }
+    const wsId =
+      (window.ChatrePanels &&
+        window.ChatrePanels.state &&
+        window.ChatrePanels.state.workspaceId) ||
+      undefined;
+    xtermTerminal.writeln("\x1b[90m[remote workspace]\x1b[0m");
+    try {
+      await window.ChatreRemote.execStream({
+        cmd: cmd,
+        workspaceId: wsId,
+        cwd: currentDir,
+        mode: "workspace",
+        onEvent: function (ev) {
+          if (ev.type === "shell_chunk") echoShellChunk(ev);
+          if (ev.type === "shell_done") {
+            if (ev.cwd) currentDir = ev.cwd;
+            xtermTerminal.writeln(
+              "\x1b[90m[exit " +
+                (ev.code != null ? ev.code : "?") +
+                (ev.durationMs != null ? " · " + ev.durationMs + "ms" : "") +
+                (ev.truncated ? " · truncated" : "") +
+                "]\x1b[0m",
+            );
+            if (window.ChatreUX && window.ChatreUX.pinShellResult) {
+              window.ChatreUX.pinShellResult({
+                ok: ev.ok,
+                code: ev.code,
+                command: cmd,
+                output: ev.output,
+                durationMs: ev.durationMs,
+                mode: ev.mode,
+              });
+            }
+            if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+            writePrompt();
+          }
+        },
+      });
+    } catch (err) {
+      xtermTerminal.writeln(
+        "\x1b[31m" + (err && err.message ? err.message : String(err)) + "\x1b[0m",
+      );
+      writePrompt();
+    }
+  }
 
   function runShellCommand(cmd) {
     if (!cmd) {

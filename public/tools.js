@@ -360,6 +360,23 @@
       case "execute_command":
         return executeCommand(p.cmd || p.command, p.cwd, common);
 
+      case "execute_command_cancel":
+        return { ok: true, tool: "execute_command_cancel", text: "Local cancel is a no-op" };
+
+      case "shell_open":
+      case "shell_write":
+      case "shell_read":
+      case "shell_close":
+        return {
+          ok: false,
+          tool: tool,
+          error: "Interactive shell sessions require the remote agent",
+        };
+
+      case "desktop_exec":
+      case "desktop_pty":
+        return await desktopTool(tool, p);
+
       case "read_file":
         return readFileTool(p.path || p.file);
 
@@ -487,6 +504,16 @@
           action: "click",
           params: { x: p.x, y: p.y, button: p.button },
         },
+      },
+      exec: {
+        method: "POST",
+        path: "/action",
+        body: { action: "exec", params: p },
+      },
+      pty: {
+        method: "POST",
+        path: "/action",
+        body: { action: "pty", params: p },
       },
     };
     const spec = pathMap[action];

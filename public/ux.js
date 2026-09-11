@@ -5,14 +5,16 @@
   "use strict";
 
   var state = {
-    goal: "",
-    step: "",
-    phase: "",
-    remainingSteps: null,
-    maxSteps: null,
-    usedSteps: 0,
     running: false,
+    goal: "",
+    phase: "",
+    step: "",
+    usedSteps: 0,
+    maxSteps: null,
+    remainingSteps: null,
     pauseReason: "",
+    lastFailed: "",
+    lastShell: null,
     lastBrowserAction: "",
   };
 
@@ -327,7 +329,11 @@
     if (stepEl) {
       stepEl.textContent =
         state.step ||
-        (state.pauseReason ? state.pauseReason : "Working…");
+        (state.lastFailed
+          ? "Last fail: " + String(state.lastFailed).slice(0, 40)
+          : state.pauseReason
+            ? state.pauseReason
+            : "Working…");
     }
     if (budgetEl) {
       if (state.maxSteps != null) {
@@ -670,6 +676,21 @@
     if (kit()) kit().refreshIcons(document.body);
   }
 
+  function pinShellResult(result) {
+    if (!result) return;
+    if (result.ok === false || (result.code != null && result.code !== 0)) {
+      state.lastFailed = result.command || result.cmd || "command failed";
+      state.lastShell = result;
+      updateRunCenter({
+        lastFailed: state.lastFailed,
+        pauseReason: state.pauseReason || "",
+      });
+      showRunCenter(true);
+    } else if (result.ok) {
+      state.lastShell = result;
+    }
+  }
+
   window.ChatreUX = {
     init: init,
     startRun: startRun,
@@ -680,6 +701,7 @@
     setBrowserAction: setBrowserAction,
     updateRunCenter: updateRunCenter,
     showRunCenter: showRunCenter,
+    pinShellResult: pinShellResult,
     openSettings: openSettings,
     closeSettings: closeSettings,
     applyDensity: applyDensity,
