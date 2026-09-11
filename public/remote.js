@@ -181,6 +181,49 @@
     });
   }
 
+  async function memoryGet(key) {
+    const q = key
+      ? "/api/me?action=memory&key=" + encodeURIComponent(key)
+      : "/api/me?action=memory";
+    return request(q, { method: "GET" });
+  }
+
+  async function memorySet(key, value) {
+    return request("/api/me?action=memory", {
+      method: "PUT",
+      body: JSON.stringify({ key: key, value: value }),
+    });
+  }
+
+  async function memoryDelete(key) {
+    return request(
+      "/api/me?action=memory&key=" + encodeURIComponent(key),
+      { method: "DELETE" },
+    );
+  }
+
+  async function scheduleCreate(body) {
+    return request("/api/me?action=schedules", {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    });
+  }
+
+  async function scheduleList() {
+    return request("/api/me?action=schedules", { method: "GET" });
+  }
+
+  async function scheduleCancel(id) {
+    return request(
+      "/api/me?action=schedules&id=" + encodeURIComponent(id),
+      { method: "DELETE" },
+    );
+  }
+
+  async function scheduleDue() {
+    return request("/api/me?action=schedules&op=due", { method: "GET" });
+  }
+
   async function listModels() {
     return request("/api/models", { method: "GET" });
   }
@@ -420,6 +463,13 @@
     saveByok,
     deleteByok,
     testByok,
+    memoryGet,
+    memorySet,
+    memoryDelete,
+    scheduleCreate,
+    scheduleList,
+    scheduleCancel,
+    scheduleDue,
     listModels,
     companionStatus,
     createThread,

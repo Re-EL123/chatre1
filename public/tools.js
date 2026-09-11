@@ -899,12 +899,40 @@
   }
 
   async function remoteUserTool(tool, p) {
-    if (!window.ChatreRemote || !window.ChatreRemote.hasAuth || !window.ChatreRemote.hasAuth()) {
+    const r = window.ChatreRemote;
+    if (!r) {
+      return { ok: false, tool: tool, error: "Remote client missing" };
+    }
+
+    if (tool === "test_connection") {
+      if (!r.testByok) {
+        return { ok: false, tool: tool, error: "testByok unavailable" };
+      }
+      try {
+        const out = await r.testByok(p.provider);
+        return Object.assign({ tool: tool }, out);
+      } catch (err) {
+        return {
+          ok: false,
+          tool: tool,
+          error: err && err.message ? err.message : String(err),
+        };
+      }
+    }
+
+    if (!r.hasAuth || !r.hasAuth()) {
       if (tool.indexOf("memory_") === 0) {
         try {
           const bag = JSON.parse(localStorage.getItem("chatre_memory") || "{}");
           if (tool === "memory_get") {
-            if (p.key) return { ok: true, tool: tool, key: p.key, value: bag[p.key] || null };
+            if (p.key) {
+              return {
+                ok: true,
+                tool: tool,
+                key: p.key,
+                value: bag[p.key] || null,
+              };
+            }
             return {
               ok: true,
               tool: tool,
@@ -930,21 +958,44 @@
       return {
         ok: false,
         tool: tool,
-        error: "Sign in required for " + tool + " (or use remote agent)",
+        error: "Sign in required for " + tool,
       };
     }
-    if (tool === "test_connection" && window.ChatreRemote.testByok) {
-      return window.ChatreRemote.testByok(p.provider);
+
+    try {
+      if (tool === "memory_get") {
+        return Object.assign({ tool: tool }, await r.memoryGet(p.key));
+      }
+      if (tool === "memory_set") {
+        return Object.assign(
+          { tool: tool },
+          await r.memorySet(p.key, p.value),
+        );
+      }
+      if (tool === "memory_delete") {
+        return Object.assign({ tool: tool }, await r.memoryDelete(p.key));
+      }
+      if (tool === "schedule_create" || tool === "remind") {
+        return Object.assign({ tool: tool }, await r.scheduleCreate(p));
+      }
+      if (tool === "schedule_list") {
+        return Object.assign({ tool: tool }, await r.scheduleList());
+      }
+      if (tool === "schedule_cancel") {
+        return Object.assign({ tool: tool }, await r.scheduleCancel(p.id));
+      }
+      if (tool === "schedule_due") {
+        return Object.assign({ tool: tool }, await r.scheduleDue());
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        tool: tool,
+        error: err && err.message ? err.message : String(err),
+      };
     }
-    // Memory/schedule via agent API is server-side; local fallback already handled.
-    return {
-      ok: false,
-      tool: tool,
-      error:
-        "Use the remote agent for " +
-        tool +
-        " (persisted on the API). Local mode supports memory_* via browser storage only.",
-    };
+
+    return { ok: false, tool: tool, error: "Unsupported user tool: " + tool };
   }
 
   async function httpRequestTool(p) {
