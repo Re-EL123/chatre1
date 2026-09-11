@@ -7,18 +7,18 @@
 
   const TOOL_DEFINITIONS = [
     { name: "todo", desc: "Manage todos (set|add|done|list)", params: { action: "string", items: "array", id: "string", content: "string" } },
+    { name: "todo_write", desc: "Write/update todo list with statuses", params: { todos: "array" } },
     { name: "plan", desc: "Create a step-by-step plan before executing", params: { steps: "string" } },
     { name: "list_skills", desc: "List available agent skills", params: {} },
-    { name: "use_skill", desc: "Load a skill playbook (coding|documents|git|debugging|research|project|browser|computer)", params: { name: "string" } },
-    { name: "browser_navigate", desc: "Open a URL in a real browser", params: { url: "string" } },
-    { name: "browser_click", desc: "Click a CSS selector", params: { selector: "string", url: "string" } },
-    { name: "browser_type", desc: "Type into a CSS selector", params: { selector: "string", text: "string", url: "string" } },
-    { name: "browser_press", desc: "Press a keyboard key", params: { key: "string", url: "string" } },
-    { name: "browser_screenshot", desc: "Screenshot the page", params: { url: "string", fullPage: "boolean" } },
-    { name: "browser_read", desc: "Read page text/HTML", params: { url: "string" } },
-    { name: "browser_evaluate", desc: "Run JS in the page", params: { script: "string", url: "string" } },
-    { name: "browser_wait", desc: "Wait for selector or delay", params: { selector: "string", ms: "string", url: "string" } },
-    { name: "browser_scroll", desc: "Scroll the page", params: { y: "string", url: "string" } },
+    { name: "use_skill", desc: "Load a skill playbook", params: { name: "string" } },
+    { name: "tabs_create", desc: "Create a browser tab", params: { url: "string" } },
+    { name: "navigate", desc: "Navigate tab to url (or back/forward)", params: { tab_id: "string", url: "string" } },
+    { name: "computer", desc: "Click/type/key/scroll/screenshot in browser", params: { tab_id: "string", action: "string", coordinate: "array", ref: "string", text: "string" } },
+    { name: "read_page", desc: "Read page element refs", params: { tab_id: "string", depth: "string", filter: "string" } },
+    { name: "find", desc: "Find elements by natural language", params: { tab_id: "string", query: "string" } },
+    { name: "form_input", desc: "Set form field by ref", params: { tab_id: "string", ref: "string", value: "string" } },
+    { name: "get_page_text", desc: "Extract page plain text", params: { tab_id: "string" } },
+    { name: "search_web", desc: "Keyword web search (max 3 queries)", params: { queries: "array", query: "string" } },
     { name: "http_request", desc: "HTTP request to a public URL", params: { url: "string", method: "string", body: "string" } },
     { name: "execute_command", desc: "Run a shell command in the workspace", params: { cmd: "string", cwd: "string" } },
     { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
@@ -198,10 +198,12 @@
 
   /** Strip tool blocks from assistant text for clean display. */
   function cleanResponseText(text) {
-    return String(text || "").replace(
-      /```(?:tool|tool_call|agent|json)\s*\n?[\s\S]*?```/g,
-      "",
-    );
+    return String(text || "")
+      .replace(/```(?:tool|tool_call|agent|json)\s*\n?[\s\S]*?```/g, "")
+      .replace(/^\s*<answer>\s*/im, "")
+      .replace(/<\/answer>/gi, "")
+      .replace(/<confirmation\b[^>]*\/?>/gi, "")
+      .trim();
   }
 
   // ─── Execution ────────────────────────────────────────────────────
@@ -222,12 +224,23 @@
       case "todo":
         return todoTool(p);
 
+      case "todo_write":
+        return todoWriteTool(p);
+
       case "list_skills":
         return listSkillsTool();
 
       case "use_skill":
         return useSkillTool(p.name);
 
+      case "tabs_create":
+      case "navigate":
+      case "computer":
+      case "read_page":
+      case "find":
+      case "form_input":
+      case "get_page_text":
+      case "search_web":
       case "browser_navigate":
       case "browser_click":
       case "browser_type":
@@ -317,54 +330,77 @@
 
   // ─── Browser / HTTP (Worker /api/browser) ─────────────────────────
 
-  let lastBrowserUrl = "";
-  let lastBrowserCookies = [];
+  let browserSessionId = "";
+  let lastTabId = null;
 
-  function browserActionFor(tool, p) {
-    const map = {
-      browser_navigate: "navigate",
-      browser_click: "click",
-      browser_type: "type",
-      browser_press: "press",
-      browser_screenshot: "screenshot",
-      browser_read: "content",
-      browser_content: "content",
-      browser_evaluate: "evaluate",
-      browser_wait: "wait",
-      browser_scroll: "scroll",
-    };
-    return map[tool] || String((p && p.action) || "navigate");
+  function mapLegacyTool(tool, p) {
+    if (tool === "browser_navigate") return { tool: "navigate", params: p };
+    if (tool === "browser_read" || tool === "browser_content")
+      return { tool: "get_page_text", params: p };
+    if (tool === "browser_screenshot")
+      return { tool: "computer", params: Object.assign({}, p, { action: "screenshot" }) };
+    if (tool === "browser_click")
+      return {
+        tool: "computer",
+        params: Object.assign({}, p, { action: "left_click", selector: p.selector }),
+      };
+    if (tool === "browser_type")
+      return {
+        tool: "computer",
+        params: Object.assign({}, p, { action: "type", text: p.text }),
+      };
+    if (tool === "browser_press")
+      return {
+        tool: "computer",
+        params: Object.assign({}, p, { action: "key", text: p.key || p.text }),
+      };
+    if (tool === "browser_scroll")
+      return {
+        tool: "computer",
+        params: Object.assign({}, p, {
+          action: "scroll",
+          scroll_parameters: { scroll_direction: "down", scroll_amount: 3 },
+        }),
+      };
+    if (tool === "browser_wait")
+      return { tool: "computer", params: Object.assign({}, p, { action: "wait" }) };
+    if (tool === "browser_evaluate")
+      return {
+        tool: "computer",
+        params: Object.assign({}, p, { action: "evaluate", text: p.script }),
+      };
+    if (tool === "browser") return { tool: p.action || "navigate", params: p };
+    return { tool: tool, params: p };
   }
 
-  async function browserTool(tool, p) {
-    const action = browserActionFor(tool, p);
-    const url = String(p.url || (action === "navigate" ? "" : lastBrowserUrl) || "").trim();
+  async function browserTool(rawTool, rawParams) {
+    const mapped = mapLegacyTool(rawTool, rawParams || {});
+    const tool = mapped.tool;
+    const p = mapped.params || {};
+
     const body = {
-      action: action === "navigate" ? "navigate" : action,
-      url: action === "navigate" ? String(p.url || "").trim() : url || undefined,
-      selector: p.selector,
+      tool: tool,
+      session_id: browserSessionId || undefined,
+      tab_id: p.tab_id != null ? Number(p.tab_id) : lastTabId != null ? lastTabId : undefined,
+      url: p.url,
+      query: p.query,
+      queries: p.queries,
+      ref: p.ref,
+      value: p.value,
       text: p.text != null ? p.text : p.value,
+      action: p.action,
+      coordinate: p.coordinate || (p.x != null && p.y != null ? [Number(p.x), Number(p.y)] : undefined),
+      depth: p.depth != null ? Number(p.depth) : undefined,
+      filter: p.filter,
+      ref_id: p.ref_id,
+      scroll_parameters: p.scroll_parameters,
+      actions: p.actions,
+      fullPage: p.fullPage,
+      selector: p.selector,
       key: p.key,
       script: p.script || p.code,
-      ms: p.ms != null ? Number(p.ms) : p.timeout != null ? Number(p.timeout) : undefined,
-      fullPage: p.fullPage,
-      y: p.y != null ? Number(p.y) : p.dy != null ? Number(p.dy) : undefined,
-      cookies: lastBrowserCookies.length ? lastBrowserCookies : undefined,
+      ms: p.ms != null ? Number(p.ms) : undefined,
     };
-
-    if (action === "navigate" && !body.url) {
-      return { ok: false, tool, error: "url required" };
-    }
-    if ((action === "click" || action === "type") && !body.selector) {
-      return { ok: false, tool, error: "selector required" };
-    }
-    if (!body.url && action !== "navigate") {
-      return {
-        ok: false,
-        tool,
-        error: "No page open — call browser_navigate first (or pass url)",
-      };
-    }
 
     try {
       const res = await fetch("/api/browser", {
@@ -378,39 +414,51 @@
       if (!res.ok) {
         return {
           ok: false,
-          tool,
+          tool: rawTool,
           error: (data && data.error) || "Browser HTTP " + res.status,
         };
       }
-      if (data && data.url) lastBrowserUrl = data.url;
-      else if (body.url) lastBrowserUrl = body.url;
-      if (data && Array.isArray(data.cookies)) lastBrowserCookies = data.cookies;
+      if (data && data.session_id) browserSessionId = data.session_id;
+      if (data && data.tab_id != null) lastTabId = data.tab_id;
 
-      const out = Object.assign({ tool: tool }, data || {});
+      const out = Object.assign({ tool: rawTool }, data || {});
       if (out.screenshot_base64) {
         out.screenshot = {
           mime: out.mime || "image/jpeg",
           note: "Screenshot captured (base64 omitted from chat context)",
           bytesApprox: Math.floor((String(out.screenshot_base64).length * 3) / 4),
+          id: out.id || "screenshot:1",
         };
-        // Keep a short data URL tip for UI callbacks if needed
         out.hasScreenshot = true;
         delete out.screenshot_base64;
       }
-      if (out.cookies) {
-        out.cookieCount = Array.isArray(out.cookies) ? out.cookies.length : 0;
-        delete out.cookies;
-      }
       if (out.text) out.text = String(out.text).slice(0, 12000);
-      if (out.html) out.html = String(out.html).slice(0, 8000);
+      if (Array.isArray(out.elements) && out.elements.length > 80) {
+        out.elements = out.elements.slice(0, 80);
+      }
       return out;
     } catch (err) {
       return {
         ok: false,
-        tool,
+        tool: rawTool,
         error: err && err.message ? err.message : String(err),
       };
     }
+  }
+
+  function todoWriteTool(p) {
+    const items = Array.isArray(p.todos) ? p.todos : [];
+    return todoTool({
+      action: "set",
+      items: items.map(function (t, i) {
+        const status = String((t && t.status) || "pending").toLowerCase();
+        return {
+          id: String((t && t.id) || "t" + (i + 1)),
+          content: String((t && (t.content || t.active_form)) || ""),
+          status: status === "completed" || status === "done" ? "done" : "pending",
+        };
+      }),
+    });
   }
 
   async function httpRequestTool(p) {

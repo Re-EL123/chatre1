@@ -82,11 +82,11 @@
       title: "Browser automation",
       summary: "Navigate, click, type, and read real web pages like a human.",
       steps: [
-        "browser_navigate to the target URL.",
-        "Inspect returned text, links, and inputs.",
-        "browser_click / browser_type / browser_press with CSS selectors.",
-        "Confirm with browser_screenshot or browser_read.",
-        "Use http_request for raw APIs when a full browser is unnecessary.",
+        "tabs_create then navigate to the target URL.",
+        "Understand the page with read_page / get_page_text / screenshot before acting.",
+        "Use computer (coords or refs) and form_input for interaction.",
+        "Use search_web for research instead of a search-engine site.",
+        "Confirm results; cite [web:N] / [screenshot:N] when sourcing facts.",
       ],
     },
     computer: {
@@ -94,9 +94,9 @@
       title: "Computer use",
       summary: "Operate shell, files, network, and browser as one workstation.",
       steps: [
-        "Plan with todos for multi-step computer tasks.",
+        "Track work with todo_write.",
         "Use execute_command and file tools for the workspace.",
-        "Use http_request for public HTTP; browser_* for interactive sites.",
+        "Use search_web / http_request for network; browser tools for interactive sites.",
         "Verify outputs before finishing.",
       ],
     },

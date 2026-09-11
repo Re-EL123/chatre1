@@ -1149,6 +1149,12 @@
       );
     }
     if (tool === "execute_command") return "$ " + (params.cmd || "");
+    if (tool === "navigate") return "url: " + (params.url || "");
+    if (tool === "computer") return String(params.action || "act");
+    if (tool === "search_web")
+      return JSON.stringify(params.queries || params.query || "");
+    if (tool === "read_page" || tool === "get_page_text")
+      return "tab " + (params.tab_id || "");
     if (tool === "browser_navigate") return "url: " + (params.url || "");
     if (tool === "browser_click") return "click " + (params.selector || "");
     if (tool === "browser_type")
