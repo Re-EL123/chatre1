@@ -300,6 +300,23 @@
     return meta;
   }
 
+  async function companionStatus() {
+    const base = apiBase();
+    if (!base) return { online: false };
+    syncKeyFromUi();
+    const res = await fetch(base + "/api/companion", {
+      method: "GET",
+      headers: headers(),
+    });
+    const data = await res.json().catch(function () {
+      return null;
+    });
+    if (!res.ok) {
+      return { online: false, error: (data && data.error) || res.status };
+    }
+    return data || { online: false };
+  }
+
   window.ChatreRemote = {
     enabled,
     apiBase,
@@ -307,6 +324,7 @@
     syncKeyFromUi,
     health,
     pingAuth,
+    companionStatus,
     createThread,
     listThreads,
     getThread,

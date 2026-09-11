@@ -36,10 +36,54 @@
     el.title = label;
   }
 
+  function setCompanionStatus(kind, label) {
+    const el = $("companion-status");
+    if (!el) return;
+    el.className = "api-status " + kind;
+    el.textContent = label;
+    el.title = label;
+  }
+
+  async function refreshCompanionStatus() {
+    const base = (
+      window.CHATRE_COMPANION_URL || "http://127.0.0.1:7843"
+    ).replace(/\/$/, "");
+    try {
+      const res = await fetch(base + "/health", { method: "GET" });
+      const data = await res.json().catch(function () {
+        return null;
+      });
+      if (res.ok && data && data.ok) {
+        setCompanionStatus(
+          "ok",
+          data.bridged ? "Desktop · bridged" : "Desktop on",
+        );
+        return;
+      }
+      setCompanionStatus("bad", "Desktop error");
+    } catch {
+      // Also check API bridge status when remote is configured
+      try {
+        const r = remote();
+        if (r && r.enabled() && r.apiKey && r.apiKey()) {
+          const st = await r.companionStatus();
+          if (st && st.online) {
+            setCompanionStatus("ok", "Desktop · bridge");
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      setCompanionStatus("off", "Desktop off");
+    }
+  }
+
   async function refreshAuthStatus() {
     const r = remote();
     if (!r || !r.enabled()) {
       setStatus("off", "Local");
+      await refreshCompanionStatus();
       return;
     }
     setStatus("pending", "Checking…");
@@ -54,6 +98,7 @@
     } else {
       setStatus("bad", ping.error || "Offline");
     }
+    await refreshCompanionStatus();
   }
 
   function updateUsageMeter(usage) {

@@ -250,6 +250,23 @@ export default {
       return new Response("Method not allowed", { status: 405 });
     }
 
+    if (url.pathname === "/api/browser/health") {
+      if (request.method === "OPTIONS") return optionsResponse();
+      if (request.method === "GET" || request.method === "POST") {
+        return jsonResponse({
+          ok: true,
+          browser_binding: !!env.BROWSER,
+          sessions_binding: !!env.BROWSER_SESSIONS,
+          ai_binding: !!env.AI,
+          brave_configured: !!env.BRAVE_API_KEY,
+          note: env.BROWSER
+            ? "Browser Rendering bound — computer-use tools available"
+            : "Browser Rendering not bound — enable in Cloudflare dashboard + wrangler.jsonc",
+        });
+      }
+      return new Response("Method not allowed", { status: 405 });
+    }
+
     if (url.pathname === "/api/mcp") {
       if (request.method === "OPTIONS") return optionsResponse();
       if (request.method === "POST") return handleMcpRequest(request, env);

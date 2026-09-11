@@ -33,7 +33,8 @@
     "start": "wrangler dev",
     "test": "vitest",
     "smoke": "node scripts/smoke.js",
-    "eval": "node evals/run.js"
+    "eval": "node evals/run.js",
+    "companion": "node desktop-companion/server.js"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.4.0"

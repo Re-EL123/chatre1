@@ -77,6 +77,20 @@ async function main() {
       })) && ok;
 
     ok =
+      (await check('worker /api/browser/health', async () => {
+        const r = await fetch(worker + '/api/browser/health');
+        if (!r.ok) throw new Error('status ' + r.status);
+        const j = await r.json();
+        if (!j.ok) throw new Error('not ok');
+        console.log(
+          '     browser_binding=' +
+            !!j.browser_binding +
+            ' sessions=' +
+            !!j.sessions_binding,
+        );
+      })) && ok;
+
+    ok =
       (await check('worker /api/browser search_web', async () => {
         const r = await fetch(worker + '/api/browser', {
           method: 'POST',
@@ -115,6 +129,16 @@ async function main() {
             headers: apiHeaders(),
           });
           if (!r.ok) throw new Error('status ' + r.status);
+        })) && ok;
+
+      ok =
+        (await check('api /api/companion status', async () => {
+          const r = await fetch(api + '/api/companion', {
+            headers: apiHeaders(),
+          });
+          if (!r.ok) throw new Error('status ' + r.status);
+          const j = await r.json();
+          console.log('     companion online=' + !!j.online);
         })) && ok;
     }
   }

@@ -19,6 +19,12 @@
     { name: "form_input", desc: "Set form field by ref", params: { tab_id: "string", ref: "string", value: "string" } },
     { name: "get_page_text", desc: "Extract page plain text", params: { tab_id: "string" } },
     { name: "search_web", desc: "Keyword web search (max 3 queries)", params: { queries: "array", query: "string" } },
+    { name: "desktop_status", desc: "Check local desktop companion online", params: {} },
+    { name: "desktop_open", desc: "Open URL in real desktop browser", params: { url: "string" } },
+    { name: "desktop_screenshot", desc: "Capture desktop screenshot via companion", params: {} },
+    { name: "desktop_clipboard_get", desc: "Read desktop clipboard", params: {} },
+    { name: "desktop_clipboard_set", desc: "Write desktop clipboard", params: { text: "string" } },
+    { name: "desktop_notify", desc: "Show desktop notification", params: { title: "string", body: "string" } },
     { name: "http_request", desc: "HTTP request to a public URL", params: { url: "string", method: "string", body: "string" } },
     { name: "execute_command", desc: "Run a shell command in the workspace", params: { cmd: "string", cwd: "string" } },
     { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
@@ -264,6 +270,14 @@
       case "list_mcp_tools":
         return await listMcpToolsTool(p.server);
 
+      case "desktop_status":
+      case "desktop_open":
+      case "desktop_screenshot":
+      case "desktop_clipboard_get":
+      case "desktop_clipboard_set":
+      case "desktop_notify":
+        return await desktopTool(tool, p);
+
       case "tabs_create":
       case "navigate":
       case "computer":
@@ -366,6 +380,86 @@
 
   let browserSessionId = "";
   let lastTabId = null;
+
+  const COMPANION_BASE =
+    (window.CHATRE_COMPANION_URL || "http://127.0.0.1:7843").replace(
+      /\/$/,
+      "",
+    );
+  const COMPANION_TOKEN =
+    window.CHATRE_COMPANION_TOKEN ||
+    localStorage.getItem("chatre_companion_token") ||
+    "local-dev-only";
+
+  async function desktopTool(tool, p) {
+    const action = String(tool || "").replace(/^desktop_/, "");
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Chatre-Companion": COMPANION_TOKEN,
+    };
+    const pathMap = {
+      status: { method: "GET", path: "/health" },
+      open: { method: "POST", path: "/open", body: { url: p.url } },
+      screenshot: { method: "POST", path: "/screenshot" },
+      clipboard_get: { method: "POST", path: "/clipboard/get" },
+      clipboard_set: {
+        method: "POST",
+        path: "/clipboard/set",
+        body: { text: p.text },
+      },
+      notify: {
+        method: "POST",
+        path: "/notify",
+        body: { title: p.title, body: p.body || p.text },
+      },
+    };
+    const spec = pathMap[action];
+    if (!spec) {
+      return { ok: false, tool, error: "Unknown desktop tool" };
+    }
+    try {
+      const res = await fetch(COMPANION_BASE + spec.path, {
+        method: spec.method,
+        headers: headers,
+        body: spec.body ? JSON.stringify(spec.body) : undefined,
+      });
+      const data = await res.json().catch(function () {
+        return null;
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          tool,
+          error:
+            (data && data.error) ||
+            "Companion HTTP " +
+              res.status +
+              " — start: npm run companion",
+        };
+      }
+      const out = Object.assign({ tool: tool, ok: true }, data || {});
+      if (out.screenshot_base64) {
+        out.screenshot = {
+          mime: out.mime || "image/jpeg",
+          note: "Desktop screenshot captured (base64 omitted)",
+          bytesApprox: Math.floor(
+            (String(out.screenshot_base64).length * 3) / 4,
+          ),
+        };
+        delete out.screenshot_base64;
+      }
+      return out;
+    } catch (err) {
+      return {
+        ok: false,
+        tool,
+        companion_offline: true,
+        error:
+          (err && err.message ? err.message : String(err)) +
+          " — run companion: CHATRE_API_BASE=… CHATRE_API_TOKEN=… npm run companion",
+      };
+    }
+  }
 
   function mapLegacyTool(tool, p) {
     if (tool === "browser_navigate") return { tool: "navigate", params: p };

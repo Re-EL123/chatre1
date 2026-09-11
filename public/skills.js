@@ -98,6 +98,7 @@
         "Track work with todo_write.",
         "Use execute_command and file tools for the workspace.",
         "Use search_web / http_request for network; browser tools for interactive sites.",
+        "For real OS actions (open desktop browser, desktop screenshot, clipboard), use desktop_* tools (companion must be running).",
         "Verify outputs before finishing.",
       ],
     },
