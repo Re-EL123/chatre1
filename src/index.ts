@@ -32,13 +32,14 @@ const AGENT_SYSTEM_PROMPT =
   "Available tools:\n" +
   "- plan {steps}\n" +
   "- list_skills {}\n" +
-  "- use_skill {name}  (coding|documents|git|debugging|research|project)\n" +
-  "- execute_command {cmd, cwd?}\n" +
-  "- read_file / write_file {path, content?}\n" +
-  "- list_directory / view_tree\n" +
-  "- create_document {title, content}\n" +
-  "- verify_project {path?}\n" +
-  "- git_init / git_add / git_commit / git_status / git_push\n\n" +
+  "- use_skill {name}\n" +
+  "- execute_command {cmd|command, cwd?}\n" +
+  "- read_file / write_file / append_file {path, content?}\n" +
+  "- list_directory / create_directory / delete_file / view_tree\n" +
+  "- find_files {pattern} / search_code {pattern, path?}\n" +
+  "- run_javascript / run_python {code}\n" +
+  "- create_document {title, content} / verify_project {path?}\n" +
+  "- git_init / git_add / git_commit / git_status / git_log / git_push\n\n" +
   "## Operating rules (mandatory)\n" +
   "1. For any build/code/document/git task: start with plan (skills are often auto-selected).\n" +
   "2. Inspect the workspace before writing (view_tree / list_directory / read_file).\n" +
@@ -491,11 +492,34 @@ function normalizeChatResult(result: unknown): {
   if (!result || typeof result !== "object") {
     return { response: "", tool_calls: [] };
   }
-  const r = result as Record<string, unknown>;
+
+  // Unwrap common envelopes: { result }, { choices: [{ message }] }
+  let r = result as Record<string, unknown>;
+  if (r.result && typeof r.result === "object") {
+    r = r.result as Record<string, unknown>;
+  }
+  if (Array.isArray(r.choices) && r.choices[0] && typeof r.choices[0] === "object") {
+    const msg = (r.choices[0] as Record<string, unknown>).message;
+    if (msg && typeof msg === "object") {
+      r = msg as Record<string, unknown>;
+    }
+  }
+
   let response = "";
   if (typeof r.response === "string") response = r.response;
   else if (typeof r.text === "string") response = r.text;
   else if (typeof r.content === "string") response = r.content;
+  else if (Array.isArray(r.content)) {
+    response = (r.content as unknown[])
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in (part as object)) {
+          return String((part as { text?: string }).text || "");
+        }
+        return "";
+      })
+      .join("");
+  }
 
   const rawCalls =
     (Array.isArray(r.tool_calls) && r.tool_calls) ||

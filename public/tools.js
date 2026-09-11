@@ -57,22 +57,58 @@
    */
   function parseToolCalls(text) {
     const results = [];
-    const blockRe = /```(?:tool|tool_call|agent)\s*\n?([\s\S]*?)```/g;
+    const blockRe = /```(?:tool|tool_call|agent|json)\s*\n?([\s\S]*?)```/g;
     let m;
     while ((m = blockRe.exec(text)) !== null) {
       const block = m[1].trim();
       parseBlock(block, results);
     }
 
-    // Also catch bare {tool:...} JSON objects if no fenced blocks
+    // Brace-balanced recovery for bare { "tool": ... } objects
     if (results.length === 0) {
-      const bareRe = /\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*?\}/g;
-      let bm;
-      while ((bm = bareRe.exec(text)) !== null) {
-        parseBlock(bm[0], results);
-      }
+      extractBalancedToolJson(String(text || ""), results);
     }
     return results;
+  }
+
+  function extractBalancedToolJson(text, results) {
+    let i = 0;
+    while (i < text.length) {
+      const start = text.indexOf('{"tool"', i);
+      const start2 = text.indexOf('{ "tool"', i);
+      let at = -1;
+      if (start >= 0 && (start2 < 0 || start < start2)) at = start;
+      else if (start2 >= 0) at = start2;
+      if (at < 0) break;
+      let depth = 0;
+      let inStr = false;
+      let esc = false;
+      let end = -1;
+      for (let j = at; j < text.length; j++) {
+        const ch = text[j];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === "\\") esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth += 1;
+        else if (ch === "}") {
+          depth -= 1;
+          if (depth === 0) {
+            end = j;
+            break;
+          }
+        }
+      }
+      if (end > at) {
+        parseBlock(text.slice(at, end + 1), results);
+        i = end + 1;
+      } else {
+        i = at + 1;
+      }
+    }
   }
 
   function parseBlock(jsonText, results) {
@@ -80,37 +116,81 @@
       const parsed = JSON.parse(jsonText);
       if (Array.isArray(parsed)) {
         parsed.forEach((item) => {
-          if (item && item.tool) results.push(normalize(item));
+          const n = normalize(item);
+          if (n) results.push(n);
         });
-      } else if (parsed && parsed.tool) {
-        results.push(normalize(parsed));
+      } else if (parsed && parsed.tool_calls) {
+        parsed.tool_calls.forEach((item) => {
+          const n = normalize(item);
+          if (n) results.push(n);
+        });
+      } else {
+        const n = normalize(parsed);
+        if (n) results.push(n);
       }
     } catch (e) {
-      // Try line-by-line recovery for models that wrap JSON in extra text
-      const innerRe = /\{\s*"tool"\s*:[\s\S]*?\}/g;
-      let m;
-      while ((m = innerRe.exec(jsonText)) !== null) {
-        try {
-          const obj = JSON.parse(m[0]);
-          if (obj.tool) results.push(normalize(obj));
-        } catch (e2) {
-          /* ignore */
-        }
-      }
+      extractBalancedToolJson(jsonText, results);
     }
   }
 
   function normalize(item) {
+    if (!item) return null;
+    if (item.function && item.function.name) {
+      let params = {};
+      const raw = item.function.arguments;
+      if (typeof raw === "string") {
+        try {
+          params = JSON.parse(raw || "{}");
+        } catch {
+          params = {};
+        }
+      } else if (raw && typeof raw === "object") {
+        params = raw;
+      }
+      return {
+        tool: item.function.name,
+        params,
+        id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+      };
+    }
+    if (!item.tool && item.name) {
+      item = { tool: item.name, params: item.arguments || item.params || item };
+    }
+    if (!item.tool) return null;
+    let params = item.params;
+    if (!params && item.arguments != null) {
+      params =
+        typeof item.arguments === "string"
+          ? (function () {
+              try {
+                return JSON.parse(item.arguments);
+              } catch {
+                return {};
+              }
+            })()
+          : item.arguments;
+    }
+    if (!params || typeof params !== "object") {
+      params = {};
+      Object.keys(item).forEach((k) => {
+        if (k !== "tool" && k !== "id" && k !== "type" && k !== "function") {
+          params[k] = item[k];
+        }
+      });
+    }
     return {
       tool: item.tool,
-      params: item.params || {},
+      params,
       id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
     };
   }
 
   /** Strip tool blocks from assistant text for clean display. */
   function cleanResponseText(text) {
-    return String(text || "").replace(/```(?:tool|tool_call|agent)\s*\n?[\s\S]*?```/g, "");
+    return String(text || "").replace(
+      /```(?:tool|tool_call|agent|json)\s*\n?[\s\S]*?```/g,
+      "",
+    );
   }
 
   // ─── Execution ────────────────────────────────────────────────────
@@ -121,6 +201,7 @@
     const common = {
       onWrite: options && options.onWrite,
       onCommand: options && options.onCommand,
+      onDocument: options && options.onDocument,
     };
 
     switch (tool) {
@@ -134,16 +215,16 @@
         return useSkillTool(p.name);
 
       case "execute_command":
-        return executeCommand(p.cmd, common);
+        return executeCommand(p.cmd || p.command, p.cwd, common);
 
       case "read_file":
-        return readFileTool(p.path);
+        return readFileTool(p.path || p.file);
 
       case "write_file":
-        return writeFileTool(p.path, p.content, common);
+        return writeFileTool(p.path || p.file, p.content, common);
 
       case "append_file":
-        return appendFileTool(p.path, p.content, common);
+        return appendFileTool(p.path || p.file, p.content, common);
 
       case "list_directory":
         return listDirTool(p.path);
@@ -152,28 +233,28 @@
         return mkdirTool(p.path, common);
 
       case "delete_file":
-        return deleteFileTool(p.path, p.recursive);
+        return deleteFileTool(p.path || p.file, p.recursive);
 
       case "copy_file":
-        return copyFileTool(p.src, p.dest);
+        return copyFileTool(p.src || p.source, p.dest || p.destination);
 
       case "find_files":
-        return findFilesTool(p.pattern);
+        return findFilesTool(p.pattern || p.query || p.needle);
 
       case "search_code":
-        return searchCodeTool(p.pattern, p.path);
+        return searchCodeTool(p.pattern || p.query || p.needle, p.path);
 
       case "run_javascript":
-        return runJSTool(p.code);
+        return runJSTool(p.code || p.source);
 
       case "run_python":
-        return runPyTool(p.code);
+        return runPyTool(p.code || p.source);
 
       case "create_document":
         return createDocTool(p.title, p.content, common);
 
       case "export_document":
-        return exportDocTool(p.path, common);
+        return exportDocTool(p.path || p.file, common);
 
       case "verify_project":
         return verifyProjectTool(p.path);
@@ -206,12 +287,31 @@
 
   // ─── Shell command ────────────────────────────────────────────────
 
-  function executeCommand(cmd, common) {
+  function executeCommand(cmd, cwdOverride, common) {
     const fileSys = fs();
-    const curr = cwd();
-    if (common && common.onCommand) common.onCommand(cmd);
+    let curr = cwd();
+    if (cwdOverride) {
+      curr = resolve(cwdOverride) || curr;
+    }
+    const command = String(cmd || "").trim();
+    if (!command) {
+      return { ok: false, tool: "execute_command", error: "cmd/command required", output: "" };
+    }
+    if (common && common.onCommand) common.onCommand(command);
 
-    return shellCommand(cmd, fileSys, curr);
+    const raw = shellCommand(command, fileSys, curr);
+    if (typeof raw === "string") {
+      const isErr =
+        /: cannot access |: No such file|command not found|error:/i.test(raw);
+      return {
+        ok: !isErr,
+        tool: "execute_command",
+        output: raw,
+        text: raw.slice(0, 500),
+        error: isErr ? raw : null,
+      };
+    }
+    return raw;
   }
 
   function shellCommand(cmd, fileSys, startCwd) {
@@ -284,12 +384,26 @@
         break;
       }
       case "head": {
-        const spec = args.split(/\s+/);
-        const n = parseInt(spec[0].replace(/^-n\s*/i, ""), 10) || 10;
-        const file = spec[1] || spec[0];
+        const spec = args.trim().split(/\s+/).filter(Boolean);
+        let n = 10;
+        let file = "";
+        for (let i = 0; i < spec.length; i++) {
+          if (spec[i] === "-n" && spec[i + 1]) {
+            n = parseInt(spec[i + 1], 10) || 10;
+            i += 1;
+          } else if (/^-n\d+$/i.test(spec[i])) {
+            n = parseInt(spec[i].slice(2), 10) || 10;
+          } else if (!file) {
+            file = spec[i];
+          }
+        }
+        if (!file) {
+          out = "head: missing file";
+          break;
+        }
         const target = rp(file, fileSys, startCwd);
         const entry = fileSys[target];
-        if (!entry) { out = "head: " + file + ": No such file"; }
+        if (!entry) out = "head: " + file + ": No such file";
         else {
           const lines = (entry.content || "").split("\n").slice(0, n);
           out = lines.join("\n");
@@ -778,9 +892,32 @@
         git.initialized = true;
         return { ok: true, tool: "git_init", text: "Initialized empty git repository at /" };
       case "add": {
-        const target = resolve(params.path || ".");
-        git.initialized = git.initialized || !!fs()[target];
-        if (!fs()[target]) return { ok: false, tool: "git_add", error: "No such file: " + params.path };
+        git.initialized = true;
+        const raw = params.path || ".";
+        if (raw === "." || raw === "./" || raw === "*") {
+          const allFiles = [];
+          const walk = (dp) => {
+            const de = fs()[dp];
+            if (!de) return;
+            (de.children || []).forEach((c) => {
+              const cpath = dp === "/" ? "/" + c : dp + "/" + c;
+              const e = fs()[cpath];
+              if (e && e.type === "file") allFiles.push(cpath);
+              if (e && e.type === "dir") walk(cpath);
+            });
+          };
+          walk("/");
+          allFiles.forEach((f) => git.staged.add(f));
+          return {
+            ok: true,
+            tool: "git_add",
+            text: "Staged " + allFiles.length + " files",
+          };
+        }
+        const target = resolve(raw);
+        if (!fs()[target]) {
+          return { ok: false, tool: "git_add", error: "No such file: " + raw };
+        }
         git.staged.add(target);
         return { ok: true, tool: "git_add", text: "Staged " + target };
       }
@@ -859,6 +996,38 @@
     parseToolCalls,
     cleanResponseText,
     executeTool,
+    asOpenAITools: function () {
+      return TOOL_DEFINITIONS.map(function (t) {
+        const props = {};
+        const required = [];
+        Object.keys(t.params || {}).forEach(function (k) {
+          props[k] = { type: t.params[k] === "boolean" ? "boolean" : "string" };
+          if (k === "cmd" || k === "path" || k === "content" || k === "code" || k === "message" || k === "steps" || k === "title" || k === "name" || k === "pattern") {
+            // soft requireds — leave optional for model flexibility except critical ones
+          }
+        });
+        if (t.name === "execute_command") required.push("cmd");
+        if (t.name === "write_file") {
+          required.push("path");
+          required.push("content");
+        }
+        if (t.name === "read_file") required.push("path");
+        if (t.name === "git_commit") required.push("message");
+        if (t.name === "plan") required.push("steps");
+        return {
+          type: "function",
+          function: {
+            name: t.name,
+            description: t.desc,
+            parameters: {
+              type: "object",
+              properties: props,
+              required: required,
+            },
+          },
+        };
+      });
+    },
     executeBatch: async function (calls, options) {
       const results = [];
       for (const call of calls) {

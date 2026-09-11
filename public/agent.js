@@ -98,16 +98,21 @@
           const payloadMessages = trimAgentMessages(messages);
 
           let text = "";
+          const tools =
+            window.ChatreTools && window.ChatreTools.asOpenAITools
+              ? window.ChatreTools.asOpenAITools()
+              : null;
           const response = await fetch("/api/chat", {
             method: "POST",
             headers: window.ChatreCore.authHeaders(),
             signal,
             body: JSON.stringify({
               messages: payloadMessages,
-              stream: true,
+              stream: !tools,
               agent: true,
               model,
               max_tokens: maxTokens,
+              tools: tools || undefined,
             }),
           });
 
@@ -123,7 +128,36 @@
           }
 
           const ct = response.headers.get("content-type") || "";
-          if (ct.includes("text/event-stream") || ct.includes("stream")) {
+          // When tools are present Worker may return JSON (non-stream)
+          if (ct.includes("application/json")) {
+            const data = await response.json();
+            text = data.response || "";
+            if (text && callbacks.onToken) callbacks.onToken(text, i + 1);
+            const nativeCalls = data.tool_calls || [];
+            if (nativeCalls.length && window.ChatreTools) {
+              // Merge native calls into parseable text for the existing loop
+              const synthetic = nativeCalls
+                .map(function (c) {
+                  const name =
+                    (c.function && c.function.name) || c.name || "";
+                  let args = (c.function && c.function.arguments) || c.arguments || {};
+                  if (typeof args === "string") {
+                    try {
+                      args = JSON.parse(args);
+                    } catch (e) {
+                      args = {};
+                    }
+                  }
+                  return (
+                    "```tool\n" +
+                    JSON.stringify({ tool: name, params: args, id: c.id }) +
+                    "\n```"
+                  );
+                })
+                .join("\n");
+              text = (text ? text + "\n\n" : "") + synthetic;
+            }
+          } else if (ct.includes("text/event-stream") || ct.includes("stream")) {
             text = await readWorkerStream(response, signal, (delta) => {
               callbacks.onToken && callbacks.onToken(delta, i + 1);
             });
