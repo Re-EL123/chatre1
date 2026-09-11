@@ -1765,6 +1765,303 @@
         height: 28px;
       }
 
+      /* ── Density ─────────────────────────────────────────────── */
+      body[data-density="compact"] {
+        --pad: 0.55rem;
+        --gap: 0.4rem;
+        --msg-pad: 0.55rem 0.75rem;
+        --font-msg: 0.92rem;
+      }
+      body[data-density="comfortable"] {
+        --pad: 0.9rem;
+        --gap: 0.7rem;
+        --msg-pad: 0.85rem 1rem;
+        --font-msg: 1rem;
+      }
+      body[data-density="compact"] .message { padding: var(--msg-pad); font-size: var(--font-msg); }
+      body[data-density="comfortable"] .message { padding: var(--msg-pad); font-size: var(--font-msg); }
+      body[data-density="compact"] .side-panel { padding: 0.55rem; gap: 0.35rem; }
+      body[data-density="comfortable"] .side-panel { padding: 0.95rem; gap: 0.6rem; }
+      body[data-density="compact"] .timeline-head { padding: 0.35rem 0.5rem; }
+      body[data-density="comfortable"] .timeline-head { padding: 0.55rem 0.75rem; }
+      body[data-density="compact"] .tool-call.collapsed .tool-call-detail,
+      body[data-density="compact"] .tool-call.collapsed .tool-call-result { display: none; }
+      .tool-call.collapsed:not(.open) .tool-call-detail,
+      .tool-call.collapsed:not(.open) .tool-call-result { display: none; }
+      .tool-call.collapsed.open .tool-call-detail,
+      .tool-call.collapsed.open .tool-call-result { display: block; }
+
+      /* ── Slim toolbar + settings ─────────────────────────────── */
+      .toolbar-slim .api-key-label,
+      .toolbar-slim #api-key-input,
+      .toolbar-slim label[for="model-select"],
+      .toolbar-slim #model-select,
+      .toolbar-slim #usage-meter { display: none !important; }
+      .toolbar-status-pills {
+        display: inline-flex;
+        gap: 0.35rem;
+        align-items: center;
+      }
+
+      /* ── Run command center ──────────────────────────────────── */
+      #run-center {
+        display: none;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        padding: 0.55rem 0.85rem;
+        margin-bottom: 0.55rem;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: linear-gradient(180deg, rgba(28, 32, 52, 0.95), rgba(14, 16, 28, 0.92));
+        position: sticky;
+        top: 0;
+        z-index: 35;
+      }
+      #run-center.active { display: flex; }
+      .run-center-main { flex: 1; min-width: 160px; }
+      .run-center-goal {
+        font-weight: 600;
+        font-size: 0.92rem;
+        margin: 0 0 0.15rem;
+      }
+      .run-center-step {
+        font-size: 0.8rem;
+        color: var(--text-light);
+      }
+      .run-center-meta {
+        display: flex;
+        gap: 0.55rem;
+        align-items: center;
+        font-size: 0.78rem;
+        color: var(--text-light);
+      }
+      .run-center-phase {
+        padding: 0.15rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.68rem;
+      }
+      .run-center-actions { display: flex; gap: 0.35rem; }
+
+      /* ── Settings drawer ─────────────────────────────────────── */
+      #settings-drawer {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 90;
+        display: none;
+        justify-content: flex-end;
+      }
+      #settings-drawer.open { display: flex; }
+      #settings-drawer-panel {
+        width: min(400px, 100%);
+        background: #0c0c12;
+        border-left: 1px solid var(--border-color);
+        padding: 1rem 1.1rem;
+        overflow: auto;
+        animation: slide-drawer 0.28s ease;
+      }
+      .settings-section {
+        margin-bottom: 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .settings-section h3 {
+        margin: 0 0 0.25rem;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-light);
+      }
+      .settings-section #model-select,
+      .settings-section #api-key-input {
+        width: 100%;
+        display: block;
+      }
+      .kbd-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--text-light);
+      }
+      .kbd-list li {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.25rem 0;
+        border-bottom: 1px solid rgba(42,42,50,0.6);
+      }
+      kbd {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.72rem;
+        padding: 0.1rem 0.35rem;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background: #12121c;
+      }
+
+      /* ── Composer extras ─────────────────────────────────────── */
+      .composer-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.35rem;
+      }
+      .composer-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.78rem;
+        color: var(--text-light);
+        cursor: pointer;
+        user-select: none;
+      }
+      .composer-toggle input { accent-color: #4cb8e8; }
+      #composer-attach-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-bottom: 0.25rem;
+      }
+      .attach-chip {
+        font-size: 0.72rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        color: var(--text-light);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+      }
+      .message-input-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      /* ── Browser co-pilot ────────────────────────────────────── */
+      #browser-pane-action {
+        font-size: 0.8rem;
+        color: #4cb8e8;
+        margin-top: 0.35rem;
+        min-height: 1.1em;
+      }
+
+      /* ── Thread inbox ────────────────────────────────────────── */
+      .thread-item .thread-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.68rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        color: var(--text-light);
+        margin-top: 0.2rem;
+        width: fit-content;
+      }
+      .thread-status.running { color: #4cb8e8; border-color: #2a5a70; }
+      .thread-status.login { color: #e8a84c; border-color: #6a4a20; }
+      .thread-status.plan { color: #e8a84c; border-color: #6a4a20; }
+      .thread-status.done { color: #4caf7a; border-color: #2a5a40; }
+      .thread-status.interrupted { color: #e85d4c; border-color: #6a2a20; }
+      .thread-goal {
+        font-size: 0.75rem;
+        color: var(--text-light);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+      }
+
+      /* ── Plan checklist ──────────────────────────────────────── */
+      .plan-checklist {
+        list-style: none;
+        padding: 0;
+        margin: 0.5rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .plan-check-item {
+        display: flex;
+        gap: 0.4rem;
+        align-items: flex-start;
+        padding: 0.35rem 0.45rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: #101018;
+      }
+      .plan-check-item input[type="checkbox"] {
+        margin-top: 0.2rem;
+        accent-color: #4caf7a;
+      }
+      .plan-check-item textarea {
+        flex: 1;
+        min-height: 2.2rem;
+        resize: vertical;
+        background: transparent;
+        border: 0;
+        color: var(--text-color);
+        font: inherit;
+        font-size: 0.85rem;
+      }
+      .plan-check-item.done textarea {
+        text-decoration: line-through;
+        color: var(--text-light);
+      }
+      .plan-check-add {
+        font-size: 0.8rem;
+      }
+
+      /* ── Onboarding ──────────────────────────────────────────── */
+      #onboarding-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+      }
+      #onboarding-overlay.open { display: flex; }
+      .onboard-card {
+        width: min(440px, 100%);
+        background: #0c0c14;
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 1.25rem 1.35rem;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+      }
+      .onboard-card h2 { margin: 0 0 0.35rem; font-size: 1.2rem; }
+      .onboard-card p { color: var(--text-light); margin: 0 0 0.85rem; }
+      .onboard-dots {
+        display: flex;
+        gap: 0.35rem;
+        margin-bottom: 0.85rem;
+      }
+      .onboard-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: #2a2a36;
+      }
+      .onboard-dot.active { background: #4cb8e8; }
+      .onboard-actions {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+      }
+
+
       @media (max-width: 900px) {
         .app-shell {
           display: block;
@@ -1810,18 +2107,7 @@
       <p>Re-EL AI ChatBot (Maerd Portal)</p>
     </header>
 
-    <div class="toolbar">
-      <label for="model-select">Model</label>
-      <select id="model-select" aria-label="Model">
-        <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">
-          Llama 3.3 70B (default)
-        </option>
-        <option value="@cf/meta/llama-3.1-8b-instruct-fp8-fast">
-          Llama 3.1 8B Fast
-        </option>
-        <option value="@cf/meta/llama-3.1-8b-instruct">Llama 3.1 8B</option>
-        <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B</option>
-      </select>
+    <div class="toolbar toolbar-slim">
       <div class="mode-control" id="mode-control" role="group" aria-label="Mode">
         <button type="button" data-mode="chat" aria-pressed="false">Chat</button>
         <button type="button" data-mode="agent" class="active" aria-pressed="true">Agent</button>
@@ -1834,6 +2120,37 @@
       <button type="button" class="btn" id="agent-resume" hidden title="Resume interrupted agent run">
         Resume
       </button>
+      <div class="toolbar-status-pills">
+        <span id="api-status" class="api-status off" aria-live="polite">Local</span>
+        <span id="companion-status" class="api-status off" title="Desktop companion" aria-live="polite">Desktop off</span>
+      </div>
+      <span id="usage-meter" hidden></span>
+      <button type="button" class="btn" id="settings-open" data-tip="Settings" aria-label="Settings">
+        <i data-lucide="settings" style="width:15px;height:15px" aria-hidden="true"></i>
+        <span class="ui-label">Settings</span>
+      </button>
+      <details class="toolbar-more">
+        <summary>More</summary>
+        <div class="more-menu">
+          <button type="button" class="btn" id="terminal-toggle">Terminal</button>
+          <button type="button" class="btn" id="toggle-threads">Threads</button>
+          <button type="button" class="btn" id="toggle-files">Files</button>
+          <button type="button" class="btn" id="toggle-browser">Browser</button>
+          <button type="button" class="btn" id="onboard-replay" data-onboard-replay>Tour</button>
+        </div>
+      </details>
+      <!-- kept in DOM; moved into settings by ux.js -->
+      <label for="model-select" class="api-key-label">Model</label>
+      <select id="model-select" aria-label="Model">
+        <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">
+          Llama 3.3 70B (default)
+        </option>
+        <option value="@cf/meta/llama-3.1-8b-instruct-fp8-fast">
+          Llama 3.1 8B Fast
+        </option>
+        <option value="@cf/meta/llama-3.1-8b-instruct">Llama 3.1 8B</option>
+        <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B</option>
+      </select>
       <label for="api-key-input" class="api-key-label">API key</label>
       <input
         id="api-key-input"
@@ -1842,18 +2159,21 @@
         placeholder="CHATRE_API_TOKEN"
         title="Same value as Vercel CHATRE_API_TOKEN"
       />
-      <span id="api-status" class="api-status off" aria-live="polite">Local</span>
-      <span id="companion-status" class="api-status off" title="Desktop companion" aria-live="polite">Desktop off</span>
-      <span id="usage-meter" hidden></span>
-      <details class="toolbar-more">
-        <summary>More</summary>
-        <div class="more-menu">
-          <button type="button" class="btn" id="terminal-toggle">Terminal</button>
-          <button type="button" class="btn" id="toggle-threads">Threads</button>
-          <button type="button" class="btn" id="toggle-files">Files</button>
-          <button type="button" class="btn" id="toggle-browser">Browser</button>
-        </div>
-      </details>
+    </div>
+
+    <div id="run-center" hidden aria-live="polite">
+      <div class="run-center-main">
+        <div class="run-center-goal" id="run-center-goal">Agent run</div>
+        <div class="run-center-step" id="run-center-step">Starting…</div>
+      </div>
+      <div class="run-center-meta">
+        <span class="run-center-phase" id="run-center-phase">analyze</span>
+        <span id="run-center-budget"></span>
+      </div>
+      <div class="run-center-actions">
+        <button type="button" class="btn" id="run-center-resume" hidden>Resume</button>
+        <button type="button" class="btn" id="run-center-stop">Stop</button>
+      </div>
     </div>
 
     <div id="status-strip" aria-live="polite"></div>
@@ -1906,16 +2226,34 @@
           <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
           <div class="typing-indicator" id="typing-indicator" aria-hidden="true"></div>
           <div id="starter-chips" aria-label="Starters"></div>
-          <div class="message-input" style="position: relative;">
-            <div id="slash-suggestions" class="slash-suggestions" role="listbox" aria-label="Slash commands"></div>
-            <textarea
-              id="user-input"
-              placeholder="Type a message… or /image a sunset over Cape Town"
-              rows="1"
-              autofocus
-            ></textarea>
-            <button type="button" class="btn" id="stop-button">Stop</button>
-            <button type="button" class="btn" id="send-button">Send</button>
+          <div class="message-input-wrap">
+            <div class="composer-toolbar">
+              <button type="button" class="btn" id="composer-attach" data-tip="Attach files to workspace">
+                <i data-lucide="paperclip" style="width:14px;height:14px" aria-hidden="true"></i>
+                <span class="ui-label">Attach</span>
+              </button>
+              <input type="file" id="composer-file-input" multiple hidden />
+              <label class="composer-toggle">
+                <input type="checkbox" id="composer-use-browser" />
+                Use browser
+              </label>
+              <label class="composer-toggle">
+                <input type="checkbox" id="composer-use-desktop" />
+                Use desktop
+              </label>
+            </div>
+            <div id="composer-attach-chips"></div>
+            <div class="message-input" style="position: relative;">
+              <div id="slash-suggestions" class="slash-suggestions" role="listbox" aria-label="Slash commands"></div>
+              <textarea
+                id="user-input"
+                placeholder="Type a message… ⌘/Ctrl+Enter to send · Esc to stop"
+                rows="1"
+                autofocus
+              ></textarea>
+              <button type="button" class="btn" id="stop-button">Stop</button>
+              <button type="button" class="btn" id="send-button">Send</button>
+            </div>
           </div>
           <div class="terminal-panel" id="terminal-panel" style="display: none;">
             <div class="terminal-header">
@@ -1951,6 +2289,7 @@
         <div id="browser-pane">
           <p id="browser-pane-empty">Screenshots from navigate/computer appear here during agent runs.</p>
           <img id="browser-pane-img" alt="Live browser screenshot" hidden />
+          <div id="browser-pane-action" hidden></div>
           <div id="browser-pane-meta"></div>
         </div>
       </aside>
@@ -1970,6 +2309,79 @@
           <button type="button" class="btn" id="diff-modal-close">Close</button>
         </div>
         <pre id="diff-modal-body"></pre>
+      </div>
+    </div>
+
+    <div id="settings-drawer" aria-hidden="true">
+      <div id="settings-drawer-panel">
+        <div class="panel-actions" style="justify-content: space-between; margin-bottom: 0.75rem;">
+          <h2>Settings</h2>
+          <button type="button" class="btn" id="settings-close">Close</button>
+        </div>
+        <div class="settings-section">
+          <h3>Model</h3>
+          <div id="settings-model-slot"></div>
+        </div>
+        <div class="settings-section">
+          <h3>API &amp; desktop</h3>
+          <div id="settings-key-slot"></div>
+        </div>
+        <div class="settings-section">
+          <h3>Density</h3>
+          <select id="density-select" aria-label="Density">
+            <option value="compact">Compact</option>
+            <option value="comfortable">Comfortable</option>
+          </select>
+        </div>
+        <div class="settings-section">
+          <h3>Keyboard</h3>
+          <ul class="kbd-list">
+            <li><span>Send</span><kbd>⌘/Ctrl+Enter</kbd></li>
+            <li><span>Stop</span><kbd>Esc</kbd></li>
+            <li><span>Threads</span><kbd>⌘/Ctrl+B</kbd></li>
+            <li><span>Browser</span><kbd>⌘/Ctrl+Shift+B</kbd></li>
+            <li><span>Settings</span><kbd>⌘/Ctrl+,</kbd></li>
+          </ul>
+        </div>
+        <div class="settings-section">
+          <button type="button" class="btn" id="settings-tour">Replay setup tour</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="onboarding-overlay" hidden>
+      <div class="onboard-card">
+        <div class="onboard-dots">
+          <span class="onboard-dot active"></span>
+          <span class="onboard-dot"></span>
+          <span class="onboard-dot"></span>
+        </div>
+        <div data-onboard-step="1">
+          <h2>Connect your API</h2>
+          <p>Paste your <strong>CHATRE_API_TOKEN</strong> so Chatre can use the remote workspace, browser, and threads.</p>
+          <div class="onboard-actions">
+            <button type="button" class="btn" data-onboard-action="focus-key">Open settings</button>
+            <button type="button" class="btn" data-onboard-action="next">Next</button>
+            <button type="button" class="btn" data-onboard-action="skip">Skip</button>
+          </div>
+        </div>
+        <div data-onboard-step="2" hidden>
+          <h2>Optional desktop</h2>
+          <p>For local open/screenshot/clipboard tools, start the companion. Skip if you only need cloud browser.</p>
+          <div class="onboard-actions">
+            <button type="button" class="btn" data-onboard-action="copy-companion">Copy start command</button>
+            <button type="button" class="btn" data-onboard-action="back">Back</button>
+            <button type="button" class="btn" data-onboard-action="next">Next</button>
+          </div>
+        </div>
+        <div data-onboard-step="3" hidden>
+          <h2>Try a task</h2>
+          <p>Run a quick browser check: open example.com and read the heading.</p>
+          <div class="onboard-actions">
+            <button type="button" class="btn" data-onboard-action="try">Try example.com</button>
+            <button type="button" class="btn" data-onboard-action="finish">Finish</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2000,6 +2412,7 @@
     <script src="/plan-templates.js"></script>
     <script src="/plan-ui.js"></script>
     <script src="/ui-adv.js"></script>
+    <script src="/ux.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
     <script src="/panels.js"></script>

@@ -207,13 +207,47 @@
           thr.lastUsage && thr.lastUsage.totalTokensEst
             ? " · ~" + thr.lastUsage.totalTokensEst + " tok"
             : "";
+        const status = (thr.agentRun && thr.agentRun.status) || "";
+        let statusClass = "done";
+        let statusLabel = "Done";
+        if (status === "running" || status === "active") {
+          statusClass = "running";
+          statusLabel = "Running";
+        } else if (status === "awaiting_login") {
+          statusClass = "login";
+          statusLabel = "Needs login";
+        } else if (status === "awaiting_plan") {
+          statusClass = "plan";
+          statusLabel = "Awaiting plan";
+        } else if (status === "interrupted" || interrupted) {
+          statusClass = "interrupted";
+          statusLabel = "Interrupted";
+        } else if (!status) {
+          statusLabel = "Idle";
+          statusClass = "done";
+        }
+        const goal =
+          (thr.agentRun && (thr.agentRun.goal || thr.agentRun.lastGoal)) ||
+          thr.lastGoal ||
+          thr.preview ||
+          "";
         wrap.innerHTML =
           '<button type="button" class="thread-open">' +
           "<strong>" +
           escapeHtml(thr.title || "Untitled") +
-          "</strong><span>" +
+          "</strong>" +
+          (goal
+            ? '<div class="thread-goal">' +
+              escapeHtml(String(goal).slice(0, 100)) +
+              "</div>"
+            : "") +
+          '<span class="thread-status ' +
+          statusClass +
+          '">' +
+          escapeHtml(statusLabel) +
+          "</span>" +
+          "<span>" +
           escapeHtml((thr.updatedAt || "").slice(0, 19).replace("T", " ")) +
-          (interrupted ? " · interrupted" : "") +
           escapeHtml(usageHint) +
           "</span></button>" +
           '<div class="thread-actions">' +
@@ -664,6 +698,8 @@
     syncThreadsToggleUi();
   }
 
+  let uploadLocalFilesFn = null;
+
   function init() {
     const refreshBtn = $("threads-refresh");
     const newBtn = $("threads-new");
@@ -685,6 +721,7 @@
     const dropInput = $("file-drop-input");
     const progress = $("file-upload-progress");
     async function uploadLocalFiles(fileList) {
+      // exposed via ChatrePanels.uploadLocalFiles
       const r = remote();
       if (!r || !r.enabled() || !r.putFile) {
         window.alert("Connect the API key to upload into a remote workspace.");
@@ -730,6 +767,7 @@
       }
       await refreshFiles();
     }
+    uploadLocalFilesFn = uploadLocalFiles;
     if (drop) {
       drop.addEventListener("click", function () {
         if (dropInput) dropInput.click();
@@ -832,6 +870,10 @@
     togglePanel,
     setThreadsCollapsed,
     syncThreadsToggleUi,
+    uploadLocalFiles: function (files) {
+      if (uploadLocalFilesFn) return uploadLocalFilesFn(files);
+      return Promise.reject(new Error("Panels not ready"));
+    },
     state,
   };
 

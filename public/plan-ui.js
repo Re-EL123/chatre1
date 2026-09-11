@@ -49,9 +49,12 @@
       '<label class="plan-label">Understanding</label>' +
       '<textarea class="plan-understanding" rows="2"></textarea>' +
       '<label class="plan-label">Executor brief</label>' +
-      '<textarea class="plan-brief" rows="6"></textarea>' +
+      '<textarea class="plan-brief" rows="4"></textarea>' +
+      '<label class="plan-label">Checklist</label>' +
+      '<ul class="plan-checklist"></ul>' +
+      '<button type="button" class="btn plan-check-add">Add step</button>' +
       '<label class="plan-label">Success criteria (one per line)</label>' +
-      '<textarea class="plan-criteria" rows="3"></textarea>' +
+      '<textarea class="plan-criteria" rows="2"></textarea>' +
       '<div class="plan-actions">' +
       '<button type="button" class="btn plan-continue">Continue</button>' +
       '<button type="button" class="btn plan-cancel">Cancel</button>' +
@@ -72,6 +75,75 @@
     }
     fill(b);
 
+    const list = wrap.querySelector(".plan-checklist");
+    function stepsFromBriefing(src) {
+      const raw = [];
+      if (Array.isArray(src.plan_steps) && src.plan_steps.length) {
+        src.plan_steps.forEach(function (s) {
+          raw.push(typeof s === "string" ? s : s.text || s.content || "");
+        });
+      } else if (src.executor_brief) {
+        String(src.executor_brief)
+          .split(/\n+/)
+          .map(function (l) {
+            return l.replace(/^[-*\d.)\s]+/, "").trim();
+          })
+          .filter(Boolean)
+          .slice(0, 12)
+          .forEach(function (l) {
+            raw.push(l);
+          });
+      }
+      if (!raw.length) raw.push("Execute the plan");
+      return raw;
+    }
+    function addCheckItem(text, done) {
+      const li = document.createElement("li");
+      li.className = "plan-check-item" + (done ? " done" : "");
+      li.innerHTML =
+        '<input type="checkbox" ' +
+        (done ? "checked " : "") +
+        '/>' +
+        '<textarea rows="1"></textarea>';
+      li.querySelector("textarea").value = text || "";
+      const box = li.querySelector('input[type="checkbox"]');
+      box.addEventListener("change", function () {
+        li.classList.toggle("done", box.checked);
+      });
+      list.appendChild(li);
+    }
+    stepsFromBriefing(b).forEach(function (s) {
+      addCheckItem(s, false);
+    });
+    wrap.querySelector(".plan-check-add").addEventListener("click", function () {
+      addCheckItem("", false);
+    });
+    wrap.__collectSteps = function () {
+      return Array.from(list.querySelectorAll(".plan-check-item")).map(function (li) {
+        return {
+          text: li.querySelector("textarea").value.trim(),
+          done: li.querySelector('input[type="checkbox"]').checked,
+        };
+      }).filter(function (s) { return s.text; });
+    };
+
+    // Progress ticks from agent tool events
+    wrap.markStepProgress = function (hint) {
+      const items = Array.from(list.querySelectorAll(".plan-check-item"));
+      const open = items.find(function (li) {
+        return !li.querySelector('input[type="checkbox"]').checked;
+      });
+      if (open) {
+        open.querySelector('input[type="checkbox"]').checked = true;
+        open.classList.add("done");
+        if (hint) {
+          const ta = open.querySelector("textarea");
+          if (ta && !ta.value) ta.value = hint;
+        }
+      }
+    };
+    window.__activePlanChecklist = wrap;
+
     const sel = wrap.querySelector(".plan-template");
     if (sel) {
       sel.addEventListener("change", function () {
@@ -89,9 +161,11 @@
     }
 
     wrap.querySelector(".plan-continue").addEventListener("click", function () {
+      const steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
       const next = Object.assign({}, b, {
         understanding: wrap.querySelector(".plan-understanding").value,
         executor_brief: wrap.querySelector(".plan-brief").value,
+        plan_steps: steps,
         success_criteria: wrap
           .querySelector(".plan-criteria")
           .value.split("\n")
@@ -100,6 +174,16 @@
           })
           .filter(Boolean),
       });
+      if (steps.length) {
+        next.executor_brief =
+          (next.executor_brief ? next.executor_brief + "\n\n" : "") +
+          "Checklist:\n" +
+          steps
+            .map(function (s, i) {
+              return (s.done ? "[x] " : "[ ] ") + (i + 1) + ". " + s.text;
+            })
+            .join("\n");
+      }
       if (typeof onContinue === "function") onContinue(next);
     });
     wrap.querySelector(".plan-cancel").addEventListener("click", function () {

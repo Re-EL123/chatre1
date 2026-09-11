@@ -136,6 +136,7 @@
 
   function decorateButtons() {
     const map = [
+      ["#settings-open", "settings", "Settings"],
       ["#agent-resume", "play", "Resume interrupted agent run"],
       ["#terminal-toggle", "terminal", "Toggle terminal"],
       ["#toggle-threads", "messages-square", "Threads panel"],

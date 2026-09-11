@@ -494,8 +494,11 @@
   }
 
   async function sendMessage() {
-    const message = userInput.value.trim();
+    let message = userInput.value.trim();
     if (!message || isProcessing) return;
+    if (window.ChatreUX && window.ChatreUX.prefixFromFlags) {
+      message = window.ChatreUX.prefixFromFlags(message);
+    }
 
     if (window.ChatreUIAdv && window.ChatreUIAdv.hideStarterChips) {
       window.ChatreUIAdv.hideStarterChips();
@@ -865,6 +868,10 @@
       activeAbort.abort();
       activeAbort = null;
     }
+    if (window.ChatreUX) {
+      window.ChatreUX.pauseRun("Stopped");
+      window.ChatreUX.endRun();
+    }
   }
 
   userInput.addEventListener("input", function () {
@@ -1009,6 +1016,11 @@
       ? window.ChatreUIAdv.createTimeline(agentBody)
       : null;
     if (timeline) timeline.setPhase("analyze", "Analyzing");
+    if (window.ChatreUX) {
+      window.ChatreUX.startRun(
+        message || (opts.resumeMessages ? "Resumed task" : "Agent run"),
+      );
+    }
 
     let finalText = "";
 
@@ -1166,11 +1178,17 @@
                   ev.text || p || "Working",
                 );
               }
+              if (window.ChatreUX) {
+                window.ChatreUX.setPhase(ev.phase || "tool", ev.text || ev.phase);
+              }
             } else if (ev.type === "awaiting_login") {
               stopThinking();
               showStep(ev.reason || "Complete login / 2FA / CAPTCHA, then resume.", true);
               if (window.ChatreUIAdv && window.ChatreUIAdv.showLoginPause) {
                 window.ChatreUIAdv.showLoginPause(ev.reason);
+              }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun(ev.reason || "Complete login / 2FA");
               }
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_login");
@@ -1207,6 +1225,7 @@
               };
               if (window.ChatrePanels) window.ChatrePanels.updateUsageMeter(usage);
               if (window.ChatreUIAdv) window.ChatreUIAdv.updateBudgetBar(usage);
+              if (window.ChatreUX) window.ChatreUX.setBudget(usage);
             } else if (ev.type === "download_detected") {
               showStep(
                 "Download detected — confirm before saving:\n" +
@@ -1380,7 +1399,11 @@
                 window.ChatrePanels.refreshThreads();
                 window.ChatrePanels.refreshFiles();
               }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun("Paused — click Resume");
+              }
             } else if (ev.type === "done") {
+              if (window.ChatreUX) window.ChatreUX.endRun();
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(false);
               }
@@ -1436,6 +1459,9 @@
                   phase === "analyze" ? "analyze" : phase === "critique" ? "critique" : "tool",
                   text || phase || "Working",
                 );
+              }
+              if (window.ChatreUX) {
+                window.ChatreUX.setPhase(phase || "tool", text || phase);
               }
             },
             onAnalysis: (briefing) => {
@@ -1525,6 +1551,7 @@
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
             },
             onDone: (res) => {
+              if (window.ChatreUX) window.ChatreUX.endRun();
               if (window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
                   model: modelSelect.value,
@@ -2228,6 +2255,8 @@
       }
     },
     formatToolParams: formatToolParams,
+    stopGeneration: stopGeneration,
+    sendMessage: sendMessage,
     resetChat: function (messages) {
       chatHistory = [];
       chatMessages.innerHTML = "";
@@ -2279,6 +2308,9 @@
       if (isProcessing) return;
       setBusy(true, "agent");
       startThinking("Resuming agent from checkpoint");
+      if (window.ChatreUX) {
+        window.ChatreUX.startRun("Resumed task");
+      }
 
       const agentBody = document.createElement("div");
       agentBody.className = "agent-body";
@@ -2425,6 +2457,9 @@
               if (window.ChatreUIAdv && window.ChatreUIAdv.showLoginPause) {
                 window.ChatreUIAdv.showLoginPause(ev.reason);
               }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun(ev.reason || "Complete login / 2FA");
+              }
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_login");
               }
@@ -2460,6 +2495,7 @@
               };
               if (window.ChatrePanels) window.ChatrePanels.updateUsageMeter(usage);
               if (window.ChatreUIAdv) window.ChatreUIAdv.updateBudgetBar(usage);
+              if (window.ChatreUX) window.ChatreUX.setBudget(usage);
             } else if (ev.type === "download_detected") {
               showStep(
                 "Download detected — confirm before saving:\n" +
@@ -2543,6 +2579,15 @@
                 tokenEl.remove();
                 tokenEl = null;
               }
+              if (window.ChatreUX && /navigate|computer|screenshot|read_page|find|form_input|browser/.test(ev.tool || "")) {
+                window.ChatreUX.setBrowserAction(
+                  "Running " + (ev.tool || "browser"),
+                  (ev.params && (ev.params.url || ev.params.query)) || "",
+                );
+              }
+              if (window.__activePlanChecklist && window.__activePlanChecklist.markStepProgress) {
+                window.__activePlanChecklist.markStepProgress(ev.tool || "");
+              }
               toolCards[ev.id || ev.tool] = showTool(ev);
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
@@ -2557,7 +2602,11 @@
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true);
               }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun("Paused — click Resume");
+              }
             } else if (ev.type === "done") {
+              if (window.ChatreUX) window.ChatreUX.endRun();
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(false);
               }

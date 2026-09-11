@@ -223,6 +223,14 @@
         (opts.note ? " · " + opts.note : "") +
         (opts.login ? " · waiting for login" : "");
     }
+    var action = $("browser-pane-action");
+    if (action && (opts.note || opts.login)) {
+      action.hidden = false;
+      action.textContent =
+        (opts.login ? "Login pause · " : "") +
+        (opts.note || "") +
+        (opts.url ? " · " + opts.url : "");
+    }
   }
 
   function showLoginPause(reason) {
@@ -303,6 +311,11 @@
       '<div class="tool-call-result"></div>';
     detail.querySelector(".tool-name").textContent = call.tool;
     detail.querySelector(".tool-call-detail").textContent = summary;
+    detail.addEventListener("click", function (e) {
+      if (e.target.closest("a,button")) return;
+      detail.classList.toggle("open");
+      detail.classList.toggle("collapsed");
+    });
     const slot = timeline
       ? timeline.add("tool", call.tool, detail, { open: false }).body
       : null;
@@ -361,6 +374,12 @@
         note: "screenshot",
         open: true,
       });
+      if (window.ChatreUX && window.ChatreUX.setBrowserAction) {
+        window.ChatreUX.setBrowserAction(
+          "Screenshot captured",
+          result.url || "",
+        );
+      }
       const thumb = document.createElement("img");
       thumb.className = "tool-shot-thumb";
       thumb.alt = "Browser screenshot";
