@@ -63,6 +63,15 @@
     "get_page_text",
   ];
 
+  const DESKTOP_TOOLS = [
+    "desktop_status",
+    "desktop_open",
+    "desktop_screenshot",
+    "desktop_clipboard_get",
+    "desktop_clipboard_set",
+    "desktop_notify",
+  ];
+
   const INTENT_TOOLS = {
     chat: [],
     question: [
@@ -157,7 +166,7 @@
       "git_status",
       "git_log",
     ],
-    browser: CORE_TOOLS.slice().concat(BROWSER_TOOLS),
+    browser: CORE_TOOLS.slice().concat(BROWSER_TOOLS).concat(DESKTOP_TOOLS),
     full: CORE_TOOLS.slice(),
   };
 
@@ -476,6 +485,9 @@
     var list = (tools && tools.concat([])) || [];
     if (name === "full" && wantsBrowserSkills) {
       BROWSER_TOOLS.forEach(function (t) {
+        if (list.indexOf(t) === -1) list.push(t);
+      });
+      DESKTOP_TOOLS.forEach(function (t) {
         if (list.indexOf(t) === -1) list.push(t);
       });
     }
