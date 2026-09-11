@@ -18,7 +18,7 @@ import {
 } from "./browser-dom";
 
 const VIEWPORT = { width: 1280, height: 800 };
-const KEEP_ALIVE_MS = 900_000;
+const KEEP_ALIVE_MS = 1_800_000; // 30 minutes
 
 export interface BrowserRequestBody {
   tool?: string;
@@ -46,6 +46,10 @@ export interface BrowserRequestBody {
   actions?: Array<Record<string, unknown>>;
   fullPage?: boolean;
   wait_stable?: boolean;
+  frame_selector?: string;
+  frame_url?: string;
+  frame_index?: number;
+  accept_downloads?: boolean;
   /** Legacy aliases */
   selector?: string;
   key?: string;
@@ -112,7 +116,8 @@ export async function handleBrowserRequest(
   let sessionRecovered = false;
 
   try {
-    // Restore session_id from Durable Object when thread_id is provided.
+    // Restore session_id + cookies from Durable Object when thread_id is provided.
+    let storedCookies: Array<Record<string, unknown>> = [];
     if (!body.session_id && body.thread_id && env.BROWSER_SESSIONS) {
       try {
         const id = env.BROWSER_SESSIONS.idFromName(String(body.thread_id));
@@ -121,14 +126,19 @@ export async function handleBrowserRequest(
         const j = (await stored.json()) as {
           sessionId?: string;
           lastTabId?: number;
+          cookies?: Array<Record<string, unknown>>;
         };
         if (j && j.sessionId) body.session_id = j.sessionId;
         if (body.tab_id == null && j && j.lastTabId != null) {
           body.tab_id = j.lastTabId;
         }
+        if (Array.isArray(j.cookies)) storedCookies = j.cookies;
       } catch {
         /* ignore DO errors */
       }
+    }
+    if (Array.isArray(body.cookies) && body.cookies.length) {
+      storedCookies = body.cookies;
     }
 
     const priorSession = body.session_id;
@@ -142,7 +152,48 @@ export async function handleBrowserRequest(
     }
     const sessionId = browserSessionId(browser);
 
+    // Restore cookie profile onto default page before navigation tools
+    if (storedCookies.length) {
+      try {
+        const pages = await browser.pages();
+        const page = pages[0] || (await browser.newPage());
+        for (const c of storedCookies.slice(0, 200)) {
+          try {
+            await page.setCookie(c as never);
+          } catch {
+            /* skip invalid cookie */
+          }
+        }
+      } catch {
+        /* ignore bad cookies */
+      }
+    }
+
+    // Download capture setup on target tab
+    const downloadBuf: Array<Record<string, unknown>> = [];
+    try {
+      const page = await ensureTab(browser, body.tab_id);
+      await attachDownloadListener(page, downloadBuf);
+    } catch {
+      /* ignore */
+    }
+
     let result = await dispatch(browser, tool, body, env);
+
+    if (downloadBuf.length) {
+      result = { ...result, downloads: downloadBuf.slice(0, 10) };
+    }
+
+    // Persist cookies back to DO profile
+    let cookiesOut: Array<Record<string, unknown>> = [];
+    try {
+      const page = await ensureTab(browser, (result.tab_id as number) || body.tab_id);
+      cookiesOut = (await page.cookies()) as unknown as Array<
+        Record<string, unknown>
+      >;
+    } catch {
+      /* ignore */
+    }
 
     // Optional vision caption for screenshots (computer / navigate snaps).
     if (
@@ -168,6 +219,21 @@ export async function handleBrowserRequest(
       }
     }
 
+    // Structured action trace for UI replay
+    if (result && !result.action_trace) {
+      result = {
+        ...result,
+        action_trace: {
+          tool,
+          tab_id: result.tab_id,
+          url: result.url,
+          notes: result.action_notes || [],
+          health: result.health || null,
+          ts: Date.now(),
+        },
+      };
+    }
+
     await browser.disconnect();
 
     if (body.thread_id && env.BROWSER_SESSIONS && sessionId) {
@@ -180,6 +246,8 @@ export async function handleBrowserRequest(
             sessionId,
             lastTabId:
               result && result.tab_id != null ? result.tab_id : body.tab_id,
+            cookies: cookiesOut.slice(0, 400),
+            profileKey: String(body.thread_id),
           }),
         });
       } catch {
@@ -193,6 +261,7 @@ export async function handleBrowserRequest(
       session_id: sessionId,
       launched,
       session_recovered: sessionRecovered || undefined,
+      cookies_saved: cookiesOut.length || undefined,
       ...result,
     });
   } catch (err) {
@@ -285,6 +354,10 @@ async function dispatch(
       return getPageText(browser, body);
     case "search_web":
       return searchWeb(body, env);
+    case "list_frames":
+      return listFrames(browser, body);
+    case "switch_frame":
+      return switchFrameInfo(browser, body);
     // Legacy wrappers
     case "browser_navigate":
       return navigate(browser, { ...body, url: body.url });
@@ -743,12 +816,23 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
   const query = String(body.query || "").trim().toLowerCase();
   if (!query) throw new Error("query required");
 
+  // Also index content from matching iframes when possible
+  const frameExtras = await collectFrameElements(page, body);
+
   const read = await readPage(browser, { ...body, filter: "all", depth: 22 });
-  const elements = Array.isArray(read.elements) ? read.elements : [];
+  const elements = [
+    ...(Array.isArray(read.elements) ? read.elements : []),
+    ...frameExtras,
+  ];
   const tokens = query.split(/\s+/).filter(Boolean);
   const scored = elements
     .map((el: Record<string, unknown>) => {
+      const role = String(el.role || "").toLowerCase();
+      const accessible = String(
+        el.accessible_name || el.text || "",
+      ).toLowerCase();
       const hay = [
+        el.accessible_name,
         el.text,
         el.tag,
         el.role,
@@ -760,13 +844,30 @@ async function findElements(browser: Browser, body: BrowserRequestBody) {
         .join(" ")
         .toLowerCase();
       let score = 0;
+      // Role + accessible name preferred
+      if (accessible === query) score += 12;
+      if (accessible.includes(query)) score += 8;
+      if (role && query.includes(role)) score += 4;
       if (hay.includes(query)) score += tokens.length + 3;
       for (const t of tokens) {
+        if (accessible.includes(t)) score += 2;
         if (hay.includes(t)) score += 1;
         if (String(el.text || "").toLowerCase() === t) score += 2;
         if (String(el.text || "").toLowerCase().startsWith(t)) score += 1;
       }
+      // Fuzzy: shared prefix length
+      if (accessible && query) {
+        let i = 0;
+        while (
+          i < accessible.length &&
+          i < query.length &&
+          accessible[i] === query[i]
+        )
+          i++;
+        if (i >= 3) score += Math.min(i, 6);
+      }
       if (el.disabled) score -= 2;
+      if (el.frame) score += 1;
       return { el, score };
     })
     .filter((x: { score: number }) => x.score > 0)
@@ -989,7 +1090,194 @@ async function searchWeb(body: BrowserRequestBody, env?: Env) {
       }
     }
   }
-  return { ok: true, results, queries };
+
+  const ranked = rankAndDedupeSearch(results);
+  return {
+    ok: true,
+    results: ranked,
+    queries,
+    brave_configured: !!braveKey,
+    note: braveKey
+      ? undefined
+      : "BRAVE_API_KEY not set — using DuckDuckGo fallbacks. Set Worker secret for stronger search.",
+  };
+}
+
+function rankAndDedupeSearch(
+  results: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const scored = results
+    .map((r, idx) => {
+      const url = String(r.url || "").toLowerCase();
+      const title = String(r.title || "");
+      const snippet = String(r.snippet || "");
+      const source = String(r.source || "");
+      let score = 10 - Math.min(idx, 9);
+      if (source === "brave") score += 5;
+      if (source === "duckduckgo_ia") score += 2;
+      if (title.length > 12) score += 1;
+      if (snippet.length > 40) score += 1;
+      if (/wikipedia\.org|docs\.|developer\.|github\.com|mdn\./.test(url)) {
+        score += 2;
+      }
+      return { r, score, url };
+    })
+    .filter((x) => {
+      if (!x.url || seen.has(x.url)) return false;
+      seen.add(x.url);
+      return true;
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 15);
+
+  return scored.map((x, i) => ({
+    ...x.r,
+    id: "web:" + (i + 1),
+    rank: i + 1,
+    score: x.score,
+  }));
+}
+
+async function attachDownloadListener(
+  page: Page,
+  buf: Array<Record<string, unknown>>,
+) {
+  try {
+    const client = await (page as unknown as { createCDPSession?: () => Promise<{ send: (m: string, p?: object) => Promise<unknown> }> }).createCDPSession?.();
+    if (!client) return;
+    await client.send("Page.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath: "/tmp/chatre-downloads",
+    });
+    page.on("response", async (res) => {
+      try {
+        const headers = res.headers();
+        const cd = headers["content-disposition"] || "";
+        const ct = headers["content-type"] || "";
+        if (
+          /attachment/i.test(cd) ||
+          /octet-stream|zip|pdf|csv/i.test(ct)
+        ) {
+          buf.push({
+            url: res.url(),
+            content_type: ct,
+            content_disposition: cd,
+            status: res.status(),
+            needs_confirmation: true,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+  } catch {
+    /* CDP unavailable */
+  }
+}
+
+async function listFrames(browser: Browser, body: BrowserRequestBody) {
+  const page = await ensureTab(browser, body.tab_id);
+  const frames = page.frames().map((f, index) => ({
+    index,
+    url: f.url(),
+    name: f.name(),
+  }));
+  const health = await pageHealth(page);
+  const tabId = await getTabId(page);
+  return {
+    tab_id: tabId,
+    frames,
+    health,
+    url: page.url(),
+    title: await page.title(),
+  };
+}
+
+async function switchFrameInfo(browser: Browser, body: BrowserRequestBody) {
+  const page = await ensureTab(browser, body.tab_id);
+  const frame = await resolveFrame(page, body);
+  if (!frame) {
+    return {
+      ok: false,
+      error: "Frame not found — pass frame_index, frame_url, or frame_selector",
+      frames: page.frames().map((f, index) => ({
+        index,
+        url: f.url(),
+        name: f.name(),
+      })),
+    };
+  }
+  const elements = await frame.evaluate(buildReadPageScript(12, "interactive", ""));
+  return {
+    ok: true,
+    frame: { url: frame.url(), name: frame.name() },
+    elements,
+    tab_id: await getTabId(page),
+  };
+}
+
+async function resolveFrame(page: Page, body: BrowserRequestBody) {
+  const frames = page.frames();
+  if (body.frame_index != null) {
+    const idx = Number(body.frame_index);
+    if (idx >= 0 && idx < frames.length) return frames[idx];
+  }
+  if (body.frame_url) {
+    const needle = String(body.frame_url).toLowerCase();
+    const hit = frames.find((f) => f.url().toLowerCase().includes(needle));
+    if (hit) return hit;
+  }
+  if (body.frame_selector) {
+    const handle = await page.$(String(body.frame_selector));
+    if (handle) {
+      const frame = await handle.contentFrame();
+      if (frame) return frame;
+    }
+  }
+  return null;
+}
+
+async function collectFrameElements(
+  page: Page,
+  body: BrowserRequestBody,
+): Promise<Array<Record<string, unknown>>> {
+  const out: Array<Record<string, unknown>> = [];
+  const frames = page.frames().slice(1, 6); // skip main
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    try {
+      const els = (await f.evaluate(
+        buildReadPageScript(8, "interactive", ""),
+      )) as Array<Record<string, unknown>>;
+      for (const el of els.slice(0, 40)) {
+        out.push({
+          ...el,
+          frame_index: i + 1,
+          frame_url: f.url(),
+          ref: String(el.ref || "") + "@f" + (i + 1),
+        });
+      }
+    } catch {
+      /* cross-origin */
+    }
+  }
+  if (body.frame_index != null || body.frame_url || body.frame_selector) {
+    const target = await resolveFrame(page, body);
+    if (target) {
+      try {
+        const els = (await target.evaluate(
+          buildReadPageScript(12, "all", ""),
+        )) as Array<Record<string, unknown>>;
+        for (const el of els) {
+          out.push({ ...el, frame_url: target.url(), in_target_frame: true });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return out;
 }
 
 function decodeDuckHref(href: string): string {

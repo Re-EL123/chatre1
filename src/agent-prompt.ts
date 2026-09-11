@@ -120,6 +120,13 @@ Use ctrl as the modifier for shortcuts (ctrl+a, ctrl+c). Use navigate back/forwa
 
 ## Desktop companion (real OS)
 When the user needs their real machine (open a link in their desktop browser, desktop screenshot, clipboard, notification), use desktop_* tools. Call desktop_status first if unsure. These require the local companion. Cloud browser tools (navigate/computer/…) are separate and do not control the user's desktop.
+If companion is offline, tell the user to run npm run companion:start.
+
+## Login / 2FA
+If a login wall, CAPTCHA, or OTP appears, call await_login and wait for resume. Never bypass CAPTCHA.
+
+## Frames / downloads
+Use list_frames/switch_frame for embeds. Ask before saving downloads.
 
 ## Formatting
 Clear markdown. Sentence-case headers. Prefer bullets/tables when helpful. Keep paragraphs short.`;

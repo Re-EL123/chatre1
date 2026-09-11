@@ -116,6 +116,8 @@
       model +
       " · steps " +
       (usage.steps || 0) +
+      (usage.remainingSteps != null ? "/" + ((usage.steps || 0) + usage.remainingSteps) : "") +
+      (usage.remainingSteps != null ? " left " + usage.remainingSteps : "") +
       " · tools " +
       (usage.toolsUsed || 0) +
       " · ~" +
@@ -134,9 +136,17 @@
       btn.title =
         reason === "awaiting_plan"
           ? "Approve or edit the plan, then continue"
-          : "Resume interrupted agent run";
+          : reason === "awaiting_login"
+            ? "Finish login/2FA in the browser, then continue"
+            : reason === "companion_offline"
+              ? "Start the desktop companion, then retry"
+              : "Resume interrupted agent run";
       btn.textContent =
-        reason === "awaiting_plan" ? "Continue plan" : "Resume agent";
+        reason === "awaiting_plan"
+          ? "Continue plan"
+          : reason === "awaiting_login"
+            ? "Resume after login"
+            : "Resume agent";
     } else {
       btn.classList.remove("pulse");
       btn.textContent = "Resume";
@@ -162,7 +172,8 @@
         const interrupted =
           thr.agentRun &&
           (thr.agentRun.status === "interrupted" ||
-            thr.agentRun.status === "awaiting_plan");
+            thr.agentRun.status === "awaiting_plan" ||
+            thr.agentRun.status === "awaiting_login");
         const usageHint =
           thr.lastUsage && thr.lastUsage.totalTokensEst
             ? " · ~" + thr.lastUsage.totalTokensEst + " tok"
@@ -519,6 +530,53 @@
     if (newBtn) newBtn.addEventListener("click", newThread);
     if (filesRefresh) filesRefresh.addEventListener("click", refreshFiles);
     if (zipBtn) zipBtn.addEventListener("click", exportZip);
+
+    const drop = $("file-drop");
+    const dropInput = $("file-drop-input");
+    async function uploadLocalFiles(fileList) {
+      const r = remote();
+      if (!r || !r.enabled() || !r.putFile) {
+        window.alert("Connect the API key to upload into a remote workspace.");
+        return;
+      }
+      const wsId = remoteState().workspaceId || state.workspaceId;
+      if (!wsId) {
+        window.alert("Start an agent chat first so a workspace exists.");
+        return;
+      }
+      const files = Array.from(fileList || []);
+      for (const file of files) {
+        const text = await file.text();
+        const path = "/home/user/uploads/" + file.name.replace(/[^\w.\-]+/g, "_");
+        await r.putFile(wsId, path, text, "file");
+      }
+      await refreshFiles();
+    }
+    if (drop) {
+      drop.addEventListener("click", function () {
+        if (dropInput) dropInput.click();
+      });
+      drop.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        drop.classList.add("dragover");
+      });
+      drop.addEventListener("dragleave", function () {
+        drop.classList.remove("dragover");
+      });
+      drop.addEventListener("drop", function (e) {
+        e.preventDefault();
+        drop.classList.remove("dragover");
+        if (e.dataTransfer && e.dataTransfer.files) {
+          uploadLocalFiles(e.dataTransfer.files);
+        }
+      });
+    }
+    if (dropInput) {
+      dropInput.addEventListener("change", function () {
+        uploadLocalFiles(dropInput.files);
+        dropInput.value = "";
+      });
+    }
     if (closeDiff) {
       closeDiff.addEventListener("click", () => {
         $("diff-modal").classList.remove("open");

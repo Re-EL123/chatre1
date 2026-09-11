@@ -19,8 +19,29 @@
     const b = briefing || {};
     const wrap = document.createElement("div");
     wrap.className = "plan-card";
+    const templates =
+      (window.ChatrePlanTemplates &&
+        window.ChatrePlanTemplates.listTemplates &&
+        window.ChatrePlanTemplates.listTemplates()) ||
+      [];
+    const tplOptions = templates
+      .map(function (t) {
+        return (
+          '<option value="' +
+          escapeHtml(t.id) +
+          '">' +
+          escapeHtml(t.label) +
+          "</option>"
+        );
+      })
+      .join("");
     wrap.innerHTML =
       "<strong>Plan</strong>" +
+      (tplOptions
+        ? '<label class="plan-label">Template</label><select class="plan-template"><option value="">(current)</option>' +
+          tplOptions +
+          "</select>"
+        : "") +
       '<div class="plan-meta">' +
       escapeHtml(b.task_type || "mixed") +
       (b.goal ? " — " + escapeHtml(String(b.goal).slice(0, 120)) : "") +
@@ -36,11 +57,36 @@
       '<button type="button" class="btn plan-cancel">Cancel</button>' +
       "</div>";
 
-    wrap.querySelector(".plan-understanding").value = b.understanding || "";
-    wrap.querySelector(".plan-brief").value = b.executor_brief || "";
-    wrap.querySelector(".plan-criteria").value = (b.success_criteria || []).join(
-      "\n",
-    );
+    function fill(next) {
+      wrap.querySelector(".plan-understanding").value = next.understanding || "";
+      wrap.querySelector(".plan-brief").value = next.executor_brief || "";
+      wrap.querySelector(".plan-criteria").value = (
+        next.success_criteria || []
+      ).join("\n");
+      const meta = wrap.querySelector(".plan-meta");
+      if (meta) {
+        meta.textContent =
+          (next.task_type || "mixed") +
+          (next.goal ? " — " + String(next.goal).slice(0, 120) : "");
+      }
+    }
+    fill(b);
+
+    const sel = wrap.querySelector(".plan-template");
+    if (sel) {
+      sel.addEventListener("change", function () {
+        const id = sel.value;
+        if (!id || !window.ChatrePlanTemplates) return;
+        const seeded = window.ChatrePlanTemplates.briefingFromTemplate(
+          id,
+          b.goal || "",
+        );
+        if (seeded) {
+          Object.assign(b, seeded);
+          fill(seeded);
+        }
+      });
+    }
 
     wrap.querySelector(".plan-continue").addEventListener("click", function () {
       const next = Object.assign({}, b, {

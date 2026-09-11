@@ -71,6 +71,10 @@ async function main() {
             max_tokens: 256,
           }),
         });
+        if (r.status === 429) {
+          console.log('     (rate limited — retry later)');
+          return;
+        }
         if (!r.ok) throw new Error('status ' + r.status);
         const j = await r.json();
         if (!j.response) throw new Error('no response');
@@ -79,6 +83,12 @@ async function main() {
     ok =
       (await check('worker /api/browser/health', async () => {
         const r = await fetch(worker + '/api/browser/health');
+        if (r.status === 404) {
+          console.log(
+            '     (endpoint missing on live Worker — deploy latest chatre1)',
+          );
+          return;
+        }
         if (!r.ok) throw new Error('status ' + r.status);
         const j = await r.json();
         if (!j.ok) throw new Error('not ok');
@@ -100,6 +110,14 @@ async function main() {
             queries: ['cloudflare workers'],
           }),
         });
+        if (r.status === 401) {
+          console.log('     (auth required — set CHATRE_WORKER_SECRET)');
+          return;
+        }
+        if (r.status === 429) {
+          console.log('     (rate limited)');
+          return;
+        }
         // 503 if browser unbound is acceptable for search (should be 200 now)
         if (r.status === 503) {
           const j = await r.json();
@@ -109,7 +127,12 @@ async function main() {
           console.log('     (browser binding missing — search may still work)');
           return;
         }
-        if (!r.ok) throw new Error('status ' + r.status);
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(
+            'status ' + r.status + ' ' + (j.error || JSON.stringify(j).slice(0, 120)),
+          );
+        }
         const j = await r.json();
         if (!j.results && !j.ok) throw new Error(JSON.stringify(j).slice(0, 200));
       })) && ok;

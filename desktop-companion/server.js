@@ -380,6 +380,7 @@ async function apiPost(body) {
 }
 
 async function startBridge() {
+  let failStreak = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
@@ -388,6 +389,7 @@ async function startBridge() {
         companionId: COMPANION_ID,
         caps: CAPS,
       });
+      failStreak = 0;
       const polled = await apiPost({
         op: 'poll',
         companionId: COMPANION_ID,
@@ -405,11 +407,15 @@ async function startBridge() {
         });
       }
     } catch (err) {
+      failStreak += 1;
+      const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(failStreak, 5)));
       console.error(
-        'Bridge error:',
+        'Bridge error (backoff ' +
+          delay +
+          'ms):',
         err instanceof Error ? err.message : String(err),
       );
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
 }

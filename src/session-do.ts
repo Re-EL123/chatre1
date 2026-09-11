@@ -1,7 +1,5 @@
 /**
- * Durable Object: per-thread browser session registry.
- * Stores Cloudflare Browser Rendering session_id + last tab so agent loops
- * can reconnect reliably across Worker isolates.
+ * Durable Object: per-thread browser session + cookie profile.
  */
 export class BrowserSessionDO {
   state: DurableObjectState;
@@ -11,14 +9,10 @@ export class BrowserSessionDO {
   constructor(state: DurableObjectState, env: EnvLike) {
     this.state = state;
     this.env = env;
-    this.data = {
-      sessionId: "",
-      lastTabId: null as number | null,
-      updatedAt: 0,
-    };
+    this.data = emptySession();
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<SessionData>("session");
-      if (stored) this.data = stored;
+      if (stored) this.data = { ...emptySession(), ...stored };
     });
   }
 
@@ -39,22 +33,63 @@ export class BrowserSessionDO {
         this.data.lastTabId =
           body.lastTabId == null ? null : Number(body.lastTabId);
       }
+      if (Array.isArray(body.cookies)) {
+        this.data.cookies = body.cookies.slice(0, 400);
+      }
+      if (body.profileKey != null) {
+        this.data.profileKey = String(body.profileKey).slice(0, 120);
+      }
+      if (body.loginPaused != null) {
+        this.data.loginPaused = !!body.loginPaused;
+      }
       this.data.updatedAt = Date.now();
       await this.state.storage.put("session", this.data);
+      // Keep DO alive for long profiles (alarm refresh every 12h)
+      try {
+        await this.state.storage.setAlarm(Date.now() + 12 * 60 * 60 * 1000);
+      } catch {
+        /* ignore */
+      }
       return json({ ok: true, ...this.data });
     }
     if (request.method === "POST" && url.pathname.endsWith("/clear")) {
-      this.data = { sessionId: "", lastTabId: null, updatedAt: Date.now() };
+      this.data = emptySession();
+      this.data.updatedAt = Date.now();
       await this.state.storage.put("session", this.data);
       return json({ ok: true });
     }
     return json({ ok: false, error: "Not found" }, 404);
   }
+
+  async alarm(): Promise<void> {
+    // Persist cookie profile indefinitely; browser rendering session may expire.
+    this.data.updatedAt = Date.now();
+    await this.state.storage.put("session", this.data);
+    try {
+      await this.state.storage.setAlarm(Date.now() + 12 * 60 * 60 * 1000);
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
-interface SessionData {
+function emptySession(): SessionData {
+  return {
+    sessionId: "",
+    lastTabId: null,
+    cookies: [],
+    profileKey: "",
+    loginPaused: false,
+    updatedAt: 0,
+  };
+}
+
+export interface SessionData {
   sessionId: string;
   lastTabId: number | null;
+  cookies: Array<Record<string, unknown>>;
+  profileKey: string;
+  loginPaused: boolean;
   updatedAt: number;
 }
 

@@ -1,0 +1,32 @@
+name: chatre-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: node --check public/tools.js public/agent.js public/chat.js public/panels.js desktop-companion/server.js
+      - name: Analyst evals (optional live)
+        if: ${{ secrets.CHATRE_WORKER_URL != '' }}
+        env:
+          CHATRE_WORKER_URL: ${{ secrets.CHATRE_WORKER_URL }}
+          CHATRE_WORKER_SECRET: ${{ secrets.CHATRE_WORKER_SECRET }}
+        run: node evals/run.js
+      - name: Smoke (optional live)
+        if: ${{ secrets.CHATRE_WORKER_URL != '' }}
+        env:
+          CHATRE_WORKER_URL: ${{ secrets.CHATRE_WORKER_URL }}
+          CHATRE_API_URL: ${{ secrets.CHATRE_API_URL }}
+          CHATRE_API_TOKEN: ${{ secrets.CHATRE_API_TOKEN }}
+          CHATRE_WORKER_SECRET: ${{ secrets.CHATRE_WORKER_SECRET }}
+        run: node scripts/smoke.js

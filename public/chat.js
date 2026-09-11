@@ -1104,6 +1104,48 @@
               );
             } else if (ev.type === "phase") {
               startThinking(ev.text || ev.phase || "Working…");
+            } else if (ev.type === "awaiting_login") {
+              stopThinking();
+              showStep(ev.reason || "Complete login / 2FA / CAPTCHA, then resume.", true);
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_login");
+              }
+              const card = document.createElement("div");
+              card.className = "login-pause-card";
+              card.innerHTML = "<strong>Login pause</strong><p>" +
+                String(ev.reason || "Finish auth in the browser, then click Resume after login.")
+                  .replace(/&/g,"&amp;").replace(/</g,"&lt;") +
+                "</p>";
+              if (chatMessages) {
+                chatMessages.appendChild(card);
+                scrollToBottom();
+              }
+            } else if (ev.type === "action_trace") {
+              const t = ev.trace || {};
+              const line = document.createElement("div");
+              line.className = "action-trace";
+              line.textContent =
+                "Trace · " + (ev.tool || "") +
+                (t.url ? " · " + t.url : "") +
+                (t.notes && t.notes.length ? "\n" + t.notes.join(", ") : "");
+              if (agentBody) agentBody.appendChild(line);
+              scrollToBottom();
+            } else if (ev.type === "budget") {
+              if (window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  model: modelSelect.value,
+                  steps: (ev.maxSteps || 0) - (ev.remainingSteps || 0),
+                  remainingSteps: ev.remainingSteps,
+                  toolsUsed: 0,
+                  totalTokensEst: 0,
+                });
+              }
+            } else if (ev.type === "download_detected") {
+              showStep(
+                "Download detected — confirm before saving:\n" +
+                  ((ev.downloads || []).map(function(d){ return "- " + (d.url||""); }).join("\n") || "(unknown)"),
+                false,
+              );
             } else if (ev.type === "awaiting_plan") {
               stopThinking();
               window.__pendingPlan = {
@@ -2243,6 +2285,48 @@
                 approvingPlan
                   ? "Continuing approved plan"
                   : "Resuming remote agent",
+              );
+            } else if (ev.type === "awaiting_login") {
+              stopThinking();
+              showStep(ev.reason || "Complete login / 2FA / CAPTCHA, then resume.", true);
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_login");
+              }
+              const card = document.createElement("div");
+              card.className = "login-pause-card";
+              card.innerHTML = "<strong>Login pause</strong><p>" +
+                String(ev.reason || "Finish auth in the browser, then click Resume after login.")
+                  .replace(/&/g,"&amp;").replace(/</g,"&lt;") +
+                "</p>";
+              if (chatMessages) {
+                chatMessages.appendChild(card);
+                scrollToBottom();
+              }
+            } else if (ev.type === "action_trace") {
+              const t = ev.trace || {};
+              const line = document.createElement("div");
+              line.className = "action-trace";
+              line.textContent =
+                "Trace · " + (ev.tool || "") +
+                (t.url ? " · " + t.url : "") +
+                (t.notes && t.notes.length ? "\n" + t.notes.join(", ") : "");
+              if (agentBody) agentBody.appendChild(line);
+              scrollToBottom();
+            } else if (ev.type === "budget") {
+              if (window.ChatrePanels) {
+                window.ChatrePanels.updateUsageMeter({
+                  model: modelSelect.value,
+                  steps: (ev.maxSteps || 0) - (ev.remainingSteps || 0),
+                  remainingSteps: ev.remainingSteps,
+                  toolsUsed: 0,
+                  totalTokensEst: 0,
+                });
+              }
+            } else if (ev.type === "download_detected") {
+              showStep(
+                "Download detected — confirm before saving:\n" +
+                  ((ev.downloads || []).map(function(d){ return "- " + (d.url||""); }).join("\n") || "(unknown)"),
+                false,
               );
             } else if (ev.type === "awaiting_plan") {
               stopThinking();

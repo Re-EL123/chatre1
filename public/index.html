@@ -703,6 +703,35 @@
         box-shadow: 0 0 0 2px #c45c26;
         font-weight: 600;
       }
+      .file-drop {
+        margin: 0.5rem 0 0.75rem;
+        padding: 0.75rem;
+        border: 1px dashed rgba(0, 0, 0, 0.25);
+        border-radius: 6px;
+        font-size: 0.85em;
+        opacity: 0.85;
+        text-align: center;
+        cursor: pointer;
+      }
+      .file-drop.dragover {
+        border-color: #c45c26;
+        background: rgba(196, 92, 38, 0.08);
+      }
+      .action-trace {
+        margin: 0.4rem 0;
+        padding: 0.5rem 0.65rem;
+        border-left: 3px solid #6c8cff;
+        background: rgba(108, 140, 255, 0.08);
+        font-size: 0.85em;
+        white-space: pre-wrap;
+      }
+      .login-pause-card {
+        margin: 0.75rem 0;
+        padding: 0.85rem 1rem;
+        border: 1px solid rgba(196, 92, 38, 0.45);
+        background: rgba(255, 248, 230, 0.95);
+        border-radius: 6px;
+      }
 
       .connector-prompt {
         margin: 0.5rem 0 0.25rem;
@@ -1376,6 +1405,10 @@
           <button type="button" class="btn" id="files-refresh">Refresh</button>
           <button type="button" class="btn" id="files-export-zip">Export ZIP</button>
         </div>
+        <div id="file-drop" class="file-drop" tabindex="0">
+          Drop files here to upload into the workspace
+          <input type="file" id="file-drop-input" multiple hidden />
+        </div>
         <div id="file-tree"></div>
         <div id="file-viewer-path"></div>
         <pre id="file-viewer"></pre>
@@ -1411,6 +1444,7 @@
     <script src="/mcp.js"></script>
     <script src="/tools.js"></script>
     <script src="/analyst.js"></script>
+    <script src="/plan-templates.js"></script>
     <script src="/plan-ui.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>

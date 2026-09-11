@@ -25,6 +25,9 @@
     { name: "desktop_clipboard_get", desc: "Read desktop clipboard", params: {} },
     { name: "desktop_clipboard_set", desc: "Write desktop clipboard", params: { text: "string" } },
     { name: "desktop_notify", desc: "Show desktop notification", params: { title: "string", body: "string" } },
+    { name: "await_login", desc: "Pause for user login/2FA/CAPTCHA then resume", params: { reason: "string", url: "string" } },
+    { name: "list_frames", desc: "List iframes on the page", params: { tab_id: "string" } },
+    { name: "switch_frame", desc: "Target an iframe and read its elements", params: { tab_id: "string", frame_index: "number", frame_url: "string", frame_selector: "string" } },
     { name: "http_request", desc: "HTTP request to a public URL", params: { url: "string", method: "string", body: "string" } },
     { name: "execute_command", desc: "Run a shell command in the workspace", params: { cmd: "string", cwd: "string" } },
     { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
@@ -278,6 +281,18 @@
       case "desktop_notify":
         return await desktopTool(tool, p);
 
+      case "await_login":
+        return {
+          ok: true,
+          tool: "await_login",
+          await_login: true,
+          reason:
+            p.reason ||
+            p.message ||
+            "Complete login / 2FA / CAPTCHA, then resume.",
+          url: p.url || "",
+        };
+
       case "tabs_create":
       case "navigate":
       case "computer":
@@ -286,6 +301,8 @@
       case "form_input":
       case "get_page_text":
       case "search_web":
+      case "list_frames":
+      case "switch_frame":
       case "browser_navigate":
       case "browser_click":
       case "browser_type":
@@ -541,6 +558,10 @@
         scroll_parameters: p.scroll_parameters,
         actions: p.actions,
         fullPage: p.fullPage,
+        frame_selector: p.frame_selector,
+        frame_url: p.frame_url,
+        frame_index: p.frame_index != null ? Number(p.frame_index) : undefined,
+        accept_downloads: p.accept_downloads,
         selector: p.selector,
         key: p.key,
         script: p.script || p.code,

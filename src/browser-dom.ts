@@ -55,14 +55,35 @@ export async function pageHealth(page: Page): Promise<Record<string, unknown>> {
     return (await page.evaluate(`(function(){
       var dialogs = document.querySelectorAll("[role='dialog'], [aria-modal='true'], .modal, .Modal");
       var captcha = !!(document.querySelector("iframe[src*='captcha'], iframe[src*='recaptcha'], iframe[src*='hcaptcha'], [class*='captcha' i], #captcha"));
+      var password = !!document.querySelector("input[type='password']");
+      var loginHints = !!(document.querySelector("input[type='password'], input[autocomplete='username'], input[name*='user' i], input[name*='email' i]"));
+      var otp = !!(document.querySelector("input[autocomplete='one-time-code'], input[name*='otp' i], input[name*='2fa' i], input[name*='totp' i]"));
       var text = (document.body && document.body.innerText) ? document.body.innerText : "";
+      var frames = [];
+      try {
+        var ifr = document.querySelectorAll("iframe");
+        for (var i = 0; i < Math.min(ifr.length, 12); i++) {
+          var f = ifr[i];
+          frames.push({
+            index: i,
+            name: f.name || "",
+            id: f.id || "",
+            src: (f.src || "").slice(0, 200),
+            title: f.title || ""
+          });
+        }
+      } catch (e) {}
       return {
         url: location.href,
         title: document.title || "",
         dialog_open: dialogs.length > 0,
         captcha_likely: captcha,
+        login_form_likely: loginHints || password,
+        otp_likely: otp,
+        needs_user_auth: !!(captcha || otp || (password && /sign\\s*in|log\\s*in|password/i.test(text.slice(0, 2000)))),
         text_head: text.slice(0, 500),
-        interactive_approx: document.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='link'],[role='textbox']").length
+        interactive_approx: document.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='link'],[role='textbox']").length,
+        frames: frames
       };
     })()`)) as Record<string, unknown>;
   } catch {
@@ -186,6 +207,7 @@ export function buildReadPageScript(
     function labelText(el) {
       var bits = [
         el.getAttribute("aria-label"),
+        el.getAttribute("aria-labelledby") ? (document.getElementById(el.getAttribute("aria-labelledby")) || {}).innerText : "",
         el.getAttribute("placeholder"),
         el.getAttribute("title"),
         el.getAttribute("alt"),
@@ -206,48 +228,75 @@ export function buildReadPageScript(
       }
       return out;
     }
-    function walk(el, d, out) {
+    function walk(el, d, out, frameHint) {
       if (!el || d > depth || out.length > 280) return;
       if (el.nodeType !== 1) return;
+      var tag = el.tagName.toLowerCase();
+      if (tag === "iframe") {
+        n += 1;
+        var iref = "ref_" + n;
+        refs[iref] = el;
+        var ir = el.getBoundingClientRect();
+        out.push({
+          ref: iref,
+          tag: "iframe",
+          role: "iframe",
+          name: el.name || "",
+          id: el.id || "",
+          type: "",
+          text: (el.title || el.name || el.id || el.src || "").toString().slice(0, 160),
+          href: el.src || "",
+          coordinate: [Math.round(ir.x + ir.width / 2), Math.round(ir.y + ir.height / 2)],
+          bbox: [Math.round(ir.x), Math.round(ir.y), Math.round(ir.width), Math.round(ir.height)],
+          depth: d,
+          frame: true,
+          frame_src: (el.src || "").slice(0, 200)
+        });
+        return;
+      }
       if (!visible(el)) {
         var hiddenKids = childNodes(el);
-        for (var h = 0; h < hiddenKids.length; h++) walk(hiddenKids[h], d + 1, out);
+        for (var h = 0; h < hiddenKids.length; h++) walk(hiddenKids[h], d + 1, out, frameHint);
         return;
       }
       var interactive = isInteractive(el);
       if (filter === "interactive" && !interactive && d > 0) {
         var kids = childNodes(el);
-        for (var i = 0; i < kids.length; i++) walk(kids[i], d + 1, out);
+        for (var i = 0; i < kids.length; i++) walk(kids[i], d + 1, out, frameHint);
         return;
       }
       n += 1;
       var ref = "ref_" + n;
       refs[ref] = el;
       var r = el.getBoundingClientRect();
+      var role = el.getAttribute("role") || "";
+      var accessible = (el.getAttribute("aria-label") || "").trim();
       out.push({
         ref: ref,
         tag: el.tagName.toLowerCase(),
-        role: el.getAttribute("role") || "",
+        role: role,
         name: el.getAttribute("name") || "",
         id: el.id || "",
         type: el.getAttribute("type") || "",
         text: labelText(el),
+        accessible_name: accessible || labelText(el).slice(0, 80),
         href: el.href || "",
         disabled: !!(el.disabled || el.getAttribute("aria-disabled") === "true"),
         coordinate: [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)],
         bbox: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
         depth: d,
-        shadow: !!(el.getRootNode && el.getRootNode() instanceof ShadowRoot)
+        shadow: !!(el.getRootNode && el.getRootNode() instanceof ShadowRoot),
+        frame_hint: frameHint || ""
       });
       var children = childNodes(el);
-      for (var j = 0; j < children.length; j++) walk(children[j], d + 1, out);
+      for (var j = 0; j < children.length; j++) walk(children[j], d + 1, out, frameHint);
     }
     var root = document.body;
     if (focusRef && window.__CHATRE_REFS__ && window.__CHATRE_REFS__[focusRef]) {
       root = window.__CHATRE_REFS__[focusRef];
     }
     var out = [];
-    walk(root, 0, out);
+    walk(root, 0, out, "");
     window.__CHATRE_REFS__ = refs;
     return out;
   })()`;

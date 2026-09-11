@@ -167,6 +167,20 @@
     );
   }
 
+  async function putFile(workspaceId, filePath, content, type) {
+    return request(
+      "/api/workspace?action=file&id=" + encodeURIComponent(workspaceId),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          path: filePath,
+          content: content,
+          type: type || "file",
+        }),
+      },
+    );
+  }
+
   async function getDiff(workspaceId, filePath) {
     return request(
       "/api/workspace?action=diff&id=" +
@@ -334,6 +348,7 @@
     getWorkspace,
     exportWorkspace,
     getFile,
+    putFile,
     getDiff,
     exec,
     runAgentStream,

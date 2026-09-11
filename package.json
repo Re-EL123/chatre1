@@ -34,7 +34,8 @@
     "test": "vitest",
     "smoke": "node scripts/smoke.js",
     "eval": "node evals/run.js",
-    "companion": "node desktop-companion/server.js"
+    "companion": "node desktop-companion/server.js",
+    "companion:start": "bash scripts/start-companion.sh"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.4.0"
