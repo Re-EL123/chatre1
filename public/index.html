@@ -1778,7 +1778,6 @@
       .panel-actions .btn,
       .toolbar-more > summary,
       #send-button,
-      #stop-button,
       .side-panel > h2,
       #plan-drawer-panel > h2 {
         display: inline-flex;
@@ -3154,7 +3153,8 @@
             <button type="button" class="btn" id="auth-open-gate">Sign in / Create account</button>
           </div>
           <div id="auth-signed-in" hidden>
-            <p id="auth-user-label" style="margin:0 0 0.4rem;font-size:0.9rem"></p>
+            <p id="auth-user-label" style="margin:0 0 0.25rem;font-size:0.9rem"></p>
+            <p id="auth-user-role" hidden style="margin:0 0 0.4rem;font-size:0.78rem;color:var(--text-light)"></p>
             <button type="button" class="btn" id="auth-signout">Sign out</button>
           </div>
         </div>
@@ -3182,10 +3182,13 @@
           </div>
           <p id="byok-status" style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-light)"></p>
         </div>
-        <div class="settings-section">
-          <h3>Service key <span style="font-weight:400;text-transform:none;letter-spacing:0">(advanced)</span></h3>
+        <div class="settings-section" id="settings-admin-section">
+          <h3>Admin service key <span style="font-weight:400;text-transform:none;letter-spacing:0">(RBAC)</span></h3>
           <div id="settings-key-slot"></div>
-          <p style="margin:0;font-size:0.75rem;color:var(--text-light)">Optional site token for companion / self-host. Prefer signing in above.</p>
+          <p style="margin:0;font-size:0.75rem;color:var(--text-light)">
+            Admin-only. Used by the desktop companion / ops — <strong>not</strong> for chatting or listing your threads.
+            Sign in as a user for normal workspaces. Optional admin users: set <code>CHATRE_ADMIN_EMAILS</code> on the API.
+          </p>
         </div>
         <div class="settings-section">
           <h3>Composer</h3>

@@ -413,20 +413,59 @@
   // ── Empty / first-run state ─────────────────────────────────────────
   function renderEmptyState(host) {
     if (!host) return;
+    host.querySelectorAll(".empty-state").forEach(function (n) {
+      n.remove();
+    });
+    const signed =
+      window.ChatreAuth && window.ChatreAuth.isSignedIn();
+    const profile =
+      (window.ChatreAuth &&
+        window.ChatreAuth.state &&
+        window.ChatreAuth.state.profile) ||
+      null;
+    const role = (profile && profile.role) || (signed ? "user" : null);
+    const email =
+      (profile && profile.email) ||
+      (window.ChatreAuth &&
+        window.ChatreAuth.currentUser &&
+        window.ChatreAuth.currentUser() &&
+        window.ChatreAuth.currentUser().email) ||
+      "";
+
     const box = el("div", "empty-state enter");
-    box.innerHTML =
-      '<div class="empty-icon">' +
-      (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
-      "</div>" +
-      "<h2>Chatre</h2>" +
-      "<p>Sign in, optionally add your own provider keys, then try a task. Chatre models stay the default.</p>" +
-      '<ol class="empty-steps">' +
-      "<li>Sign in (email or Google) to sync workspaces</li>" +
-      "<li>Optional: add OpenRouter / Anthropic / OpenAI / Google keys under BYOK</li>" +
-      "<li>Optional: run <code>npm run companion:start</code> for desktop tools</li>" +
-      "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
-      "</ol>" +
-      '<div class="empty-actions"></div>';
+    if (signed) {
+      box.innerHTML =
+        '<div class="empty-icon">' +
+        (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
+        "</div>" +
+        "<h2>Welcome back" +
+        (email ? ", " + escapeEmpty(String(email).split("@")[0]) : "") +
+        "</h2>" +
+        "<p>You're signed in as a <strong>" +
+        escapeEmpty(role || "user") +
+        "</strong>. Threads and workspaces sync to your account. Chatre models stay the default.</p>" +
+        '<ol class="empty-steps">' +
+        "<li>Pick a mode in the composer (Agent / Browse / Code…)</li>" +
+        "<li>Optional: add your own provider keys under Settings → BYOK</li>" +
+        "<li>Optional: start the desktop companion for local tools</li>" +
+        "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
+        "</ol>" +
+        '<div class="empty-actions"></div>';
+    } else {
+      box.innerHTML =
+        '<div class="empty-icon">' +
+        (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
+        "</div>" +
+        "<h2>Chatre</h2>" +
+        "<p>Sign in to sync threads and workspaces. The admin service key is not for chatting — it is RBAC admin-only (companion / ops).</p>" +
+        '<ol class="empty-steps">' +
+        "<li>Sign in with email or Google</li>" +
+        "<li>Optional: add OpenRouter / Anthropic / OpenAI / Google keys under BYOK</li>" +
+        "<li>Optional: run <code>npm run companion:start</code> for desktop tools</li>" +
+        "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
+        "</ol>" +
+        '<div class="empty-actions"></div>';
+    }
     const actions = box.querySelector(".empty-actions");
     const tryBtn = el("button", "btn");
     tryBtn.type = "button";
@@ -445,22 +484,56 @@
         );
       }
     });
-    const keyBtn = el("button", "btn");
-    keyBtn.type = "button";
-    keyBtn.innerHTML = window.ChatreKit
-      ? window.ChatreKit.labelWithIcon("user", "Sign in", 14)
-      : "Sign in";
-    keyBtn.addEventListener("click", function () {
-      if (window.ChatreUX && window.ChatreUX.openAuthGate) {
-        window.ChatreUX.openAuthGate({ tab: "signin" });
-      } else if (window.ChatreUX && window.ChatreUX.openSettings) {
-        window.ChatreUX.openSettings();
-      }
-    });
     actions.appendChild(tryBtn);
-    actions.appendChild(keyBtn);
+    if (!signed) {
+      const keyBtn = el("button", "btn");
+      keyBtn.type = "button";
+      keyBtn.innerHTML = window.ChatreKit
+        ? window.ChatreKit.labelWithIcon("user", "Sign in", 14)
+        : "Sign in";
+      keyBtn.addEventListener("click", function () {
+        if (window.ChatreUX && window.ChatreUX.openAuthGate) {
+          window.ChatreUX.openAuthGate({ tab: "signin" });
+        } else if (window.ChatreUX && window.ChatreUX.openSettings) {
+          window.ChatreUX.openSettings();
+        }
+      });
+      actions.appendChild(keyBtn);
+    } else {
+      const byokBtn = el("button", "btn");
+      byokBtn.type = "button";
+      byokBtn.innerHTML = window.ChatreKit
+        ? window.ChatreKit.labelWithIcon("key-round", "BYOK settings", 14)
+        : "BYOK settings";
+      byokBtn.addEventListener("click", function () {
+        if (window.ChatreUX && window.ChatreUX.openSettings) {
+          window.ChatreUX.openSettings();
+        }
+        setTimeout(function () {
+          const inp = $("byok-key");
+          if (inp) inp.focus();
+        }, 80);
+      });
+      actions.appendChild(byokBtn);
+    }
     host.appendChild(box);
     if (window.ChatreKit) window.ChatreKit.refreshIcons(box);
+  }
+
+  function escapeEmpty(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function refreshEmptyState() {
+    const host = $("chat-messages");
+    if (!host) return;
+    if (!host.querySelector(".empty-state")) return;
+    if (host.querySelector(".message")) return;
+    renderEmptyState(host);
   }
 
   // ── Plan drawer ─────────────────────────────────────────────────────
@@ -517,6 +590,11 @@
         }
       });
     }
+    if (window.ChatreAuth && window.ChatreAuth.onChange) {
+      window.ChatreAuth.onChange(function () {
+        refreshEmptyState();
+      });
+    }
   }
 
   window.ChatreUIAdv = {
@@ -531,6 +609,7 @@
     pushArtifact: pushArtifact,
     listArtifacts: listArtifacts,
     renderEmptyState: renderEmptyState,
+    refreshEmptyState: refreshEmptyState,
     openPlanDrawer: openPlanDrawer,
     hideStarterChips: hideStarterChips,
     showStarterChips: showStarterChips,

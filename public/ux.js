@@ -107,7 +107,7 @@
       var hint = document.createElement("p");
       hint.style.cssText = "margin:0;font-size:0.78rem;color:var(--text-light)";
       hint.textContent =
-        "Optional service token. Prefer signing in with your account.";
+        "Admin service token only. Do not use this for your personal chat session.";
       keyHost.appendChild(hint);
     }
     initAuthUi();
@@ -124,12 +124,35 @@
     var out = $("auth-signed-out");
     var inn = $("auth-signed-in");
     var label = $("auth-user-label");
+    var roleEl = $("auth-user-role");
     var signed = window.ChatreAuth && window.ChatreAuth.isSignedIn();
     if (out) out.hidden = !!signed;
     if (inn) inn.hidden = !signed;
     if (label && signed) {
       var u = window.ChatreAuth.currentUser();
-      label.textContent = (u && (u.email || u.uid)) || "Signed in";
+      var profile =
+        window.ChatreAuth.state && window.ChatreAuth.state.profile;
+      label.textContent =
+        (profile && profile.email) ||
+        (u && (u.email || u.uid)) ||
+        "Signed in";
+      if (roleEl) {
+        var role = (profile && profile.role) || "user";
+        roleEl.textContent = "Role: " + role;
+        roleEl.hidden = false;
+      }
+    } else if (roleEl) {
+      roleEl.hidden = true;
+    }
+    var adminSec = $("settings-admin-section");
+    if (adminSec) {
+      var isAdmin =
+        signed &&
+        window.ChatreAuth.state &&
+        window.ChatreAuth.state.profile &&
+        window.ChatreAuth.state.profile.role === "admin";
+      // Service key slot stays visible but clearly admin-only; expand hint when user is admin
+      adminSec.classList.toggle("is-admin", !!isAdmin);
     }
     refreshByokStatus();
     refreshModelCatalog();
@@ -141,6 +164,9 @@
     }
     if (window.ChatreAuthGate && window.ChatreAuthGate.paint) {
       window.ChatreAuthGate.paint();
+    }
+    if (window.ChatreUIAdv && window.ChatreUIAdv.refreshEmptyState) {
+      window.ChatreUIAdv.refreshEmptyState();
     }
   }
 

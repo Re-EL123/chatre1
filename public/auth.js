@@ -143,11 +143,28 @@
       }
       authUnsub = null;
     }
-    authUnsub = firebase.auth().onAuthStateChanged(async function (user) {
+    firebase.auth().onAuthStateChanged(async function (user) {
       state.user = user;
       if (user) {
         await getIdToken(true);
         await refreshProfile();
+        // Browser service key must not override user RBAC sessions.
+        try {
+          if (localStorage.getItem("chatre_api_key")) {
+            localStorage.removeItem("chatre_api_key");
+            window.CHATRE_API_KEY = "";
+            var inp = document.getElementById("api-key-input");
+            if (inp) inp.value = "";
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(
+                "Cleared admin service key from this browser — using your user session",
+                "success",
+              );
+            }
+          }
+        } catch (e) {
+          /* ignore */
+        }
       } else {
         state.idToken = null;
         state.profile = null;
@@ -157,6 +174,9 @@
       notify();
       if (window.ChatrePanels && window.ChatrePanels.refreshAuthStatus) {
         window.ChatrePanels.refreshAuthStatus();
+      }
+      if (window.ChatreUIAdv && window.ChatreUIAdv.refreshEmptyState) {
+        window.ChatreUIAdv.refreshEmptyState();
       }
     });
   }

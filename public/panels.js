@@ -95,18 +95,18 @@
       const firebaseSigned =
         window.ChatreAuth && window.ChatreAuth.isSignedIn();
       if (ping.authKind === "user") {
-        setStatus("ok", "Signed in");
+        const role = ping.role === "admin" ? "Signed in · admin" : "Signed in";
+        setStatus("ok", role);
       } else if (firebaseSigned && ping.authKind === "service") {
-        setStatus(
-          "bad",
-          "Service key active",
-        );
+        setStatus("bad", "Admin key (not user)");
         if (window.ChatreKit) {
           window.ChatreKit.toast(
-            "API is using the service token, not your account. Clear Settings → Service key or refresh after sign-in.",
+            "API is using the admin service token. Clear it in Settings so your user session is used.",
             "error",
           );
         }
+      } else if (ping.authKind === "service") {
+        setStatus("ok", "Admin");
       } else {
         setStatus(
           "ok",

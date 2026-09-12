@@ -407,7 +407,7 @@
     syncKeyFromUi();
     if (!hasAuth()) {
       throw new Error(
-        "Sign in to your Chatre account (Settings), or paste a service API token for advanced use.",
+        "Sign in with your Chatre account to run agents and sync threads. The admin service key cannot be used for user chats (RBAC).",
       );
     }
 
