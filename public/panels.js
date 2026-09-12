@@ -432,16 +432,18 @@
           state.projects = data.workspace.projects || {};
         }
         if (window.ChatreProjects) {
-          state.projects = Object.assign(
-            {},
-            window.ChatreProjects.detectProjects(state.files),
-            state.projects || {},
-          );
-          if (
+          const detected = window.ChatreProjects.detectProjects(state.files);
+          state.projects = detected;
+          const metaActive = data.workspace && data.workspace.activeProject;
+          if (metaActive && detected[metaActive]) {
+            state.activeProject = metaActive;
+          } else if (
             !state.activeProject &&
-            Object.keys(state.projects).length === 1
+            Object.keys(detected).length === 1
           ) {
-            state.activeProject = Object.keys(state.projects)[0];
+            state.activeProject = Object.keys(detected)[0];
+          } else if (state.activeProject && !detected[state.activeProject]) {
+            state.activeProject = null;
           }
         }
         renderFileTree(tree, state.files);
@@ -465,11 +467,21 @@
   function renderFileTree(root, files) {
     root.innerHTML = "";
     const map = files || {};
-    const projects =
+    const detected =
       (window.ChatreProjects && window.ChatreProjects.detectProjects(map)) ||
       {};
-    Object.assign(projects, state.projects || {});
+    // Prefer on-disk projects; only enrich meta for slugs that actually exist
+    const projects = Object.assign({}, detected);
+    Object.keys(state.projects || {}).forEach(function (slug) {
+      if (detected[slug]) {
+        projects[slug] = Object.assign({}, state.projects[slug], detected[slug]);
+      }
+    });
     state.projects = projects;
+    // Clear stale Active when meta points at a project with no files
+    if (state.activeProject && !projects[state.activeProject]) {
+      state.activeProject = null;
+    }
     const slugs = Object.keys(projects).sort();
 
     const head = document.createElement("div");

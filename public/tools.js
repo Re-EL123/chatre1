@@ -114,13 +114,21 @@
   }
 
   function extractBalancedToolJson(text, results) {
+    const needles = [
+      '{"tool"',
+      '{ "tool"',
+      '{"type":"function"',
+      '{ "type": "function"',
+      '{"name"',
+      '{ "name"',
+    ];
     let i = 0;
     while (i < text.length) {
-      const start = text.indexOf('{"tool"', i);
-      const start2 = text.indexOf('{ "tool"', i);
       let at = -1;
-      if (start >= 0 && (start2 < 0 || start < start2)) at = start;
-      else if (start2 >= 0) at = start2;
+      for (let n = 0; n < needles.length; n++) {
+        const idx = text.indexOf(needles[n], i);
+        if (idx >= 0 && (at < 0 || idx < at)) at = idx;
+      }
       if (at < 0) break;
       let depth = 0;
       let inStr = false;
@@ -177,6 +185,18 @@
 
   function normalize(item) {
     if (!item) return null;
+    if (item.type === "function" && !item.function && item.name) {
+      return {
+        tool: item.name,
+        params:
+          (item.parameters && typeof item.parameters === "object"
+            ? item.parameters
+            : null) ||
+          (item.params && typeof item.params === "object" ? item.params : null) ||
+          {},
+        id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+      };
+    }
     if (item.function && item.function.name) {
       let params = {};
       const raw = item.function.arguments;
@@ -188,6 +208,8 @@
         }
       } else if (raw && typeof raw === "object") {
         params = raw;
+      } else if (item.parameters && typeof item.parameters === "object") {
+        params = item.parameters;
       }
       return {
         tool: item.function.name,
@@ -196,10 +218,17 @@
       };
     }
     if (!item.tool && item.name) {
-      item = { tool: item.name, params: item.arguments || item.params || item };
+      item = {
+        tool: item.name,
+        params:
+          item.parameters || item.arguments || item.params || null,
+      };
     }
     if (!item.tool) return null;
     let params = item.params;
+    if (!params && item.parameters && typeof item.parameters === "object") {
+      params = item.parameters;
+    }
     if (!params && item.arguments != null) {
       params =
         typeof item.arguments === "string"
@@ -215,7 +244,16 @@
     if (!params || typeof params !== "object") {
       params = {};
       Object.keys(item).forEach((k) => {
-        if (k !== "tool" && k !== "id" && k !== "type" && k !== "function") {
+        if (
+          k !== "tool" &&
+          k !== "id" &&
+          k !== "type" &&
+          k !== "function" &&
+          k !== "params" &&
+          k !== "parameters" &&
+          k !== "arguments" &&
+          k !== "name"
+        ) {
           params[k] = item[k];
         }
       });
@@ -231,12 +269,18 @@
   function cleanResponseText(text) {
     return String(text || "")
       .replace(/```(?:tool|tool_call|agent|json)\s*\n?[\s\S]*?```/g, "")
+      .replace(
+        /\{\s*"(?:tool|type|name)"\s*:\s*"(?:function|[a-zA-Z0-9_]+)"[\s\S]*?\}\s*/g,
+        "",
+      )
       .replace(/^\s*<answer>\s*/im, "")
       .replace(/<\/answer>/gi, "")
       .replace(/<confirmation\b[^>]*\/?>/gi, "")
       .replace(/^\[internal\][^\n]*(?:\n(?!\[internal\])[^\n]*)*/gim, "")
       .replace(/^Continue:\s*[^\n]*(?:\n(?!Continue:)[^\n]*)*/gim, "")
       .replace(/^Continue with tools[^\n]*/gim, "")
+      .replace(/^Structured tools unavailable[^\n]*/gim, "")
+      .replace(/^Resume error:[^\n]*/gim, "")
       .trim();
   }
 
