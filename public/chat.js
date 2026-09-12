@@ -3246,6 +3246,12 @@
         const approvingPlan = !!(pendingPlan && pendingPlan.briefing);
         if (approvingPlan) {
           window.__pendingPlan = null;
+          if (window.ChatreAgents && window.ChatreAgents.setActive) {
+            window.ChatreAgents.setActive("build");
+          }
+          if (window.ChatreComposer && window.ChatreComposer.setMode) {
+            window.ChatreComposer.setMode("agent");
+          }
         }
         const pendingTool = window.__pendingToolApproval;
         const approvedTools = [];
@@ -3262,6 +3268,11 @@
           resume: true,
           approvePlan: approvingPlan,
           briefing: approvingPlan ? pendingPlan.briefing : undefined,
+          agent: approvingPlan
+            ? "build"
+            : window.ChatreAgents && window.ChatreAgents.getActive
+              ? window.ChatreAgents.getActive()
+              : undefined,
           threadId: remoteState.threadId,
           workspaceId: remoteState.workspaceId || null,
           model: modelSelect.value,

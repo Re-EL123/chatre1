@@ -324,7 +324,9 @@
       title: "Shell / build debug",
       summary: "Reproduce failures in the shell, fix, and re-run.",
       steps: [
-        "Reproduce with execute_command (note exit code + duration).",
+        "Reproduce with execute_command (prefer cwd over cd &&; note exit + duration).",
+        "Prefer read_file/search_code/find_files over cat/grep/find in shell.",
+        "If spill_path is returned, read that file instead of head/tail.",
         "Read logs and related files; prefer patch_file for minimal fixes.",
         "Re-run the failing command; use execute_command_cancel if hung.",
         "Use shell_open/write/read only for interactive installers.",

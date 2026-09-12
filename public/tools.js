@@ -29,7 +29,7 @@
     { name: "list_frames", desc: "List iframes on the page", params: { tab_id: "string" } },
     { name: "switch_frame", desc: "Target an iframe and read its elements", params: { tab_id: "string", frame_index: "number", frame_url: "string", frame_selector: "string" } },
     { name: "http_request", desc: "HTTP request to a public URL", params: { url: "string", method: "string", body: "string" } },
-    { name: "execute_command", desc: "Run a shell command in the workspace", params: { cmd: "string", cwd: "string" } },
+    { name: "execute_command", desc: "Run a shell command (prefer cwd/workdir over cd &&). For git/npm/build — NOT for cat/grep/find/echo file ops (use read_file/write_file/find_files/search_code). Oversized output spills to /home/user/tmp/.", params: { cmd: "string", command: "string?", cwd: "string?", workdir: "string?", mode: "string?", timeoutMs: "number?" } },
     { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
     { name: "write_file", desc: "Create or overwrite a file", params: { path: "string", content: "string" } },
     { name: "append_file", desc: "Append content to a file", params: { path: "string", content: "string" } },
@@ -60,7 +60,7 @@
     { name: "text_to_speech", desc: "TTS to mp3 in workspace", params: { text: "string" } },
     { name: "process_manage", desc: "Background processes start|list|status|read|kill|poll", params: { action: "string", command: "string?" } },
     { name: "apply_patch", desc: "Apply V4A multi-file patch", params: { patch: "string" } },
-    { name: "delegate_task", desc: "Spawn nested sub-agent for a subgoal", params: { goal: "string", context: "string?" } },
+    { name: "delegate_task", desc: "Spawn nested agent(s): agent=explore|general|verify; or goals:[{goal,agent}] for parallel explores. Returns structured summary/findings/filesChanged.", params: { goal: "string?", agent: "string?", thoroughness: "string?", context: "string?", goals: "array?" } },
     { name: "search_mcp_registry", desc: "Search available MCP connectors (Jira, Slack, Notion, GitHub, …) by product or task", params: { query: "string", queries: "array" } },
     { name: "suggest_connectors", desc: "Present connector options to the user with Connect/Use buttons (pass directory UUIDs from search_mcp_registry)", params: { uuids: "array", question: "string" } },
     { name: "call_mcp", desc: "Call a tool on a connected MCP server (pass server uuid, tool name, arguments)", params: { server: "string", tool: "string", arguments: "object" } },
@@ -347,9 +347,161 @@
     return { ok: true };
   }
 
+  function validateToolCallLocal(call) {
+    if (!call || !call.tool) {
+      return { ok: false, error: "Invalid tool call: missing tool name." };
+    }
+    var p = call.params || {};
+    var tool = call.tool;
+    function fail(error, hint) {
+      return { ok: false, error: error + (hint ? " — " + hint : ""), hint: hint || null };
+    }
+    switch (tool) {
+      case "todo":
+        if (!p.action) return fail("todo requires action", "Use action: set|add|done|list.");
+        break;
+      case "todo_write":
+        if (!Array.isArray(p.todos) && !Array.isArray(p.items)) {
+          return fail("todo_write requires todos[]", "Pass todos: [{id, content, status}].");
+        }
+        break;
+      case "execute_command":
+        if (!(p.cmd || p.command)) {
+          return fail(
+            "execute_command requires cmd",
+            'Example: {"tool":"execute_command","cmd":"npm test","cwd":"/home/user/projects/app"}'
+          );
+        }
+        break;
+      case "write_file":
+      case "append_file":
+        if (!(p.path || p.file) || p.content == null) {
+          return fail(tool + " requires path and content", "Pass full file content.");
+        }
+        break;
+      case "read_file":
+      case "delete_file":
+      case "export_document":
+        if (!(p.path || p.file)) return fail(tool + " requires path");
+        break;
+      case "plan":
+        if (!p.steps) return fail("plan requires steps");
+        break;
+      case "find_files":
+      case "search_code":
+        if (!(p.pattern || p.query || p.needle)) {
+          return fail(tool + " requires pattern", "Prefer this over shell grep/find.");
+        }
+        break;
+      case "run_javascript":
+      case "run_python":
+        if (!(p.code || p.source)) return fail(tool + " requires code");
+        break;
+      case "git_commit":
+        if (!p.message) return fail("git_commit requires message");
+        break;
+      case "use_skill":
+        if (!p.name) return fail("use_skill requires name");
+        break;
+      case "copy_file":
+        if (!(p.src || p.source) || !(p.dest || p.destination)) {
+          return fail("copy_file requires src and dest");
+        }
+        break;
+      case "create_document":
+      case "create_pdf":
+        if (!p.title || p.content == null) {
+          return fail(tool + " requires title and content");
+        }
+        break;
+      case "apply_patch":
+        if (!(p.patch || p.diff || p.input)) {
+          return fail("apply_patch requires patch");
+        }
+        break;
+      case "delegate_task":
+        if (!(p.goal || p.task || p.prompt) && !(Array.isArray(p.goals) && p.goals.length)) {
+          return fail("delegate_task requires goal or goals[]");
+        }
+        break;
+      default:
+        break;
+    }
+    return { ok: true };
+  }
+
+  function spillLargeOutput(text, toolName) {
+    var s = String(text == null ? "" : text);
+    var maxBytes = 50000;
+    var maxLines = 2000;
+    var lines = s ? 1 : 0;
+    for (var i = 0; i < s.length; i++) {
+      if (s.charAt(i) === "\n") lines += 1;
+      if (lines > maxLines) break;
+    }
+    if (s.length <= maxBytes && lines <= maxLines) {
+      return { text: s, truncated: false, spill_path: null };
+    }
+    var fileSys = fs();
+    var safe = String(toolName || "tool").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+    var spillPath =
+      "/home/user/tmp/tool_" +
+      safe +
+      "_" +
+      Date.now().toString(36) +
+      "_" +
+      Math.random().toString(36).slice(2, 7) +
+      ".txt";
+    var parts = spillPath.split("/").filter(Boolean);
+    var cur = "";
+    for (var pi = 0; pi < parts.length - 1; pi++) {
+      var parent = cur || "/";
+      cur = cur + "/" + parts[pi];
+      if (!fileSys[cur]) {
+        fileSys[cur] = { path: cur, type: "dir", children: [] };
+      }
+      if (fileSys[parent] && Array.isArray(fileSys[parent].children)) {
+        if (fileSys[parent].children.indexOf(parts[pi]) < 0) {
+          fileSys[parent].children.push(parts[pi]);
+        }
+      }
+    }
+    var parentDir = spillPath.replace(/\/[^/]+$/, "") || "/";
+    var baseName = spillPath.split("/").pop();
+    if (fileSys[parentDir] && Array.isArray(fileSys[parentDir].children)) {
+      if (fileSys[parentDir].children.indexOf(baseName) < 0) {
+        fileSys[parentDir].children.push(baseName);
+      }
+    }
+    fileSys[spillPath] = { path: spillPath, type: "file", content: s };
+    var head = 8000;
+    var tail = 8000;
+    var omitted = Math.max(0, s.length - head - tail);
+    var preview =
+      s.slice(0, head) +
+      "\n…[truncated " +
+      omitted +
+      " bytes; full output at spill_path]…\n" +
+      s.slice(-tail) +
+      "\n\n[Full output saved to " +
+      spillPath +
+      ". Use read_file or search_code on that path.]";
+    return { text: preview, truncated: true, spill_path: spillPath };
+  }
+
   async function executeTool(call, options) {
     const { tool, params } = call;
     const p = params || {};
+    const invalid = validateToolCallLocal(call);
+    if (!invalid.ok) {
+      return {
+        ok: false,
+        tool: tool || "invalid",
+        invalid: true,
+        error: invalid.error,
+        hint: invalid.hint || null,
+      };
+    }
     const perm = localAgentPermission(tool, p);
     if (!perm.ok) {
       return {
@@ -548,7 +700,7 @@
         return await remoteUserTool(tool, p);
 
       case "execute_command":
-        return executeCommand(p.cmd || p.command, p.cwd, common);
+        return executeCommand(p.cmd || p.command, p.cwd || p.workdir, common);
 
       case "execute_command_cancel":
         return { ok: true, tool: "execute_command_cancel", text: "Local cancel is a no-op" };
@@ -1276,13 +1428,22 @@
     if (typeof raw === "string") {
       const isErr =
         /: cannot access |: No such file|command not found|error:/i.test(raw);
+      const spilled = spillLargeOutput(raw, "execute_command");
       return {
         ok: !isErr,
         tool: "execute_command",
-        output: raw,
-        text: raw.slice(0, 500),
+        output: spilled.text,
+        text: spilled.text.slice(0, 500),
+        truncated: !!spilled.truncated,
+        spill_path: spilled.spill_path,
         error: isErr ? raw : null,
       };
+    }
+    if (raw && typeof raw.output === "string") {
+      const spilled = spillLargeOutput(raw.output, "execute_command");
+      raw.output = spilled.text;
+      raw.truncated = !!spilled.truncated;
+      raw.spill_path = spilled.spill_path;
     }
     return raw;
   }
@@ -2824,8 +2985,11 @@
   }
 
   async function delegateTaskToolLocal(p, options) {
+    const hasGoals = Array.isArray(p.goals) && p.goals.length;
     const goal = String(p.goal || p.task || "").trim();
-    if (!goal) return { ok: false, tool: "delegate_task", error: "goal required" };
+    if (!goal && !hasGoals) {
+      return { ok: false, tool: "delegate_task", error: "goal or goals[] required" };
+    }
     if (!window.ChatreAgent || !window.ChatreAgent.run) {
       return {
         ok: false,
@@ -2833,17 +2997,62 @@
         error: "Local nested agent unavailable; use remote agent",
       };
     }
-    const maxSteps = Math.min(Number(p.max_steps) || 3, 4);
+    const agentName = String(p.agent || p.subagent || "general").toLowerCase();
+    const maxSteps = Math.min(Number(p.max_steps) || 4, agentName === "explore" ? 6 : 5);
     try {
+      if (hasGoals) {
+        const results = [];
+        for (var gi = 0; gi < Math.min(p.goals.length, 4); gi++) {
+          var g = p.goals[gi] || {};
+          var nested = await window.ChatreAgent.run(
+            [
+              {
+                role: "user",
+                content:
+                  "You are a Chatre sub-agent (" +
+                  String(g.agent || "explore") +
+                  "). Complete ONLY this goal, then return JSON summary/findings/filesChanged/risks/nextActions.\n\nGoal: " +
+                  String(g.goal || "") +
+                  (g.context ? "\n\nContext:\n" + String(g.context).slice(0, 2000) : ""),
+              },
+            ],
+            {
+              model: options && options.model,
+              maxIterations: 3,
+              skipPlanApproval: true,
+              callbacks: {},
+            }
+          );
+          results.push({
+            goal: g.goal,
+            agent: g.agent || "explore",
+            summary: String((nested && nested.response) || "").slice(0, 2000),
+          });
+        }
+        return {
+          ok: true,
+          tool: "delegate_task",
+          parallel: true,
+          results: results,
+          summary: results.map(function (r) { return r.agent + ": " + r.summary; }).join("\n"),
+          text: results.map(function (r) { return r.agent + ": " + r.summary; }).join("\n").slice(0, 4000),
+          findings: [],
+          filesChanged: [],
+          risks: [],
+          nextActions: [],
+        };
+      }
       const nested = await window.ChatreAgent.run(
         [
           {
             role: "user",
             content:
-              "You are a Chatre sub-agent. Complete ONLY this goal, then stop.\n\nGoal: " +
+              "You are a Chatre sub-agent (" +
+              agentName +
+              "). Complete ONLY this goal, then stop with JSON {summary,findings,filesChanged,risks,nextActions,todos}.\n\nGoal: " +
               goal +
               (p.context ? "\n\nContext:\n" + String(p.context).slice(0, 3000) : "") +
-              "\n\nPrefer write_file under /home/user/projects.",
+              "\n\nPrefer write_file under /home/user/projects when allowed.",
           },
         ],
         {
@@ -2851,15 +3060,22 @@
           maxIterations: maxSteps,
           skipPlanApproval: true,
           callbacks: {},
-        },
+        }
       );
+      const text = String((nested && nested.response) || "");
       return {
         ok: true,
         tool: "delegate_task",
-        response: (nested && nested.response) || "",
+        agent: agentName,
+        response: text,
         iterations: nested && nested.iterations,
         toolsUsed: nested && nested.toolsUsed,
-        text: String((nested && nested.response) || "").slice(0, 4000),
+        summary: text.slice(0, 2000),
+        text: text.slice(0, 4000),
+        findings: [],
+        filesChanged: [],
+        risks: [],
+        nextActions: [],
       };
     } catch (err) {
       return {

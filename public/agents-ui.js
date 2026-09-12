@@ -55,10 +55,11 @@
   async function refresh() {
     if (!window.ChatreRemote || !window.ChatreRemote.enabled || !window.ChatreRemote.enabled()) {
       cache.agents = [
-        { name: "build", description: "Default builder", native: true },
+        { name: "build", description: "Orchestrator — explore/build/verify", native: true },
         { name: "plan", description: "Plan only — no edits", native: true },
         { name: "explore", description: "Read-only search", native: true },
-        { name: "general", description: "General subagent", native: true },
+        { name: "general", description: "General subagent slice", native: true },
+        { name: "verify", description: "Preview/debug ownership", native: true },
       ];
       syncUi();
       return cache.agents;

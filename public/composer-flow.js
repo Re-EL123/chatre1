@@ -362,14 +362,18 @@
     if (!pending) return;
     window.__pendingExecutePlan = null;
     paintMicroActions();
-    // Leave plan mode so execution uses normal agent tools
+    // Leave plan mode → build orchestrator
     if (window.ChatreComposer && window.ChatreComposer.setMode) {
       window.ChatreComposer.setMode("agent");
     }
+    if (window.ChatreAgents && window.ChatreAgents.setActive) {
+      window.ChatreAgents.setActive("build");
+    }
     var msg =
       "[Execute approved plan]\n" +
-      "Implement the plan now with tools. Prefer write_file under /home/user/projects/. " +
-      "Do not re-plan. Do not narrate file writes — call tools.\n\n";
+      "You are build orchestrator. Do NOT re-plan. Execute the plan artifact with tools. " +
+      "Map with delegate_task(agent=explore) if needed; implement; verify with preview_project or delegate_task(agent=verify). " +
+      "Prefer write_file under /home/user/projects/. Do not narrate file writes — call tools.\n\n";
     if (pending.path) {
       msg += "Plan file: " + pending.path + "\nRead it first with read_file, then execute every step.\n";
     } else if (pending.text) {
