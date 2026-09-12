@@ -27,21 +27,70 @@
   ];
 
   const SLASH_COMMANDS = [
-    { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
-    { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; window.__pendingUserInput = null; window.__pendingConnectors = null; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
-    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle Agent/Chat composer mode\n\nModes live in the composer toolbar (Chat · Agent · Browse · Desktop · Code · Image). Use ⌘/Ctrl+K for the command palette.") },
-    { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`\nAgent mode: **" + (agentMode ? "ON" : "OFF") + "**" + (window.ChatreComposer && window.ChatreComposer.getMode ? "\nComposer mode: **" + window.ChatreComposer.getMode() + "**" : "")) },
-    { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
-    { cmd: "/run", desc: "Run a shell command", action: (arg) => runShellCommand(arg) },
-    { cmd: "/exec", desc: "Execute JavaScript code", action: (arg) => execJS(arg) },
-    { cmd: "/python", desc: "Execute Python code", action: (arg) => execPython(arg) },
-    { cmd: "/agent", desc: "Toggle agent mode (plan, build, code, commit)", action: () => toggleAgentMode() },
-    { cmd: "/skills", desc: "List agent skills", action: () => {
+    { cat: "image", cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
+    { cat: "run", cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; window.__pendingUserInput = null; window.__pendingConnectors = null; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
+    { cat: "run", cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model (Chatre + BYOK)\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/mode <chat|agent|browse|desktop|code|image>`: Switch composer mode\n- `/agent`: Toggle Agent/Chat composer mode\n\nModes live in the composer toolbar. Use ⌘/Ctrl+K for the command palette.") },
+    { cat: "model", cmd: "/model", desc: "Show Chatre + BYOK models", action: () => {
+      const opts = Array.from(modelSelect.options || []);
+      const chatre = [];
+      const byok = [];
+      opts.forEach((o) => {
+        const v = o.value || "";
+        const lab = o.textContent || v;
+        if (/^(openrouter|anthropic|openai|google|byok):/i.test(v) || /byok/i.test(lab)) {
+          byok.push("- `" + v + "` — " + lab);
+        } else {
+          chatre.push("- `" + v + "` — " + lab);
+        }
+      });
+      const mode =
+        window.ChatreComposer && window.ChatreComposer.getMode
+          ? window.ChatreComposer.getMode()
+          : agentMode
+            ? "agent"
+            : "chat";
+      addMessage(
+        "assistant",
+        "**Active:** `" +
+          modelSelect.value +
+          "`\n**Composer mode:** " +
+          mode +
+          "\n\n### Chatre models\n" +
+          (chatre.length ? chatre.join("\n") : "_None listed_") +
+          "\n\n### BYOK models\n" +
+          (byok.length ? byok.join("\n") : "_None — add keys under Settings → BYOK_"),
+      );
+    } },
+    { cat: "terminal", cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
+    { cat: "run", cmd: "/run", desc: "Run a shell command", action: (arg) => runShellCommand(arg) },
+    { cat: "run", cmd: "/exec", desc: "Execute JavaScript code", action: (arg) => execJS(arg) },
+    { cat: "run", cmd: "/python", desc: "Execute Python code", action: (arg) => execPython(arg) },
+    { cat: "mode", cmd: "/agent", desc: "Toggle agent mode (plan, build, code, commit)", action: () => toggleAgentMode() },
+    { cat: "mode", cmd: "/mode chat", desc: "Switch to Chat mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("chat"); } },
+    { cat: "mode", cmd: "/mode agent", desc: "Switch to Agent mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("agent"); } },
+    { cat: "mode", cmd: "/mode browse", desc: "Switch to Browse mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("browse"); } },
+    { cat: "mode", cmd: "/mode desktop", desc: "Switch to Desktop mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("desktop"); } },
+    { cat: "mode", cmd: "/mode code", desc: "Switch to Code mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("code"); } },
+    { cat: "mode", cmd: "/mode image", desc: "Switch to Image mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("image"); } },
+    { cat: "settings", cmd: "/settings", desc: "Open settings", action: () => { if (window.ChatreUX && window.ChatreUX.openSettings) window.ChatreUX.openSettings(); } },
+    { cat: "run", cmd: "/skills", desc: "List agent skills", action: () => {
       if (!window.ChatreSkills) return addMessage("assistant", "Skills module not loaded.");
       const list = window.ChatreSkills.listSkills().map((s) => "- **" + s.name + "**: " + s.summary).join("\n");
       addMessage("assistant", "Available skills:\n" + list);
     } },
   ];
+
+  function slashFuzzy(query, text) {
+    const q = String(query || "").toLowerCase().trim();
+    const t = String(text || "").toLowerCase();
+    if (!q || q === "/") return true;
+    if (t.indexOf(q) !== -1 || t.indexOf(q.replace(/^\//, "")) !== -1) return true;
+    let qi = 0;
+    for (let i = 0; i < t.length && qi < q.length; i++) {
+      if (t[i] === q[qi]) qi++;
+    }
+    return qi === q.length;
+  }
 
   /** @type {{ role: string, content: string }[]} */
   let chatHistory = [];
@@ -176,7 +225,7 @@
       chip.addEventListener("click", () => {
         userInput.value = s;
         userInput.style.height = "auto";
-        userInput.style.height = Math.min(userInput.scrollHeight, 160) + "px";
+        userInput.style.height = Math.min(userInput.scrollHeight, 200) + "px";
         userInput.focus();
       });
       chipsDiv.appendChild(chip);
@@ -453,14 +502,14 @@
 
   function updateSlashSuggestions(val) {
     if (!slashSuggestions) return;
-    if (!val.startsWith("/") || isProcessing || /\s/.test(val)) {
+    if (!val.startsWith("/") || isProcessing || /\s/.test(val.slice(1))) {
       slashSuggestions.style.display = "none";
       return;
     }
 
     const query = val.toLowerCase();
-    const filtered = SLASH_COMMANDS.filter(
-      (c) => query === "/" || c.cmd.startsWith(query),
+    const filtered = SLASH_COMMANDS.filter((c) =>
+      slashFuzzy(query, c.cmd + " " + c.desc + " " + (c.cat || "")),
     );
 
     if (filtered.length === 0) {
@@ -477,6 +526,12 @@
         "slash-suggestion-item" + (idx === selectedSlashIndex ? " active" : "");
       div.setAttribute("role", "option");
       div.setAttribute("aria-selected", idx === selectedSlashIndex ? "true" : "false");
+      if (item.cat) {
+        const cat = document.createElement("em");
+        cat.className = "slash-cat";
+        cat.textContent = item.cat;
+        div.appendChild(cat);
+      }
       const code = document.createElement("code");
       code.textContent = item.cmd;
       const span = document.createElement("span");
@@ -497,9 +552,15 @@
     slashSuggestions.style.display = "none";
     userInput.value = item.cmd + " ";
     userInput.style.height = "auto";
-    userInput.style.height = Math.min(userInput.scrollHeight, 160) + "px";
+    userInput.style.height = Math.min(userInput.scrollHeight, 200) + "px";
     userInput.focus();
-    if (item.cmd === "/clear" || item.cmd === "/help" || item.cmd === "/model") {
+    if (
+      item.cmd === "/clear" ||
+      item.cmd === "/help" ||
+      item.cmd === "/model" ||
+      item.cmd === "/settings" ||
+      item.cmd.indexOf("/mode ") === 0
+    ) {
       item.action();
       userInput.value = "";
     }
@@ -553,7 +614,9 @@
 
     slashSuggestions.style.display = "none";
 
-    const slashMatch = SLASH_COMMANDS.find((c) => message === c.cmd || message.startsWith(c.cmd + " "));
+    const slashMatch = SLASH_COMMANDS.filter(
+      (c) => message === c.cmd || message.startsWith(c.cmd + " "),
+    ).sort((a, b) => b.cmd.length - a.cmd.length)[0];
     if (slashMatch) {
       const arg = message.slice(slashMatch.cmd.length).trim();
       userInput.value = "";
@@ -948,7 +1011,7 @@
 
   userInput.addEventListener("input", function () {
     this.style.height = "auto";
-    this.style.height = Math.min(this.scrollHeight, 160) + "px";
+    this.style.height = Math.min(this.scrollHeight, 200) + "px";
     updateSlashSuggestions(this.value);
     if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
       window.ChatreComposer.paintPrimaryButton();

@@ -614,6 +614,15 @@
         font-weight: 500;
       }
 
+      .slash-suggestion-item .slash-cat {
+        font-style: normal;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-light);
+        margin-right: 0.4rem;
+      }
+
       .slash-suggestion-item span {
         color: var(--text-light);
         font-size: 0.8rem;
@@ -2490,6 +2499,21 @@
         color: var(--text-light);
         font-size: 0.72rem;
       }
+      .composer-esc-hint {
+        margin-left: 0.5rem;
+        font-size: 0.72rem;
+        color: var(--text-light);
+      }
+      .composer-approve {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.35rem;
+      }
+      .composer-approve[hidden] { display: none !important; }
+      .composer-approve-chip {
+        border-color: var(--accent, #2a6);
+      }
       .composer-busy { display: none !important; }
       .composer-guidance {
         display: flex;
@@ -3051,14 +3075,16 @@
               </div>
             </div>
             <p id="composer-safety" class="composer-safety" hidden></p>
-            <div id="composer-context-chips" class="composer-context-chips" aria-label="Attachments"></div>
+            <div id="composer-context-chips" class="composer-context-chips" aria-label="Turn context"></div>
             <div id="composer-attach-chips" hidden></div>
             <div id="composer-run" class="composer-run" hidden>
               <div class="composer-run-status">
                 <span id="composer-busy-phase">Working…</span>
                 <span id="composer-busy-tool"></span>
                 <span id="composer-run-budget" class="composer-run-budget"></span>
+                <span id="composer-esc-hint" class="composer-esc-hint" hidden></span>
               </div>
+              <div id="composer-approve" class="composer-approve" hidden></div>
               <div id="composer-queue" class="composer-queue" hidden></div>
             </div>
             <div id="composer-busy" hidden></div>

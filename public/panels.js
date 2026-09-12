@@ -13,6 +13,9 @@
     fileSnapshots: {},
     usage: null,
     canResume: false,
+    resumeReason: "",
+    threadId: null,
+    threadTitle: "",
   };
 
   function $(id) {
@@ -161,6 +164,7 @@
 
   function setResumeAvailable(on, reason) {
     state.canResume = !!on;
+    state.resumeReason = on ? String(reason || "") : "";
     const btn = $("agent-resume");
     if (btn) {
       btn.hidden = true;
@@ -303,6 +307,9 @@
     const data = await remote().getMessages(threadId);
     const thr = await remote().getThread(threadId);
     remoteState().threadId = threadId;
+    state.threadId = threadId;
+    state.threadTitle =
+      (thr && thr.thread && (thr.thread.title || thr.thread.name)) || "Thread";
     if (thr && thr.thread && thr.thread.workspaceId) {
       remoteState().workspaceId = thr.thread.workspaceId;
       state.workspaceId = thr.thread.workspaceId;
@@ -319,6 +326,9 @@
     if (window.ChatreUI && window.ChatreUI.resetChat) {
       window.ChatreUI.resetChat(data.messages || []);
     }
+    if (window.ChatreComposer && window.ChatreComposer.onThreadChange) {
+      window.ChatreComposer.onThreadChange();
+    }
     await refreshThreads();
     await refreshFiles();
   }
@@ -334,10 +344,15 @@
       remoteState().threadId = data.thread.id;
       remoteState().workspaceId = data.workspace && data.workspace.id;
       state.workspaceId = remoteState().workspaceId;
+      state.threadId = data.thread.id;
+      state.threadTitle = data.thread.title || "New chat";
     }
     setResumeAvailable(false);
     if (window.ChatreUI && window.ChatreUI.resetChat) {
       window.ChatreUI.resetChat([]);
+    }
+    if (window.ChatreComposer && window.ChatreComposer.onThreadChange) {
+      window.ChatreComposer.onThreadChange();
     }
     await refreshThreads();
     await refreshFiles();

@@ -82,18 +82,29 @@
     return window.ChatreKit;
   }
 
+  function currentThreadId() {
+    if (window.ChatrePanels && window.ChatrePanels.state && window.ChatrePanels.state.threadId) {
+      return window.ChatrePanels.state.threadId;
+    }
+    if (window.__chatreRemote && window.__chatreRemote.threadId) {
+      return window.__chatreRemote.threadId;
+    }
+    return "local";
+  }
+
   function threadKey() {
-    var id =
-      (window.ChatrePanels &&
-        window.ChatrePanels.state &&
-        window.ChatrePanels.state.threadId) ||
-      "local";
-    return "chatre.composer.draft." + id;
+    return "chatre.composer.draft." + currentThreadId();
+  }
+
+  function modeKey() {
+    return "chatre.composer.mode." + currentThreadId();
   }
 
   function loadPrefs() {
     try {
-      var m = localStorage.getItem("chatre.composer.mode");
+      var m =
+        localStorage.getItem(modeKey()) ||
+        localStorage.getItem("chatre.composer.mode");
       if (m && MODES.some(function (x) {
         return x.id === m;
       })) {
@@ -107,6 +118,7 @@
 
   function saveMode() {
     try {
+      localStorage.setItem(modeKey(), state.mode);
       localStorage.setItem("chatre.composer.mode", state.mode);
     } catch (e) {
       /* ignore */
@@ -200,6 +212,7 @@
       escapeAttr(chip.id) +
       '"' +
       (removable ? ' data-removable="1"' : "") +
+      (chip.title ? ' title="' + escapeAttr(chip.title) + '"' : "") +
       ">" +
       '<span class="composer-chip-kind">' +
       escapeHtml(chip.kind) +
@@ -213,12 +226,58 @@
   function paintChips() {
     var host = $("composer-context-chips");
     if (!host) return;
-    // Only attachment chips — model/mode live in toolbar + mode tabs.
-    host.innerHTML = state.attachments
+    var chips = [];
+    var model = $("model-select");
+    if (model && model.value) {
+      chips.push({
+        id: "model",
+        kind: "model",
+        label: String(model.value).replace(/^[^:]+:/, "").slice(0, 36),
+        title: model.value,
+      });
+    }
+    chips.push({ id: "mode", kind: "mode", label: modeObj().label });
+    var f = composerFlags();
+    if (f.useBrowser) {
+      chips.push({ id: "flag-browser", kind: "flag", label: "browser" });
+    }
+    if (f.useDesktop) {
+      chips.push({ id: "flag-desktop", kind: "flag", label: "desktop" });
+    }
+    var threadLabel =
+      (window.ChatrePanels &&
+        window.ChatrePanels.state &&
+        window.ChatrePanels.state.threadTitle) ||
+      "";
+    if (!threadLabel && window.__chatreRemote && window.__chatreRemote.threadTitle) {
+      threadLabel = window.__chatreRemote.threadTitle;
+    }
+    if (threadLabel) {
+      chips.push({
+        id: "thread",
+        kind: "thread",
+        label: String(threadLabel).slice(0, 28),
+      });
+    }
+    state.attachments.forEach(function (a) {
+      chips.push(a);
+    });
+    host.innerHTML = chips
       .map(function (c) {
-        return chipHtml(c, true);
+        var removable =
+          !!c.removable ||
+          state.attachments.some(function (a) {
+            return a.id === c.id;
+          });
+        return chipHtml(c, removable);
       })
       .join("");
+  }
+
+  function onThreadChange() {
+    loadPrefs();
+    restoreDraft();
+    setMode(state.mode, { skipAgent: false });
   }
 
   function addAttachment(chip) {
@@ -761,6 +820,57 @@
   }
 
   // ── Busy strip + guidance ─────────────────────────────────────────
+  function paintApproveChip() {
+    var host = $("composer-approve");
+    if (!host) return;
+    var reason =
+      (window.ChatrePanels &&
+        window.ChatrePanels.state &&
+        window.ChatrePanels.state.resumeReason) ||
+      (window.ChatreUX && window.ChatreUX.state && window.ChatreUX.state.pauseReason) ||
+      "";
+    var canResume =
+      window.ChatrePanels &&
+      window.ChatrePanels.state &&
+      window.ChatrePanels.state.canResume;
+    if (!canResume) {
+      host.hidden = true;
+      host.innerHTML = "";
+      return;
+    }
+    host.hidden = false;
+    var label = "Resume";
+    var kind = "resume";
+    var r = String(reason || "").toLowerCase();
+    if (r.indexOf("awaiting_plan") >= 0 || r.indexOf("plan") >= 0) {
+      label = "Approve plan";
+      kind = "plan";
+    } else if (r.indexOf("login") >= 0 || r.indexOf("awaiting_login") >= 0) {
+      label = "Resume after login";
+      kind = "login";
+    } else if (
+      r.indexOf("desktop") >= 0 ||
+      r.indexOf("purchase") >= 0 ||
+      r.indexOf("exec") >= 0 ||
+      r.indexOf("approval") >= 0
+    ) {
+      label = "Approve & continue";
+      kind = "approve";
+    }
+    host.innerHTML =
+      '<button type="button" class="composer-chip composer-approve-chip" data-approve-kind="' +
+      kind +
+      '"><span class="composer-chip-kind">action</span> ' +
+      escapeHtml(label) +
+      "</button>";
+  }
+
+  function runApproveAction() {
+    if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+      window.ChatreUI.resumeAgent();
+    }
+  }
+
   function paintPrimaryButton() {
     var send = $("send-button");
     if (!send) return;
@@ -785,12 +895,14 @@
       send.textContent = "Send";
       send.setAttribute("data-primary", "send");
     }
+    paintApproveChip();
   }
 
   function setBusyUi(busy, meta) {
     var run = $("composer-run");
     var guide = $("composer-guidance");
     var stop = $("stop-button");
+    var escHint = $("composer-esc-hint");
     if (run) {
       if (busy) {
         run.hidden = false;
@@ -819,6 +931,10 @@
       }
     }
     if (guide) guide.hidden = !busy;
+    if (escHint) {
+      escHint.hidden = !busy;
+      escHint.textContent = busy ? "Esc to stop" : "";
+    }
     if (stop) {
       stop.hidden = !busy;
       stop.classList.toggle("visible", !!busy);
@@ -1030,8 +1146,26 @@
         var btn = e.target.closest("[data-chip-id]");
         if (!btn) return;
         var id = btn.getAttribute("data-chip-id");
-        if (id === "model" || id === "mode" || id === "thread") return;
+        if (
+          id === "model" ||
+          id === "mode" ||
+          id === "thread" ||
+          id === "flag-browser" ||
+          id === "flag-desktop"
+        ) {
+          if (id === "model" && window.ChatreUX && window.ChatreUX.openSettings) {
+            window.ChatreUX.openSettings();
+          }
+          return;
+        }
         removeAttachment(id);
+      });
+    }
+
+    var approveHost = $("composer-approve");
+    if (approveHost) {
+      approveHost.addEventListener("click", function (e) {
+        if (e.target.closest("[data-approve-kind]")) runApproveAction();
       });
     }
 
@@ -1284,11 +1418,13 @@
     setBusyUi: setBusyUi,
     syncRunFromUx: syncRunFromUx,
     paintPrimaryButton: paintPrimaryButton,
+    paintApproveChip: paintApproveChip,
     paintChips: paintChips,
     addAttachment: addAttachment,
     wantsAgentFromMode: wantsAgentFromMode,
     wantsImageFromMode: wantsImageFromMode,
     openPalette: openPalette,
+    onThreadChange: onThreadChange,
     state: state,
   };
 
