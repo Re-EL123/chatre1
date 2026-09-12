@@ -3004,7 +3004,7 @@
         const results = [];
         for (var gi = 0; gi < Math.min(p.goals.length, 4); gi++) {
           var g = p.goals[gi] || {};
-          var nested = await window.ChatreAgent.run(
+          const nestedGoal = await window.ChatreAgent.run(
             [
               {
                 role: "user",
@@ -3026,7 +3026,7 @@
           results.push({
             goal: g.goal,
             agent: g.agent || "explore",
-            summary: String((nested && nested.response) || "").slice(0, 2000),
+            summary: String((nestedGoal && nestedGoal.response) || "").slice(0, 2000),
           });
         }
         return {
