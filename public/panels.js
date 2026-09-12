@@ -121,18 +121,26 @@
     el.hidden = false;
     const model = (usage.model || "model").replace(/^@cf\//, "");
     el.textContent =
-      model +
-      " · steps " +
+      "steps " +
       (usage.steps || 0) +
-      (usage.remainingSteps != null ? "/" + ((usage.steps || 0) + usage.remainingSteps) : "") +
-      (usage.remainingSteps != null ? " left " + usage.remainingSteps : "") +
-      " · tools " +
-      (usage.toolsUsed || 0) +
+      (usage.remainingSteps != null
+        ? "/" + ((usage.steps || 0) + usage.remainingSteps)
+        : "") +
       " · ~" +
       (usage.totalTokensEst || 0) +
       " tok";
+    el.title =
+      model +
+      " · steps " +
+      (usage.steps || 0) +
+      (usage.remainingSteps != null ? " · " + usage.remainingSteps + " left" : "") +
+      " · tools " +
+      (usage.toolsUsed || 0);
     if (window.ChatreUIAdv && window.ChatreUIAdv.updateBudgetBar) {
       window.ChatreUIAdv.updateBudgetBar(usage);
+    }
+    if (window.ChatreUX && window.ChatreUX.setBudget) {
+      window.ChatreUX.setBudget(usage);
     }
   }
 

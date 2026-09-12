@@ -89,10 +89,16 @@
     var keyHost = $("settings-key-slot");
     var model = $("model-select");
     var key = $("api-key-input");
-    if (modelHost && model && model.parentNode !== modelHost) {
-      var modelLabel = document.querySelector('label[for="model-select"]');
-      if (modelLabel) modelHost.appendChild(modelLabel);
-      modelHost.appendChild(model);
+    // Model stays in the toolbar; settings shows a live label only.
+    if (modelHost && model) {
+      if (window.ChatreToolbar && window.ChatreToolbar.paintModelNote) {
+        window.ChatreToolbar.paintModelNote();
+      }
+      model.addEventListener("change", function () {
+        if (window.ChatreToolbar && window.ChatreToolbar.paintModelNote) {
+          window.ChatreToolbar.paintModelNote();
+        }
+      });
     }
     if (keyHost && key && key.parentNode !== keyHost) {
       var keyLabel = document.querySelector('label[for="api-key-input"]');
@@ -127,6 +133,12 @@
     }
     refreshByokStatus();
     refreshModelCatalog();
+    if (window.ChatreToolbar && window.ChatreToolbar.paintAccount) {
+      window.ChatreToolbar.paintAccount();
+    }
+    if (window.ChatreToolbar && window.ChatreToolbar.paintModelNote) {
+      window.ChatreToolbar.paintModelNote();
+    }
   }
 
   function initAuthUi() {

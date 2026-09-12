@@ -15,39 +15,11 @@
     return n;
   }
 
-  // ── Mode segmented control ──────────────────────────────────────────
+  // ── Mode segmented control (legacy — modes live in composer) ───────
   function initModeControl() {
     const wrap = $("mode-control");
     if (!wrap) return;
-    wrap.addEventListener("click", function (e) {
-      const btn = e.target.closest("[data-mode]");
-      if (!btn) return;
-      const mode = btn.getAttribute("data-mode");
-      wrap.querySelectorAll("[data-mode]").forEach(function (b) {
-        b.classList.toggle("active", b === btn);
-        b.setAttribute("aria-pressed", b === btn ? "true" : "false");
-      });
-      if (mode === "agent") {
-        if (window.ChatreUI && window.ChatreUI.setAgentMode) {
-          window.ChatreUI.setAgentMode(true);
-        } else {
-          const a = $("agent-mode-button");
-          const i = $("image-mode-button");
-          if (a && !a.classList.contains("active")) a.click();
-          if (i && i.classList.contains("active")) i.click();
-        }
-      } else if (mode === "image") {
-        const i = $("image-mode-button");
-        const a = $("agent-mode-button");
-        if (i && !i.classList.contains("active")) i.click();
-        if (a && a.classList.contains("active")) a.click();
-      } else {
-        const a = $("agent-mode-button");
-        const i = $("image-mode-button");
-        if (a && a.classList.contains("active")) a.click();
-        if (i && i.classList.contains("active")) i.click();
-      }
-    });
+    wrap.hidden = true;
   }
 
   // ── Starter chips ───────────────────────────────────────────────────

@@ -401,7 +401,11 @@
     const trimmed = message.trim();
     const match = trimmed.match(/^\/image\s+([\s\S]+)$/i);
     if (match) return match[1].trim();
-    if (imageMode) return trimmed;
+    const composerImage =
+      window.ChatreComposer &&
+      window.ChatreComposer.wantsImageFromMode &&
+      window.ChatreComposer.wantsImageFromMode();
+    if (imageMode || composerImage) return trimmed;
 
     const nlPatterns = [
       /^(?:please\s+)?(?:generate|create|make|render)\s+(?:an?\s+)?image\s+(?:of\s+)?([\s\S]+)$/i,
@@ -988,15 +992,22 @@
   sendButton.addEventListener("click", sendMessage);
   stopButton.addEventListener("click", stopGeneration);
 
-  imageModeButton.addEventListener("click", () => {
-    imageMode = !imageMode;
-    imageModeButton.classList.toggle("active", imageMode);
-    imageModeButton.setAttribute("aria-pressed", imageMode ? "true" : "false");
-    userInput.placeholder = imageMode
-      ? "Describe an image to generate…"
-      : "Type a message… or /image a sunset over Cape Town";
-    userInput.focus();
-  });
+  if (imageModeButton) {
+    imageModeButton.addEventListener("click", () => {
+      imageMode = !imageMode;
+      imageModeButton.classList.toggle("active", imageMode);
+      imageModeButton.setAttribute("aria-pressed", imageMode ? "true" : "false");
+      if (window.ChatreComposer && window.ChatreComposer.setMode) {
+        window.ChatreComposer.setMode(imageMode ? "image" : "agent", {
+          skipAgent: true,
+        });
+      }
+      userInput.placeholder = imageMode
+        ? "Describe an image to generate…"
+        : "Type a message… or /image a sunset over Cape Town";
+      userInput.focus();
+    });
+  }
 
   const agentModeButton = document.getElementById("agent-mode-button");
   if (agentModeButton) {
@@ -2483,37 +2494,30 @@
         btn.classList.toggle("active", agentMode);
         btn.setAttribute("aria-pressed", agentMode ? "true" : "false");
       }
-      const mc = document.getElementById("mode-control");
-      if (mc) {
-        mc.querySelectorAll("[data-mode]").forEach(function (b) {
-          const active =
-            (agentMode && b.getAttribute("data-mode") === "agent") ||
-            (!agentMode && b.getAttribute("data-mode") === "chat");
-          b.classList.toggle("active", active);
-        });
-      }
       if (
         window.ChatreComposer &&
         window.ChatreComposer.setMode &&
         !window.ChatreComposer._syncingMode
       ) {
-        const want = agentMode ? "agent" : "chat";
-        const cur = window.ChatreComposer.getMode && window.ChatreComposer.getMode();
-        // Only sync when toggling legacy agent button — don't overwrite browse/desktop/code
-        if (
-          (agentMode && cur === "chat") ||
-          (!agentMode && cur && cur !== "chat")
-        ) {
-          if (!agentMode) {
-            window.ChatreComposer._syncingMode = true;
-            window.ChatreComposer.setMode("chat", { skipAgent: true });
-            window.ChatreComposer._syncingMode = false;
-          } else if (cur === "chat") {
-            window.ChatreComposer._syncingMode = true;
-            window.ChatreComposer.setMode("agent", { skipAgent: true });
-            window.ChatreComposer._syncingMode = false;
-          }
+        const cur =
+          window.ChatreComposer.getMode && window.ChatreComposer.getMode();
+        if (!agentMode && cur && cur !== "chat" && cur !== "image") {
+          window.ChatreComposer._syncingMode = true;
+          window.ChatreComposer.setMode("chat", { skipAgent: true });
+          window.ChatreComposer._syncingMode = false;
+        } else if (agentMode && cur === "chat") {
+          window.ChatreComposer._syncingMode = true;
+          window.ChatreComposer.setMode("agent", { skipAgent: true });
+          window.ChatreComposer._syncingMode = false;
         }
+      }
+    },
+    setImageMode: function (on) {
+      imageMode = !!on;
+      const btn = document.getElementById("image-mode-button");
+      if (btn) {
+        btn.classList.toggle("active", imageMode);
+        btn.setAttribute("aria-pressed", imageMode ? "true" : "false");
       }
     },
     formatToolParams: formatToolParams,

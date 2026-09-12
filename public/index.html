@@ -117,15 +117,18 @@
         color: var(--text-light);
       }
 
-      #model-select {
-        flex: 1;
-        min-width: 180px;
+      #model-select,
+      .toolbar-model {
+        flex: 0 1 220px;
+        min-width: 140px;
+        max-width: 280px;
         background: #0a0a10;
         color: var(--text-color);
         border: 1px solid var(--border-color);
         border-radius: 8px;
-        padding: 0.45rem 0.6rem;
+        padding: 0.4rem 0.55rem;
         font: inherit;
+        font-size: 0.85rem;
       }
 
       .hint {
@@ -1883,31 +1886,189 @@
       /* ── Slim toolbar + settings ─────────────────────────────── */
       .toolbar-slim .api-key-label,
       .toolbar-slim #api-key-input,
-      .toolbar-slim label[for="model-select"],
-      .toolbar-slim #model-select,
-      .toolbar-slim #usage-meter { display: none !important; }
+      .toolbar-slim label[for="model-select"] { display: none !important; }
+
+      #app-toolbar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin-bottom: 0.45rem;
+      }
+      .toolbar-primary {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.45rem;
+        width: 100%;
+      }
+      .toolbar-model {
+        flex: 0 1 220px;
+        min-width: 140px;
+        max-width: 280px;
+        background: #0a0a10;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.4rem 0.55rem;
+        font: inherit;
+        font-size: 0.85rem;
+      }
+      .toolbar-panels {
+        display: inline-flex;
+        gap: 0.25rem;
+        align-items: center;
+      }
+      .toolbar-icon-btn {
+        min-height: 34px;
+        padding: 0.35rem 0.55rem;
+      }
+      .toolbar-icon-btn.active {
+        border-color: rgba(76, 184, 232, 0.55);
+        background: rgba(76, 184, 232, 0.12);
+        color: var(--text-color);
+      }
       .toolbar-status-pills {
         display: inline-flex;
         gap: 0.35rem;
         align-items: center;
       }
+      .toolbar-pill,
+      button.api-status {
+        cursor: pointer;
+        font: inherit;
+        appearance: none;
+        border: 1px solid var(--border-color);
+      }
+      button.api-status:hover,
+      #usage-meter:hover {
+        filter: brightness(1.12);
+      }
+      #usage-meter {
+        display: inline-flex;
+        align-items: center;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.75rem;
+        padding: 0.25rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.04);
+        color: var(--text-light);
+        border: 1px solid var(--border-color);
+        cursor: pointer;
+      }
+      #usage-meter[hidden] { display: none !important; }
+      .toolbar-spacer { flex: 1 1 8px; min-width: 4px; }
 
-      /* ── Run command center ──────────────────────────────────── */
+      .toolbar-account {
+        position: relative;
+      }
+      .toolbar-account > summary {
+        list-style: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.55rem 0.25rem 0.3rem;
+        border: 1px solid var(--border-color);
+        border-radius: 999px;
+        color: var(--text-light);
+        font-size: 0.82rem;
+      }
+      .toolbar-account > summary::-webkit-details-marker { display: none; }
+      .account-avatar {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #1c2438;
+        color: #cfe6f8;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+      .account-avatar.signed-in {
+        background: rgba(76, 184, 120, 0.25);
+        color: #b8f0c8;
+      }
+      .account-menu-panel {
+        position: absolute;
+        right: 0;
+        top: 110%;
+        z-index: 45;
+        min-width: 210px;
+        background: #0c0c12;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+      }
+      .account-menu-panel .account-email {
+        font-size: 0.78rem;
+        color: var(--text-light);
+        padding: 0.2rem 0.35rem 0.45rem;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 0.15rem;
+        word-break: break-all;
+      }
+      .account-menu-panel .btn {
+        justify-content: flex-start;
+        width: 100%;
+      }
+
+      #toolbar-overflow { display: none; }
+
+      /* Run bar lives under toolbar primary row */
       #run-center {
         display: none;
         align-items: center;
         gap: 0.75rem;
         flex-wrap: wrap;
-        padding: 0.55rem 0.85rem;
-        margin-bottom: 0.55rem;
+        padding: 0.45rem 0.7rem;
+        margin: 0;
         border: 1px solid var(--border-color);
         border-radius: 10px;
         background: linear-gradient(180deg, rgba(28, 32, 52, 0.95), rgba(14, 16, 28, 0.92));
         position: relative;
         z-index: 35;
         flex-shrink: 0;
+        width: 100%;
       }
       #run-center.active { display: flex; }
+
+      /* Budget folded into run center — keep bar for legacy updates but hide */
+      #budget-bar { display: none !important; }
+
+      .header-tagline { margin: 0; color: var(--text-light); font-size: 0.92rem; }
+
+      @media (max-width: 900px) {
+        .header-tagline { display: none; }
+        .toolbar-model { flex: 1 1 120px; max-width: none; }
+        .toolbar-panels .ui-label,
+        #settings-open .ui-label,
+        .account-label { display: none; }
+        #toolbar-overflow { display: inline-flex; }
+        .toolbar-more { display: none; }
+        .toolbar-more.force-open,
+        .toolbar-more[open] { display: block; }
+        .panel-toggle-bar { display: none !important; }
+      }
+      @media (max-width: 560px) {
+        .toolbar-status-pills .api-status {
+          font-size: 0.7rem;
+          padding: 0.2rem 0.45rem;
+        }
+        #usage-meter { max-width: 120px; }
+      }
+
+      /* legacy mode control removed from chrome */
+      .mode-control,
+      .legacy-mode-btns { display: none !important; }
       .run-center-main { flex: 1; min-width: 160px; }
       .run-center-goal {
         font-weight: 600;
@@ -2373,75 +2534,113 @@
     <div class="spectrum-strip"></div>
     <header>
       <h1><i data-lucide="zap" style="width:1.1em;height:1.1em;vertical-align:-0.12em" aria-hidden="true"></i> Chatre</h1>
-      <p>Re-EL AI ChatBot (Maerd Portal)</p>
+      <p class="header-tagline">Re-EL AI ChatBot (Maerd Portal)</p>
     </header>
 
-    <div class="toolbar toolbar-slim">
-      <div class="mode-control" id="mode-control" role="group" aria-label="Mode">
-        <button type="button" data-mode="chat" aria-pressed="false">Chat</button>
-        <button type="button" data-mode="agent" class="active" aria-pressed="true">Agent</button>
-        <button type="button" data-mode="image" aria-pressed="false">Image</button>
-      </div>
-      <span class="legacy-mode-btns">
-        <button type="button" class="btn" id="image-mode-button" title="Toggle image mode">Image</button>
-        <button type="button" class="btn active" id="agent-mode-button" title="Toggle agent mode" aria-pressed="true">Agent</button>
-      </span>
-      <button type="button" class="btn" id="agent-resume" hidden title="Resume interrupted agent run">
-        Resume
-      </button>
-      <div class="toolbar-status-pills">
-        <span id="api-status" class="api-status off" aria-live="polite">Local</span>
-        <span id="companion-status" class="api-status off" title="Desktop companion" aria-live="polite">Desktop off</span>
-      </div>
-      <span id="usage-meter" hidden></span>
-      <button type="button" class="btn" id="settings-open" data-tip="Settings" aria-label="Settings">
-        <i data-lucide="settings" style="width:15px;height:15px" aria-hidden="true"></i>
-        <span class="ui-label">Settings</span>
-      </button>
-      <details class="toolbar-more">
-        <summary>More</summary>
-        <div class="more-menu">
-          <button type="button" class="btn" id="terminal-toggle">Terminal</button>
-          <button type="button" class="btn" id="toggle-threads">Threads</button>
-          <button type="button" class="btn" id="toggle-files">Files</button>
-          <button type="button" class="btn" id="toggle-browser">Browser</button>
-          <button type="button" class="btn" id="onboard-replay" data-onboard-replay>Tour</button>
-        </div>
-      </details>
-      <!-- kept in DOM; moved into settings by ux.js -->
-      <label for="model-select" class="api-key-label">Model</label>
-      <select id="model-select" aria-label="Model">
-        <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">
-          Llama 3.3 70B (default)
-        </option>
-        <option value="@cf/meta/llama-3.1-8b-instruct-fp8-fast">
-          Llama 3.1 8B Fast
-        </option>
-        <option value="@cf/meta/llama-3.1-8b-instruct">Llama 3.1 8B</option>
-        <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B</option>
-      </select>
-      <label for="api-key-input" class="api-key-label">API key</label>
-      <input
-        id="api-key-input"
-        type="password"
-        autocomplete="off"
-        placeholder="CHATRE_API_TOKEN"
-        title="Same value as Vercel CHATRE_API_TOKEN"
-      />
-    </div>
+    <div class="toolbar toolbar-slim" id="app-toolbar">
+      <div class="toolbar-primary">
+        <label for="model-select" class="api-key-label">Model</label>
+        <select id="model-select" class="toolbar-model" aria-label="Model">
+          <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">
+            Llama 3.3 70B (default)
+          </option>
+          <option value="@cf/meta/llama-3.1-8b-instruct-fp8-fast">
+            Llama 3.1 8B Fast
+          </option>
+          <option value="@cf/meta/llama-3.1-8b-instruct">Llama 3.1 8B</option>
+          <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B</option>
+        </select>
 
-    <div id="run-center" hidden aria-live="polite">
-      <div class="run-center-main">
-        <div class="run-center-goal" id="run-center-goal">Agent run</div>
-        <div class="run-center-step" id="run-center-step">Starting…</div>
+        <div class="toolbar-panels" role="group" aria-label="Panels">
+          <button type="button" class="btn toolbar-icon-btn" id="toggle-threads" data-tip="Threads" aria-pressed="false">
+            <i data-lucide="messages-square" style="width:15px;height:15px" aria-hidden="true"></i>
+            <span class="ui-label">Threads</span>
+          </button>
+          <button type="button" class="btn toolbar-icon-btn" id="toggle-files" data-tip="Files" aria-pressed="false">
+            <i data-lucide="folder" style="width:15px;height:15px" aria-hidden="true"></i>
+            <span class="ui-label">Files</span>
+          </button>
+          <button type="button" class="btn toolbar-icon-btn" id="toggle-browser" data-tip="Browser" aria-pressed="false">
+            <i data-lucide="globe" style="width:15px;height:15px" aria-hidden="true"></i>
+            <span class="ui-label">Browser</span>
+          </button>
+          <button type="button" class="btn toolbar-icon-btn" id="terminal-toggle" data-tip="Terminal" aria-pressed="false">
+            <i data-lucide="terminal" style="width:15px;height:15px" aria-hidden="true"></i>
+            <span class="ui-label">Terminal</span>
+          </button>
+        </div>
+
+        <div class="toolbar-status-pills">
+          <button type="button" id="api-status" class="api-status off toolbar-pill" aria-live="polite" title="Connection status">Local</button>
+          <button type="button" id="companion-status" class="api-status off toolbar-pill" title="Desktop companion" aria-live="polite">Desktop off</button>
+          <button type="button" id="usage-meter" class="toolbar-pill" hidden title="Usage"></button>
+        </div>
+
+        <button type="button" class="btn" id="agent-resume" hidden title="Resume interrupted agent run">
+          Resume
+        </button>
+
+        <span class="toolbar-spacer" aria-hidden="true"></span>
+
+        <details class="toolbar-account" id="account-menu">
+          <summary id="account-menu-summary" data-tip="Account">
+            <span class="account-avatar" id="account-menu-avatar">?</span>
+            <span class="account-label">Account</span>
+          </summary>
+          <div class="account-menu-panel">
+            <div id="account-menu-signed-in" hidden>
+              <div class="account-email" id="account-menu-email"></div>
+              <button type="button" class="btn" id="account-open-settings">Settings</button>
+              <button type="button" class="btn" id="account-open-byok">BYOK keys</button>
+              <button type="button" class="btn" id="account-sign-out">Sign out</button>
+            </div>
+            <div id="account-menu-signed-out">
+              <button type="button" class="btn" id="account-sign-in">Sign in</button>
+              <button type="button" class="btn" id="account-open-settings-guest">Settings</button>
+            </div>
+          </div>
+        </details>
+
+        <button type="button" class="btn toolbar-icon-btn" id="settings-open" data-tip="Settings" aria-label="Settings">
+          <i data-lucide="settings" style="width:15px;height:15px" aria-hidden="true"></i>
+          <span class="ui-label">Settings</span>
+        </button>
+
+        <button type="button" class="btn toolbar-icon-btn" id="toolbar-overflow" aria-label="More" data-tip="More">
+          <i data-lucide="ellipsis" style="width:15px;height:15px" aria-hidden="true"></i>
+        </button>
+
+        <details class="toolbar-more">
+          <summary>More</summary>
+          <div class="more-menu">
+            <button type="button" class="btn" id="onboard-replay" data-onboard-replay>Tour</button>
+          </div>
+        </details>
+
+        <!-- kept in DOM; API key moved into settings by ux.js -->
+        <label for="api-key-input" class="api-key-label">API key</label>
+        <input
+          id="api-key-input"
+          type="password"
+          autocomplete="off"
+          placeholder="CHATRE_API_TOKEN"
+          title="Same value as Vercel CHATRE_API_TOKEN"
+        />
       </div>
-      <div class="run-center-meta">
-        <span class="run-center-phase" id="run-center-phase">analyze</span>
-        <span id="run-center-budget"></span>
-      </div>
-      <div class="run-center-actions">
-        <button type="button" class="btn" id="run-center-resume" hidden>Resume</button>
-        <button type="button" class="btn" id="run-center-stop">Stop</button>
+
+      <div id="run-center" hidden aria-live="polite">
+        <div class="run-center-main">
+          <div class="run-center-goal" id="run-center-goal">Agent run</div>
+          <div class="run-center-step" id="run-center-step">Starting…</div>
+        </div>
+        <div class="run-center-meta">
+          <span class="run-center-phase" id="run-center-phase">analyze</span>
+          <span id="run-center-budget"></span>
+        </div>
+        <div class="run-center-actions">
+          <button type="button" class="btn" id="run-center-resume" hidden>Resume</button>
+          <button type="button" class="btn" id="run-center-stop">Stop</button>
+        </div>
       </div>
     </div>
 
@@ -2621,8 +2820,11 @@
         </div>
         <div class="settings-section">
           <h3>Model</h3>
-          <div id="settings-model-slot"></div>
-          <p style="margin:0;font-size:0.75rem;color:var(--text-light)">Chatre models are default. BYOK models appear after you save a provider key.</p>
+          <div id="settings-model-slot">
+            <p style="margin:0;font-size:0.85rem;color:var(--text-light)">Pick the model from the toolbar. BYOK models appear there after you save a provider key.</p>
+            <p id="settings-model-current" style="margin:0.4rem 0 0;font-size:0.9rem"></p>
+          </div>
+          <p style="margin:0.4rem 0 0;font-size:0.75rem;color:var(--text-light)">Chatre models are default.</p>
         </div>
         <div class="settings-section">
           <h3>Bring your own key</h3>
@@ -2755,6 +2957,7 @@
     <script src="/ui-adv.js"></script>
     <script src="/ux.js"></script>
     <script src="/composer.js"></script>
+    <script src="/toolbar.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
     <script src="/panels.js"></script>

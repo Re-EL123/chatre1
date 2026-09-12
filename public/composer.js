@@ -46,6 +46,15 @@
       browser: false,
       desktop: false,
     },
+    {
+      id: "image",
+      label: "Image",
+      placeholder: "Describe an image to generate…",
+      agent: false,
+      browser: false,
+      desktop: false,
+      image: true,
+    },
   ];
 
   var state = {
@@ -131,6 +140,9 @@
       var m = modeObj();
       if (window.ChatreUI && window.ChatreUI.setAgentMode) {
         window.ChatreUI.setAgentMode(!!m.agent);
+      }
+      if (window.ChatreUI && window.ChatreUI.setImageMode) {
+        window.ChatreUI.setImageMode(!!m.image || state.mode === "image");
       }
     }
   }
@@ -625,6 +637,14 @@
         },
       },
       {
+        cat: "mode",
+        cmd: "/mode image",
+        desc: "Switch to Image mode",
+        run: function () {
+          setMode("image");
+        },
+      },
+      {
         cat: "run",
         cmd: "/clear",
         desc: "Clear chat",
@@ -936,6 +956,10 @@
     return !!modeObj().agent;
   }
 
+  function wantsImageFromMode() {
+    return state.mode === "image" || !!(modeObj().image);
+  }
+
   function init() {
     loadPrefs();
     paintModes();
@@ -1213,6 +1237,7 @@
     paintChips: paintChips,
     addAttachment: addAttachment,
     wantsAgentFromMode: wantsAgentFromMode,
+    wantsImageFromMode: wantsImageFromMode,
     openPalette: openPalette,
     state: state,
   };
