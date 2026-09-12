@@ -282,7 +282,10 @@
             if (el) {
               el.textContent =
                 r && r.ok
-                  ? "Test OK: " + provider + (r.sample ? " → " + r.sample : "")
+                  ? "Test OK: " +
+                    provider +
+                    (r.sample ? " → " + r.sample : "") +
+                    (r.keyPreview ? " [" + r.keyPreview + "]" : "")
                   : "Test failed: " + ((r && r.error) || "unknown");
             }
           })

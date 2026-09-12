@@ -3200,14 +3200,24 @@
             <option value="openai">OpenAI</option>
             <option value="google">Google Gemini</option>
           </select>
-          <input id="byok-key" type="password" placeholder="Provider API key" autocomplete="off" />
+          <input
+            id="byok-key"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            placeholder="Paste full key (OpenRouter: sk-or-v1-…)"
+          />
           <div class="onboard-actions" style="margin-top:0.35rem">
             <button type="button" class="btn" id="byok-save">Save key</button>
             <button type="button" class="btn" id="byok-test">Test connection</button>
             <button type="button" class="btn" id="byok-delete">Remove</button>
           </div>
           <p style="margin:0.35rem 0 0;font-size:0.75rem;color:var(--text-light)">
-            Match the provider dropdown to the key type (OpenRouter keys start with <code>sk-or-</code>).
+            Match the provider dropdown to the key type. OpenRouter keys are long
+            <code>sk-or-v1-…</code> values from
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.
             Test uses the field if filled, otherwise the last saved key.
           </p>
           <p id="byok-status" style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-light)"></p>
