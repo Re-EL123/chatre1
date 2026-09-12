@@ -26,9 +26,9 @@
       steps: [
         "Outline sections and set todos.",
         "Write complete content with headings, lists, and examples.",
-        "For a PDF/report/guide request, use create_pdf(title, content) to generate a downloadable PDF.",
+        "For a PDF/report/guide/book request, call create_pdf(title, content) with the FULL text — never invent Python/fpdf, /mnt/data paths, or fake download links.",
         "Use create_document to save markdown under /home/user/documents/.",
-        "Offer a short summary of what was written.",
+        "Only claim a file exists after the tool returns ok with a path; tell the user to open Files.",
       ],
     },
     git: {

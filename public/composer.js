@@ -320,8 +320,27 @@
   function enrichMessage(message) {
     var bits = [];
     var f = composerFlags();
+    var text = String(message || "");
+    var wantsPdf =
+      /\bpdf\b/i.test(text) ||
+      /\b(report|guide|manual|essay|book|confessions?)\b/i.test(text);
+    var wantsDoc =
+      wantsPdf ||
+      /\b(document|readme|markdown|write.?up|spec)\b/i.test(text);
     if (f.mode === "code") {
-      bits.push("[Prefer coding tools: explore, patch_file, execute_command, verify.]");
+      if (wantsPdf) {
+        bits.push(
+          "[Document task: call create_pdf(title, content) with the full text. Do not invent Python/fpdf or /mnt/data paths. Do not claim a file exists without a tool result.]",
+        );
+      } else if (wantsDoc) {
+        bits.push(
+          "[Document task: prefer create_document or create_pdf. Do not dump code instead of writing a file.]",
+        );
+      } else {
+        bits.push(
+          "[Prefer coding tools: explore, patch_file, execute_command, verify.]",
+        );
+      }
     }
     if (f.useBrowser) {
       bits.push("[Use the cloud browser tools for this task.]");
