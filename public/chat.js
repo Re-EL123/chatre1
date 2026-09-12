@@ -1011,6 +1011,12 @@
     }, 200);
   });
 
+  // Stop only while a run is active — never idle.
+  if (stopButton) {
+    stopButton.classList.remove("visible");
+    stopButton.hidden = true;
+  }
+
   sendButton.addEventListener("click", function () {
     const primary = sendButton.getAttribute("data-primary") || "send";
     if (primary === "resume") {
