@@ -35,29 +35,42 @@
         );
       })
       .join("");
+
     wrap.innerHTML =
-      "<strong>Plan</strong>" +
+      '<header class="plan-card-head">' +
+      '<div class="plan-card-title">Review plan</div>' +
+      '<p class="plan-meta"></p>' +
+      "</header>" +
       (tplOptions
-        ? '<label class="plan-label">Template</label><select class="plan-template"><option value="">(current)</option>' +
+        ? '<div class="plan-field">' +
+          '<label class="plan-label">Template</label>' +
+          '<select class="plan-template">' +
+          '<option value="">Keep current</option>' +
           tplOptions +
-          "</select>"
+          "</select></div>"
         : "") +
-      '<div class="plan-meta">' +
-      escapeHtml(b.task_type || "mixed") +
-      (b.goal ? " — " + escapeHtml(String(b.goal).slice(0, 120)) : "") +
-      "</div>" +
+      '<div class="plan-field">' +
       '<label class="plan-label">Understanding</label>' +
-      '<textarea class="plan-understanding" rows="2"></textarea>' +
+      '<textarea class="plan-understanding" rows="2" placeholder="What the agent understood…"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
       '<label class="plan-label">Executor brief</label>' +
-      '<textarea class="plan-brief" rows="4"></textarea>' +
+      '<textarea class="plan-brief" rows="4" placeholder="How it will execute…"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<div class="plan-label-row">' +
       '<label class="plan-label">Checklist</label>' +
-      '<ul class="plan-checklist"></ul>' +
       '<button type="button" class="btn plan-check-add">Add step</button>' +
-      '<label class="plan-label">Success criteria (one per line)</label>' +
-      '<textarea class="plan-criteria" rows="2"></textarea>' +
+      "</div>" +
+      '<ul class="plan-checklist"></ul>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Success criteria</label>' +
+      '<textarea class="plan-criteria" rows="2" placeholder="One criterion per line"></textarea>' +
+      "</div>" +
       '<div class="plan-actions">' +
-      '<button type="button" class="btn plan-continue">Continue</button>' +
       '<button type="button" class="btn plan-cancel">Cancel</button>' +
+      '<button type="button" class="btn plan-continue">Approve & continue</button>' +
       "</div>";
 
     function fill(next) {
@@ -68,9 +81,13 @@
       ).join("\n");
       const meta = wrap.querySelector(".plan-meta");
       if (meta) {
-        meta.textContent =
-          (next.task_type || "mixed") +
-          (next.goal ? " — " + String(next.goal).slice(0, 120) : "");
+        const type = next.task_type || "mixed";
+        const goal = next.goal ? String(next.goal).slice(0, 140) : "";
+        meta.innerHTML =
+          '<span class="plan-type">' +
+          escapeHtml(type) +
+          "</span>" +
+          (goal ? '<span class="plan-goal">' + escapeHtml(goal) + "</span>" : "");
       }
     }
     fill(b);
@@ -103,14 +120,25 @@
       li.innerHTML =
         '<input type="checkbox" ' +
         (done ? "checked " : "") +
-        '/>' +
-        '<textarea rows="1"></textarea>';
+        "/>" +
+        '<textarea rows="1" placeholder="Step…"></textarea>' +
+        '<button type="button" class="plan-check-remove" aria-label="Remove step">×</button>';
       li.querySelector("textarea").value = text || "";
       const box = li.querySelector('input[type="checkbox"]');
       box.addEventListener("change", function () {
         li.classList.toggle("done", box.checked);
       });
+      li.querySelector(".plan-check-remove").addEventListener("click", function () {
+        li.remove();
+      });
       list.appendChild(li);
+      const ta = li.querySelector("textarea");
+      ta.style.height = "auto";
+      ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+      ta.addEventListener("input", function () {
+        ta.style.height = "auto";
+        ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+      });
     }
     stepsFromBriefing(b).forEach(function (s) {
       addCheckItem(s, false);
@@ -119,15 +147,18 @@
       addCheckItem("", false);
     });
     wrap.__collectSteps = function () {
-      return Array.from(list.querySelectorAll(".plan-check-item")).map(function (li) {
-        return {
-          text: li.querySelector("textarea").value.trim(),
-          done: li.querySelector('input[type="checkbox"]').checked,
-        };
-      }).filter(function (s) { return s.text; });
+      return Array.from(list.querySelectorAll(".plan-check-item"))
+        .map(function (li) {
+          return {
+            text: li.querySelector("textarea").value.trim(),
+            done: li.querySelector('input[type="checkbox"]').checked,
+          };
+        })
+        .filter(function (s) {
+          return s.text;
+        });
     };
 
-    // Progress ticks from agent tool events
     wrap.markStepProgress = function (hint) {
       const items = Array.from(list.querySelectorAll(".plan-check-item"));
       const open = items.find(function (li) {
@@ -156,6 +187,10 @@
         if (seeded) {
           Object.assign(b, seeded);
           fill(seeded);
+          list.innerHTML = "";
+          stepsFromBriefing(seeded).forEach(function (s) {
+            addCheckItem(s, false);
+          });
         }
       });
     }
@@ -208,14 +243,14 @@
       const row = document.createElement("div");
       row.className = "confirm-card";
       row.innerHTML =
-        "<p>" +
+        '<p class="confirm-q">' +
         escapeHtml(question) +
         "</p>" +
         '<div class="plan-actions">' +
+        '<button type="button" class="btn confirm-no">Deny</button>' +
         '<button type="button" class="btn confirm-yes">' +
         escapeHtml(action || "Approve") +
         "</button>" +
-        '<button type="button" class="btn confirm-no">Deny</button>' +
         "</div>";
       row.querySelector(".confirm-yes").addEventListener("click", function () {
         if (typeof onApprove === "function") onApprove(action, question);
@@ -231,10 +266,7 @@
   }
 
   function stripConfirmationTags(text) {
-    return String(text || "").replace(
-      /<confirmation\b[^>]*\/?>/gi,
-      "",
-    );
+    return String(text || "").replace(/<confirmation\b[^>]*\/?>/gi, "");
   }
 
   window.ChatrePlanUI = {
