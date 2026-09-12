@@ -548,6 +548,16 @@
       dots.forEach(function (d, i) {
         d.classList.toggle("active", i + 1 === step);
       });
+      if (step === 2 && window.ChatrePwa && window.ChatrePwa.detectPlatform) {
+        var info = window.ChatrePwa.detectPlatform();
+        var blurb = $("onboard-pwa-blurb");
+        if (blurb) {
+          blurb.textContent =
+            "Detected " +
+            info.label +
+            ". Install the app for this device and allow mic, notifications, and clipboard so tasks can finish.";
+        }
+      }
       if (kit()) kit().refreshIcons(host);
     }
     paint();
@@ -563,13 +573,33 @@
       }
       var act = t.getAttribute("data-onboard-action");
       if (act === "next") {
-        step = Math.min(3, step + 1);
+        step = Math.min(4, step + 1);
         paint();
       } else if (act === "back") {
         step = Math.max(1, step - 1);
         paint();
       } else if (act === "focus-key" || act === "open-auth") {
         openAuthGate({ tab: "signin" });
+      } else if (act === "pwa-install") {
+        if (window.ChatrePwa && window.ChatrePwa.promptInstall) {
+          window.ChatrePwa.promptInstall();
+        }
+      } else if (act === "pwa-perms") {
+        if (window.ChatrePwa && window.ChatrePwa.requestNeededPermissions) {
+          window.ChatrePwa.requestNeededPermissions({}).then(function (r) {
+            var ok = r && Object.keys(r).every(function (k) {
+              return r[k] && r[k].ok !== false;
+            });
+            if (kit()) {
+              kit().toast(
+                ok
+                  ? "Permissions granted"
+                  : "Some permissions blocked — you can retry in Settings",
+                ok ? "success" : "error",
+              );
+            }
+          });
+        }
       } else if (act === "copy-companion") {
         var cmd =
           "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN npm run companion:start";

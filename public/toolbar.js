@@ -187,6 +187,17 @@
         openSettingsFocus("#byok-key");
       });
     }
+    var pwaBtn = $("account-open-pwa");
+    if (pwaBtn) {
+      pwaBtn.addEventListener("click", function () {
+        closeAccount();
+        if (window.ChatrePwa && window.ChatrePwa.openInstallPanel) {
+          window.ChatrePwa.openInstallPanel(true);
+        } else {
+          openSettingsFocus("#settings-pwa-section");
+        }
+      });
+    }
     var signInBtn = $("account-sign-in");
     if (signInBtn) {
       signInBtn.addEventListener("click", function () {

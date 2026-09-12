@@ -1017,37 +1017,59 @@
       if (btn) btn.classList.remove("active");
       return;
     }
-    var rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = "en-US";
-    state.recognition = rec;
-    state.listening = true;
-    if (btn) btn.classList.add("active");
-    rec.onresult = function (ev) {
-      var input = $("user-input");
-      if (!input) return;
-      var transcript = "";
-      for (var i = ev.resultIndex; i < ev.results.length; i++) {
-        transcript += ev.results[i][0].transcript;
+
+    function startRec() {
+      var rec = new SR();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = "en-US";
+      state.recognition = rec;
+      state.listening = true;
+      if (btn) btn.classList.add("active");
+      rec.onresult = function (ev) {
+        var input = $("user-input");
+        if (!input) return;
+        var transcript = "";
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          transcript += ev.results[i][0].transcript;
+        }
+        input.value =
+          (input.value ? input.value.replace(/\s+$/, "") + " " : "") +
+          transcript.trim();
+        input.dispatchEvent(new Event("input"));
+      };
+      rec.onerror = function () {
+        state.listening = false;
+        if (btn) btn.classList.remove("active");
+      };
+      rec.onend = function () {
+        state.listening = false;
+        if (btn) btn.classList.remove("active");
+      };
+      try {
+        rec.start();
+      } catch (e) {
+        state.listening = false;
+        if (btn) btn.classList.remove("active");
       }
-      input.value = (input.value ? input.value.replace(/\s+$/, "") + " " : "") + transcript.trim();
-      input.dispatchEvent(new Event("input"));
-    };
-    rec.onerror = function () {
-      state.listening = false;
-      if (btn) btn.classList.remove("active");
-    };
-    rec.onend = function () {
-      state.listening = false;
-      if (btn) btn.classList.remove("active");
-    };
-    try {
-      rec.start();
-    } catch (e) {
-      state.listening = false;
-      if (btn) btn.classList.remove("active");
     }
+
+    if (window.ChatrePwa && window.ChatrePwa.requestMicrophone) {
+      window.ChatrePwa.requestMicrophone().then(function (r) {
+        if (!r || !r.ok) {
+          if (kit()) {
+            kit().toast(
+              (r && r.error) || "Microphone permission required for voice",
+              "error",
+            );
+          }
+          return;
+        }
+        startRec();
+      });
+      return;
+    }
+    startRec();
   }
 
   // ── Edit last ──────────────────────────────────────────────────────

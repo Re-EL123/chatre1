@@ -1201,6 +1201,19 @@
   async function runAgentTask(message, opts) {
     opts = opts || {};
     setBusy(true, "agent");
+    if (
+      window.ChatrePwa &&
+      !localStorage.getItem("chatre_perms_asked") &&
+      localStorage.getItem("chatre_perm_agent_nudge") !== "1"
+    ) {
+      localStorage.setItem("chatre_perm_agent_nudge", "1");
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast(
+          "Tip: Install the app and allow permissions in Settings for full agent capabilities",
+          "info",
+        );
+      }
+    }
     if (!opts.resumeMessages) {
       // Starting fresh (or a brand-new task): discard any stale resume state.
       window.__localResumeMessages = null;

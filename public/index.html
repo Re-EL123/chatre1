@@ -2,7 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#12122a" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Chatre" />
+    <meta name="application-name" content="Chatre" />
+    <meta name="description" content="Chatre — Re-EL AI chat, agents, and tools. Installable app with device-aware setup." />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>Chatre LLM | Maerd</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -2467,6 +2478,82 @@
       }
       .run-center-actions { display: flex; gap: 0.35rem; }
 
+      /* ── PWA install / permissions ───────────────────────────── */
+      #pwa-banner {
+        position: fixed;
+        left: 50%;
+        bottom: max(1rem, env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        z-index: 85;
+        width: min(440px, calc(100% - 1.5rem));
+        background: rgba(12, 12, 20, 0.96);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 0.85rem 1rem;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(10px);
+      }
+      #pwa-banner[hidden] { display: none !important; }
+      #pwa-banner h3 {
+        margin: 0 0 0.25rem;
+        font-size: 0.95rem;
+      }
+      #pwa-banner p {
+        margin: 0 0 0.65rem;
+        font-size: 0.8rem;
+        color: var(--text-light);
+      }
+      #pwa-banner .pwa-banner-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+      }
+      #pwa-install-guide {
+        margin: 0.4rem 0 0.75rem;
+        padding-left: 1.1rem;
+        font-size: 0.82rem;
+        color: var(--text-light);
+        line-height: 1.45;
+      }
+      #pwa-device-meta {
+        margin: 0.15rem 0 0;
+        font-size: 0.75rem;
+        color: var(--text-light);
+      }
+      .pwa-perm-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.45rem 0;
+        border-bottom: 1px solid rgba(42, 42, 50, 0.7);
+        font-size: 0.82rem;
+      }
+      .pwa-perm-row:last-child { border-bottom: 0; }
+      .pwa-perm-row span {
+        display: block;
+        color: var(--text-light);
+        font-size: 0.72rem;
+      }
+      .pwa-perm {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 0.15rem 0.4rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        color: var(--text-light);
+        flex-shrink: 0;
+      }
+      .pwa-perm.ok {
+        color: #8fd9a8;
+        border-color: rgba(143, 217, 168, 0.35);
+      }
+      .pwa-perm.bad {
+        color: #f0a0a0;
+        border-color: rgba(240, 160, 160, 0.35);
+      }
+
       /* ── Settings drawer ─────────────────────────────────────── */
       #settings-drawer {
         position: fixed;
@@ -3141,6 +3228,11 @@
           <button type="button" id="usage-meter" class="toolbar-pill" hidden title="Usage"></button>
         </div>
 
+        <button type="button" class="btn toolbar-icon-btn" id="pwa-install-toolbar" data-tip="Install app" title="Install Chatre">
+            <i data-lucide="download" style="width:15px;height:15px" aria-hidden="true"></i>
+            <span class="ui-label">Install</span>
+          </button>
+
         <button type="button" class="btn" id="agent-resume" hidden aria-hidden="true" title="Resume interrupted agent run">
           Resume
         </button>
@@ -3156,6 +3248,7 @@
             <div id="account-menu-signed-in" hidden>
               <div class="account-email" id="account-menu-email"></div>
               <button type="button" class="btn" id="account-open-settings">Settings</button>
+              <button type="button" class="btn" id="account-open-pwa">Install &amp; permissions</button>
               <button type="button" class="btn" id="account-open-byok">BYOK keys</button>
               <button type="button" class="btn" id="account-sign-out">Sign out</button>
             </div>
@@ -3434,6 +3527,21 @@
             Sign in as a user for normal workspaces. Optional admin users: set <code>CHATRE_ADMIN_EMAILS</code> on the API.
           </p>
         </div>
+        <div class="settings-section" id="settings-pwa-section">
+          <h3>Install &amp; permissions</h3>
+          <p id="pwa-device-meta" style="margin:0"></p>
+          <p id="pwa-install-title" style="margin:0.55rem 0 0;font-size:0.9rem;font-weight:600"></p>
+          <ol id="pwa-install-guide"></ol>
+          <div class="onboard-actions" style="margin-top:0.25rem">
+            <button type="button" class="btn" id="pwa-install-btn">Install Chatre</button>
+            <button type="button" class="btn" id="pwa-request-perms">Allow needed permissions</button>
+          </div>
+          <div id="pwa-perm-list" style="margin-top:0.75rem"></div>
+          <p style="margin:0.5rem 0 0;font-size:0.75rem;color:var(--text-light)">
+            Permissions let voice input, notifications, clipboard copy, and offline drafts work.
+            Desktop OS control still needs the optional companion (see setup tour).
+          </p>
+        </div>
         <div class="settings-section">
           <h3>Composer</h3>
           <label for="composer-enter-pref" style="font-size:0.8rem;color:var(--text-light)">Send key</label>
@@ -3482,6 +3590,7 @@
           <span class="onboard-dot active"></span>
           <span class="onboard-dot"></span>
           <span class="onboard-dot"></span>
+          <span class="onboard-dot"></span>
         </div>
         <div data-onboard-step="1">
           <h2>Create your account</h2>
@@ -3493,6 +3602,16 @@
           </div>
         </div>
         <div data-onboard-step="2" hidden>
+          <h2>Install &amp; permissions</h2>
+          <p id="onboard-pwa-blurb">We’ll detect your device and ask for mic, notifications, and clipboard so agents can finish tasks.</p>
+          <div class="onboard-actions">
+            <button type="button" class="btn" data-onboard-action="pwa-install">Install app</button>
+            <button type="button" class="btn" data-onboard-action="pwa-perms">Allow permissions</button>
+            <button type="button" class="btn" data-onboard-action="back">Back</button>
+            <button type="button" class="btn" data-onboard-action="next">Next</button>
+          </div>
+        </div>
+        <div data-onboard-step="3" hidden>
           <h2>Optional desktop</h2>
           <p>For local open/screenshot/clipboard tools, start the companion. Skip if you only need cloud browser.</p>
           <div class="onboard-actions">
@@ -3501,7 +3620,7 @@
             <button type="button" class="btn" data-onboard-action="next">Next</button>
           </div>
         </div>
-        <div data-onboard-step="3" hidden>
+        <div data-onboard-step="4" hidden>
           <h2>Try a task</h2>
           <p>Run a quick browser check: open example.com and read the heading.</p>
           <div class="onboard-actions">
@@ -3509,6 +3628,16 @@
             <button type="button" class="btn" data-onboard-action="finish">Finish</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="pwa-banner" hidden role="dialog" aria-label="Install Chatre">
+      <h3>Install Chatre</h3>
+      <p>Add the app for your device and allow permissions so voice, clipboard, and notifications work fully.</p>
+      <div class="pwa-banner-actions">
+        <button type="button" class="btn" id="pwa-banner-install">Install</button>
+        <button type="button" class="btn" id="pwa-banner-perms">Permissions</button>
+        <button type="button" class="btn" id="pwa-banner-dismiss">Not now</button>
       </div>
     </div>
 
@@ -3531,6 +3660,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <script src="/config.js"></script>
+    <script src="/pwa.js"></script>
     <script src="/auth.js"></script>
     <script src="/auth-screen.js"></script>
     <script src="/skills.js"></script>
