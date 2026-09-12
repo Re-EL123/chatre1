@@ -12,7 +12,9 @@
       steps: [
         "Explore the workspace (view_tree / list_directory / read_file) before writing.",
         "Create a plan and a todo list (todo set) with atomic tasks.",
-        "Implement one todo at a time with complete files — no placeholders.",
+        "Implement by calling write_file for EACH file under /home/user/projects/<slug>/ with FULL content — never Python open()/zipfile or chat-only dumps.",
+        "For UI/HTML/CSS/frontends, follow the Design skill (composition, brand, type, avoid AI-slop themes).",
+        "list_directory to confirm real paths; Files panel = downloadable — never invent Download links.",
         "Mark each todo done as you finish it.",
         "Verify with verify_project / execute_command / run_javascript / run_python.",
         "Write or update a README / document.",
@@ -26,9 +28,133 @@
       steps: [
         "Outline sections and set todos.",
         "Write complete content with headings, lists, and examples.",
+        "Apply Design skill: clear hierarchy, scannable sections, whitespace — no wall-of-text.",
         "For a PDF/report/guide/book request, call create_pdf(title, content) with the FULL text — never invent Python/fpdf, /mnt/data paths, or fake download links.",
         "Use create_document to save markdown under /home/user/documents/.",
         "Only claim a file exists after the tool returns ok with a path; tell the user to open Files.",
+      ],
+    },
+    design: {
+      name: "design",
+      title: "Design & visual craft",
+      summary:
+        "Process + taste for UI/HTML/docs: surface archetype first, then tokens, then craft.",
+      steps: [
+        "Name ONE surface before tokens: Monitor, Operate, Compare, Configure, Decide/Learn, Explore, or Command/Inspect. Hero+three-cards is Decide/Learn only.",
+        "Gather context: brand docs, repo theme/tokens, screenshots — read real files, not just the tree.",
+        "Choose one visual direction; define CSS variables early.",
+        "Brand first: product name is hero-level on branded surfaces.",
+        "One composition per first viewport; full-bleed heroes without overlay junk; default no cards.",
+        "Purposeful fonts (avoid Inter/Roboto/Arial defaults unless matching web_designs); atmospheric backgrounds.",
+        "Avoid AI-slop: purple-on-white, cream+terracotta serif, broadsheet, dark+glow+pill spam.",
+        "Accessible contrast, focus states, solid mobile + desktop.",
+        "For brand looks load web_designs; for DESIGN.md tokens use design_system.",
+        "Docs/PDFs: H1→H2 hierarchy, scannable sections — no wall-of-text.",
+      ],
+    },
+    web_designs: {
+      name: "web_designs",
+      title: "Popular web designs",
+      summary:
+        "Apply condensed Stripe/Linear/Vercel/… design tokens when matching a known look.",
+      steps: [
+        "Resolve style id (stripe, linear, vercel, notion, apple, framer, supabase, airbnb, spotify, resend, mintlify, raycast, figma, ibm, spacex).",
+        "use_skill name=web_designs with style=<id> (or rely on auto-matched template).",
+        "Paste fonts + CSS variables into the artifact; adapt layout to the brief.",
+        "Pair with design skill (surface archetype first).",
+        "write_file complete HTML under /home/user/projects/<slug>/.",
+        "Match visual language only — do not invent trademarked logos.",
+      ],
+    },
+    design_system: {
+      name: "design_system",
+      title: "DESIGN.md tokens",
+      summary: "Author DESIGN.md token specs agents can reuse across a project.",
+      steps: [
+        "Infer brand tone, accent, and typography (ask if missing).",
+        "write_file DESIGN.md with YAML tokens (name, colors, typography, components as sibling keys) + markdown rationale.",
+        "Use {colors.primary} references in components; quote hex and negative dimensions.",
+        "Optional theme.css :root export beside it.",
+        "Call out WCAG ~4.5:1 contrast for body text.",
+      ],
+    },
+    architecture_diagram: {
+      name: "architecture_diagram",
+      title: "Architecture diagrams",
+      summary: "Dark-themed standalone HTML+SVG system diagrams.",
+      steps: [
+        "Clarify components, edges, and groups.",
+        "write_file *-architecture.html under projects/ or documents/.",
+        "Dark canvas, grid, labeled nodes/arrows, legend — no external libs.",
+        "Confirm path; tell user to open from Files.",
+      ],
+    },
+    dogfood: {
+      name: "dogfood",
+      title: "Exploratory QA",
+      summary: "Browser dogfooding with evidence and a ranked bug report.",
+      steps: [
+        "Plan pages/flows with todos; create a dogfood output folder.",
+        "tabs_create → navigate → read_page/screenshot → browser_console after key steps.",
+        "Test forms (valid+invalid), nav, empty states, long content.",
+        "Record URL, steps, expected vs actual, severity, category.",
+        "create_document a severity-ranked report — only claim issues you observed.",
+      ],
+    },
+    grounded_citations: {
+      name: "grounded_citations",
+      title: "Grounded citations",
+      summary: "Cite only tool-backed sources with [web:N] / [screenshot:N].",
+      steps: [
+        "search_web / fetch_url before asserting outside facts.",
+        "Cite inline with exact tool ids; max 3 per sentence.",
+        "Append Sources from tool URLs only — never invent ids.",
+        "Mark unsourced high-stakes claims [unverified].",
+      ],
+    },
+    codebase_inspection: {
+      name: "codebase_inspection",
+      title: "Codebase inspection",
+      summary: "Map workspace layout, languages, and entrypoints before big edits.",
+      steps: [
+        "view_tree / list_directory on the project root.",
+        "find_files for manifests and entrypoints; read_file them.",
+        "search_code for key symbols/routes.",
+        "Summarize layout, languages, risks — read-only unless asked to edit.",
+      ],
+    },
+    spike: {
+      name: "spike",
+      title: "Spike / throwaway experiment",
+      summary: "Smallest disposable prototype to answer one unknown, then verdict.",
+      steps: [
+        "Decompose the unknown; research if knowable without building.",
+        "Build a tiny SPIKE under /home/user/projects/<slug>-spike/.",
+        "Write a verdict: works / doesn't / remaining unknowns.",
+        "Do not polish or merge unless the user promotes it.",
+      ],
+    },
+    simplify_code: {
+      name: "simplify_code",
+      title: "Simplify code",
+      summary: "Cleanup pass: reuse, quality, efficiency, altitude — not bug hunting.",
+      steps: [
+        "Inspect recent changes (git_status / read_file).",
+        "Review for duplication, clarity, waste, and wrong abstraction level.",
+        "patch_file surgical cleanups only.",
+        "verify_project / execute_command after edits.",
+      ],
+    },
+    tdd: {
+      name: "tdd",
+      title: "Test-driven development",
+      summary: "RED → GREEN → REFACTOR. Tests before production code.",
+      steps: [
+        "Write a failing test for the behavior first.",
+        "Confirm RED (the right failure).",
+        "Minimal implementation to pass; confirm GREEN.",
+        "Refactor with tests still green.",
+        "Bugs: failing repro test before the fix.",
       ],
     },
     git: {
@@ -44,13 +170,15 @@
     },
     debugging: {
       name: "debugging",
-      title: "Debugging",
-      summary: "Reproduce, diagnose, fix, and verify failures.",
+      title: "Systematic debugging",
+      summary: "Root cause before fixes: tight red loop, hypotheses, one change at a time.",
       steps: [
-        "Reproduce with execute_command / run_javascript / run_python.",
-        "Read related files and search_code for clues.",
-        "Apply a minimal fix, then re-verify.",
-        "Summarize root cause and fix.",
+        "Read full errors/stack traces; do not skip warnings.",
+        "Build a tight feedback loop (test/command) that is red on the bug.",
+        "Trace data flow to the source; check recent git changes.",
+        "Form ranked falsifiable hypotheses; change one variable.",
+        "Prefer a failing test then one root-cause fix; re-verify.",
+        "After 3 failed fixes: stop and question architecture with the user.",
       ],
     },
     research: {
@@ -212,7 +340,7 @@
     const t = String(text || "").toLowerCase();
     const found = new Set();
     if (
-      /\b(build|code|implement|scaffold|app|website|script|function|api|refactor|fix)\b/.test(
+      /\b(build|code|implement|scaffold|app|website|script|function|api|refactor|fix|game|html|css|javascript|\.js\b|\.html\b|\.css\b|canvas|react|vue|svelte|typescript|\.ts\b|frontend|webpage|web page)\b/.test(
         t,
       )
     ) {
@@ -220,6 +348,80 @@
     }
     if (/\b(document|readme|markdown|docs|write.?up|spec|pdf|report|guide|manual|essay|proposal|slide|book)\b/.test(t)) {
       found.add("documents");
+    }
+    if (
+      /\b(design|ui|ux|visual|layout|brand(ing)?|theme|aesthetic|typography|palette|style.?guide|mockup|wireframe|landing.?page|hero|look.?and.?feel|frontend|stylesheet|tailwind|css\b)\b/.test(
+        t,
+      )
+    ) {
+      found.add("design");
+    }
+    if (
+      /\b(design\.md|designmd|design tokens|token spec|dtcg|wcag.*(palette|contrast)|tailwind theme)\b/.test(
+        t,
+      )
+    ) {
+      found.add("design_system");
+    }
+    if (
+      (window.ChatreWebDesigns &&
+        window.ChatreWebDesigns.resolveFromText &&
+        window.ChatreWebDesigns.resolveFromText(t)) ||
+      /\b(like (stripe|linear|vercel|notion|apple|framer|supabase|airbnb|spotify|resend|mintlify|raycast|figma|ibm|spacex)|popular web design|design system catalog)\b/.test(
+        t,
+      )
+    ) {
+      found.add("web_designs");
+      found.add("design");
+    }
+    if (
+      /\b(architecture diagram|system diagram|infra diagram|svg diagram|service map|cloud diagram)\b/.test(
+        t,
+      )
+    ) {
+      found.add("architecture_diagram");
+    }
+    if (
+      /\b(dogfood|exploratory qa|qa (the |this )?site|bug report|find bugs|usability test)\b/.test(
+        t,
+      )
+    ) {
+      found.add("dogfood");
+    }
+    if (
+      /\b(cite sources|grounded|with citations|fact.?check|verifiable sources|sources?:)\b/.test(
+        t,
+      )
+    ) {
+      found.add("grounded_citations");
+    }
+    if (
+      /\b(inspect (the )?codebase|codebase size|lines of code|\bloc\b|language breakdown|map the (repo|codebase))\b/.test(
+        t,
+      )
+    ) {
+      found.add("codebase_inspection");
+    }
+    if (
+      /\b(spike|throwaway|proof of concept|\bpoc\b|feasibility|quick prototype|see if .+ works)\b/.test(
+        t,
+      )
+    ) {
+      found.add("spike");
+    }
+    if (
+      /\b(simplify|clean up (my |the )?code|reduce complexity|dedupe|dead code)\b/.test(
+        t,
+      )
+    ) {
+      found.add("simplify_code");
+    }
+    if (
+      /\b(tdd|test.?driven|red.?green.?refactor|write (the )?tests? first)\b/.test(
+        t,
+      )
+    ) {
+      found.add("tdd");
     }
     if (/\b(git|commit|push|repo|repository|version control)\b/.test(t)) {
       found.add("git");
@@ -297,6 +499,28 @@
       )
     ) {
       found.add("shell_debug");
+    }
+    if (
+      found.has("coding") &&
+      /\b(website|web.?app|landing|homepage|html|css|react|vue|svelte|ui|interface|dashboard|page|component|frontend)\b/.test(
+        t,
+      )
+    ) {
+      found.add("design");
+    }
+    if (
+      found.has("documents") &&
+      /\b(slide|deck|presentation|brochure|poster|newsletter|polished|beautiful|pretty|styled|visual|layout)\b/.test(
+        t,
+      )
+    ) {
+      found.add("design");
+    }
+    if (
+      (found.has("web_research") || found.has("research")) &&
+      /\b(report|brief|comparison|news|current state)\b/.test(t)
+    ) {
+      found.add("grounded_citations");
     }
     if (found.has("coding") && (found.has("documents") || found.has("git"))) {
       found.add("project");
@@ -403,7 +627,8 @@
       namesList.indexOf("computer") !== -1 ||
       namesList.indexOf("form_workflow") !== -1 ||
       namesList.indexOf("ops_debug") !== -1 ||
-      namesList.indexOf("web_research") !== -1
+      namesList.indexOf("web_research") !== -1 ||
+      namesList.indexOf("dogfood") !== -1
     ) {
       list.push(...BROWSER_CONTROL_TOOLS);
       list.push(
@@ -444,16 +669,30 @@
     return SKILLS[key] || null;
   }
 
-  function formatSkill(skill) {
+  function formatSkill(skill, params) {
     if (!skill) return "(unknown skill)";
-    return (
+    var body =
       "# Skill: " +
       skill.title +
       "\n" +
       skill.summary +
       "\n\nFollow these steps:\n" +
-      skill.steps.map((step, i) => i + 1 + ". " + step).join("\n")
-    );
+      skill.steps.map((step, i) => i + 1 + ". " + step).join("\n");
+    if (
+      skill.name === "web_designs" &&
+      window.ChatreWebDesigns &&
+      window.ChatreWebDesigns.catalogBrief
+    ) {
+      body += "\n\n" + window.ChatreWebDesigns.catalogBrief();
+      var style =
+        params && (params.style || params.template || params.id);
+      if (style && window.ChatreWebDesigns.getDesign) {
+        var tpl = window.ChatreWebDesigns.getDesign(style);
+        if (tpl)
+          body += "\n\n" + window.ChatreWebDesigns.formatTemplate(tpl);
+      }
+    }
+    return body;
   }
 
   function pickPrimarySkill(skills, taskType) {
@@ -467,12 +706,131 @@
       research: "research",
       browser: "browser",
       run: "computer",
-      mixed: "coding",
+      mixed: null,
     }[t];
     if (prefer && list.indexOf(prefer) >= 0) return [prefer];
-    if (prefer) return [prefer];
+    if (prefer && !list.length) return [prefer];
+    if (list.indexOf("coding") >= 0) return ["coding"];
+    if (list.indexOf("documents") >= 0) return ["documents"];
+    if (list.indexOf("debugging") >= 0) return ["debugging"];
     if (list.length) return [list[0]];
+    if (prefer) return [prefer];
     return [];
+  }
+
+  function wantsDesign(text, taskType, detected) {
+    var list = Array.isArray(detected) ? detected : [];
+    if (
+      list.indexOf("design") >= 0 ||
+      list.indexOf("web_designs") >= 0 ||
+      list.indexOf("design_system") >= 0
+    )
+      return true;
+    var t = String(taskType || "").toLowerCase();
+    if (t === "document") return true;
+    var msg = String(text || "").toLowerCase();
+    return /\b(html|css|scss|react|vue|svelte|tailwind|frontend|landing|website|ui|ux|layout|hero|component|stylesheet|theme|brand|visual|mockup|wireframe|dashboard|page|design)\b/.test(
+      msg,
+    );
+  }
+
+  /** Primary delivery skill + design / citations / brand companions. */
+  function composeActiveSkills(detected, taskType, userMessage) {
+    var all = Array.isArray(detected) ? detected.slice() : [];
+    var msg = String(userMessage || "").toLowerCase();
+
+    if (all.indexOf("dogfood") >= 0) return ["dogfood"];
+    if (all.indexOf("architecture_diagram") >= 0) {
+      return ["architecture_diagram", "design"];
+    }
+    if (
+      all.indexOf("design_system") >= 0 &&
+      all.indexOf("coding") < 0
+    ) {
+      return ["design_system", "design"];
+    }
+
+    var specialty = ["spike", "tdd", "simplify_code", "codebase_inspection"];
+    for (var i = 0; i < specialty.length; i++) {
+      var s = specialty[i];
+      if (
+        all.indexOf(s) >= 0 &&
+        !all.some(function (x) {
+          return /^(coding|documents|debugging)$/.test(x);
+        })
+      ) {
+        return [s];
+      }
+    }
+    if (all.indexOf("simplify_code") >= 0 && /\bsimplify\b/.test(msg)) {
+      return ["simplify_code"];
+    }
+    if (
+      all.indexOf("codebase_inspection") >= 0 &&
+      /\b(inspect|loc|breakdown|map the)\b/.test(msg)
+    ) {
+      return ["codebase_inspection"];
+    }
+
+    var delivery = all.filter(function (x) {
+      return (
+        x !== "design" && x !== "web_designs" && x !== "grounded_citations"
+      );
+    });
+    var designOnly =
+      (all.indexOf("design") >= 0 || all.indexOf("web_designs") >= 0) &&
+      !delivery.some(function (x) {
+        return /^(coding|documents|project|code_pr|debugging|git|dogfood|spike|tdd)$/.test(
+          x,
+        );
+      });
+    if (designOnly) {
+      return all.indexOf("web_designs") >= 0
+        ? ["web_designs", "design"]
+        : ["design"];
+    }
+    var primary = pickPrimarySkill(
+      delivery.length ? delivery : all,
+      taskType,
+    );
+    var active = primary.slice();
+    if (wantsDesign(userMessage, taskType, all) && active.indexOf("design") < 0) {
+      active.push("design");
+    }
+    if (all.indexOf("web_designs") >= 0 && active.indexOf("web_designs") < 0) {
+      active.push("web_designs");
+    }
+    if (
+      all.indexOf("design_system") >= 0 &&
+      active.indexOf("design_system") < 0
+    ) {
+      active.push("design_system");
+    }
+    if (
+      all.indexOf("grounded_citations") >= 0 &&
+      active.indexOf("grounded_citations") < 0
+    ) {
+      active.push("grounded_citations");
+    }
+    if (all.indexOf("tdd") >= 0 && active.indexOf("tdd") < 0) {
+      active.push("tdd");
+    }
+    return active;
+  }
+
+  function designTemplateBlock(userMessage) {
+    if (
+      !window.ChatreWebDesigns ||
+      !window.ChatreWebDesigns.resolveFromText ||
+      !window.ChatreWebDesigns.formatTemplate
+    )
+      return "";
+    var tpl = window.ChatreWebDesigns.resolveFromText(userMessage);
+    if (!tpl) return "";
+    return (
+      "\n\n# Matched web design system\n" +
+      window.ChatreWebDesigns.formatTemplate(tpl)
+    );
   }
 
   window.ChatreSkills = {
@@ -482,6 +840,9 @@
     formatSkill,
     detectSkills,
     pickPrimarySkill,
+    wantsDesign,
+    composeActiveSkills,
+    designTemplateBlock,
     skillBrief,
     toolsForSkills,
   };

@@ -10,7 +10,7 @@
     { name: "todo_write", desc: "Write/update todo list with statuses", params: { todos: "array" } },
     { name: "plan", desc: "Create a step-by-step plan before executing", params: { steps: "string" } },
     { name: "list_skills", desc: "List available agent skills", params: {} },
-    { name: "use_skill", desc: "Load a skill playbook", params: { name: "string" } },
+    { name: "use_skill", desc: "Load a skill playbook (optional style for web_designs)", params: { name: "string", style: "string?" } },
     { name: "tabs_create", desc: "Create a browser tab", params: { url: "string" } },
     { name: "navigate", desc: "Navigate tab to url (or back/forward)", params: { tab_id: "string", url: "string" } },
     { name: "computer", desc: "Click/type/key/scroll/screenshot in browser", params: { tab_id: "string", action: "string", coordinate: "array", ref: "string", text: "string" } },
@@ -268,7 +268,7 @@
         return listSkillsTool();
 
       case "use_skill":
-        return useSkillTool(p.name);
+        return useSkillTool(p.name, p);
 
       case "ask_user_input":
         return askUserInputTool(p.question, p.options);
@@ -1893,7 +1893,7 @@
     };
   }
 
-  function useSkillTool(name) {
+  function useSkillTool(name, params) {
     if (!window.ChatreSkills) {
       return { ok: false, tool: "use_skill", error: "Skills module not loaded" };
     }
@@ -1905,7 +1905,7 @@
         error: "Unknown skill: " + name + ". Try list_skills.",
       };
     }
-    const guide = window.ChatreSkills.formatSkill(skill);
+    const guide = window.ChatreSkills.formatSkill(skill, params || {});
     return { ok: true, tool: "use_skill", skill: skill.name, guide, text: guide };
   }
 

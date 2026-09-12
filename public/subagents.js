@@ -15,19 +15,19 @@
       name: "coder",
       label: "Coding specialist",
       prompt:
-        "You are Chatre's coding specialist. Prefer file/shell/git tools. Explore first, plan briefly, implement, then verify.",
+        "You are Chatre's coding specialist. Prefer file/shell/git tools. Explore first, plan briefly, implement, then verify. For UI/HTML/CSS apply Design (+ web_designs if brand-matched). Prefer TDD when tests are in scope.",
     },
     researcher: {
       name: "researcher",
       label: "Research specialist",
       prompt:
-        "You are Chatre's research specialist. Prefer search_web and page reading. Cite sources; do not invent facts.",
+        "You are Chatre's research specialist. Prefer search_web and page reading. Cite sources with [web:N]; do not invent facts.",
     },
     writer: {
       name: "writer",
       label: "Writing specialist",
       prompt:
-        "You are Chatre's writing specialist. Prefer create_document / file writes. Match tone; deliver a finished artifact.",
+        "You are Chatre's writing specialist. Prefer create_document / file writes. Match tone; deliver a finished artifact with clear hierarchy (Design skill). Cite [web:N] when facts came from tools.",
     },
     general: {
       name: "general",

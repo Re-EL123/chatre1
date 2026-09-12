@@ -97,7 +97,14 @@
           window.ChatreSkills.detectSkills &&
           window.ChatreSkills.detectSkills(userText)) ||
         [];
-      if (autoSkills.length && window.ChatreSkills.pickPrimarySkill) {
+      const detectedAll = autoSkills.slice();
+      if (autoSkills.length && window.ChatreSkills.composeActiveSkills) {
+        autoSkills = window.ChatreSkills.composeActiveSkills(
+          autoSkills,
+          null,
+          userText,
+        );
+      } else if (autoSkills.length && window.ChatreSkills.pickPrimarySkill) {
         autoSkills = window.ChatreSkills.pickPrimarySkill(autoSkills, null);
       }
 
@@ -151,6 +158,17 @@
               "Goal completed with workspace evidence";
       }
       if (
+        detectedAll.length &&
+        window.ChatreSkills &&
+        window.ChatreSkills.composeActiveSkills
+      ) {
+        autoSkills = window.ChatreSkills.composeActiveSkills(
+          detectedAll,
+          briefing.task_type,
+          userText,
+        );
+        if (callbacks.onSkills) callbacks.onSkills(autoSkills);
+      } else if (
         autoSkills.length &&
         window.ChatreSkills &&
         window.ChatreSkills.pickPrimarySkill
@@ -248,7 +266,7 @@
       }
 
       // Slim skill context + analyst orders (not a generic workflow dump).
-      const preamble = buildPreamble(autoSkills, intent, executorOrders);
+      const preamble = buildPreamble(autoSkills, intent, executorOrders, userText);
 
       const enabledList =
         intent && intent.tools
@@ -389,7 +407,30 @@
               messages.push({
                 role: "user",
                 content:
-                  "[internal] Continue with tools for this task — do not stop yet. Do not narrate this message.",
+                  "[internal] Continue with tools for this task — do not stop yet. For builds use write_file under /home/user/projects/<slug>/ — never Python open()/zipfile. Do not narrate this message.",
+              });
+              if (cleanText.trim()) {
+                callbacks.onStepText && callbacks.onStepText(cleanText, false);
+                fullAssistantText +=
+                  (fullAssistantText ? "\n\n" : "") + cleanText;
+              }
+              continue;
+            }
+
+            // Block chat-only "I saved the files" theatre with zero writes
+            if (
+              forcePlan &&
+              usedTools === 0 &&
+              !this._forcedDeliveryNudge &&
+              i < this.maxIterations - 1 &&
+              !looksLikeClarification(cleanText)
+            ) {
+              this._forcedDeliveryNudge = true;
+              messages.push({ role: "assistant", content: text || "" });
+              messages.push({
+                role: "user",
+                content:
+                  "[internal] No workspace files were created yet. Chat dumps do NOT save files. Immediately call write_file (or create_pdf/create_document) with FULL contents under /home/user/projects/<slug>/ or /home/user/documents/. Then list_directory. Never invent Download links.",
               });
               if (cleanText.trim()) {
                 callbacks.onStepText && callbacks.onStepText(cleanText, false);
@@ -906,7 +947,7 @@
    * intent-scoped task description, skill playbooks, and the list of
    * enabled tools so the model knows exactly what it may do.
    */
-  function buildPreamble(skills, intent, executorOrders) {
+  function buildPreamble(skills, intent, executorOrders, userText) {
     const parts = [];
     const enabled =
       intent && intent.tools
@@ -943,6 +984,15 @@
             : name,
         );
       });
+    }
+
+    if (
+      window.ChatreSkills &&
+      window.ChatreSkills.designTemplateBlock &&
+      userText
+    ) {
+      const extra = window.ChatreSkills.designTemplateBlock(userText);
+      if (extra) parts.push(extra.trim());
     }
 
     return parts.length

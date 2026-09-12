@@ -92,6 +92,15 @@
       )
     ) {
       taskType = "document";
+    } else if (
+      /\b(html|css|javascript|\.js\b|canvas|bubble.?shooter|game in html|website|web app|landing page|react|vue|svelte)\b/.test(
+        msg,
+      ) ||
+      /\b(create|make|build|design|scaffold)\b.{0,60}\b(game|app|website|page|project)\b/.test(
+        msg,
+      )
+    ) {
+      taskType = "build";
     } else if (/^\s*(hi|hello|hey|thanks|thank you)\b/.test(msg) && msg.length < 40) {
       taskType = "chat";
     }
@@ -112,6 +121,22 @@
         toolsPriority = ["create_document", "create_pdf"];
       }
     }
+    if (taskType === "build") {
+      toolsPriority = [
+        "write_file",
+        "create_directory",
+        "list_directory",
+        "view_tree",
+      ].concat(
+        toolsPriority.filter(function (t) {
+          return (
+            ["write_file", "create_directory", "list_directory", "view_tree"].indexOf(
+              t,
+            ) < 0
+          );
+        }),
+      );
+    }
 
     const doNot = Array.isArray(o.do_not)
       ? o.do_not.map(String)
@@ -123,6 +148,16 @@
         "Do not invent download URLs",
         "Do not dump Python/fpdf or /mnt/data paths",
         "Do not claim a file exists without a successful create_pdf/create_document tool result",
+      ].forEach(function (rule) {
+        if (doNot.indexOf(rule) < 0) doNot.push(rule);
+      });
+    }
+    if (taskType === "build") {
+      [
+        "Do not paste Python open()/zipfile as a substitute for write_file",
+        "Do not dump full source only in chat — call write_file for each file",
+        "Do not invent Download links or claim files exist without write_file results",
+        "Workspace Files panel is how the user downloads — list real paths after writes",
       ].forEach(function (rule) {
         if (doNot.indexOf(rule) < 0) doNot.push(rule);
       });
@@ -219,6 +254,9 @@
       "- Execute this brief thoroughly. Adapt tool use to THESE orders — do not run a generic loop if it does not fit.",
       "- Track todos; mark each done when finished.",
       "- Verify against success criteria before you stop.",
+      "- For builds: call write_file for each file under /home/user/projects/<slug>/ — never Python open()/zipfile or chat-only dumps.",
+      "- Never invent Download links; Files panel paths from tool results are the download.",
+      "- First action for delivery tasks must be a tool call, not a plan essay.",
       "- Do not narrate process. Act, then give a short useful final answer.",
     );
     return lines.join("\n");

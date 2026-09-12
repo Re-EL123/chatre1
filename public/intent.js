@@ -481,7 +481,10 @@
     var tools = INTENT_TOOLS[name] || INTENT_TOOLS.full;
     var wantsBrowserSkills =
       (opt.skills || []).indexOf("browser") !== -1 ||
-      (opt.skills || []).indexOf("computer") !== -1;
+      (opt.skills || []).indexOf("computer") !== -1 ||
+      (opt.skills || []).indexOf("dogfood") !== -1 ||
+      (opt.skills || []).indexOf("form_workflow") !== -1 ||
+      (opt.skills || []).indexOf("ops_debug") !== -1;
     var list = (tools && tools.concat([])) || [];
     if (name === "full" && wantsBrowserSkills) {
       BROWSER_TOOLS.forEach(function (t) {
