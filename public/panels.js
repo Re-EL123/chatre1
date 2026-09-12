@@ -92,12 +92,27 @@
     setStatus("pending", "Checking…");
     const ping = await r.pingAuth();
     if (ping.connected) {
-      setStatus(
-        "ok",
-        ping.authKind === "user"
-          ? "Signed in"
-          : "Connected" + (ping.backend ? " · " + ping.backend : ""),
-      );
+      const firebaseSigned =
+        window.ChatreAuth && window.ChatreAuth.isSignedIn();
+      if (ping.authKind === "user") {
+        setStatus("ok", "Signed in");
+      } else if (firebaseSigned && ping.authKind === "service") {
+        setStatus(
+          "bad",
+          "Service key active",
+        );
+        if (window.ChatreKit) {
+          window.ChatreKit.toast(
+            "API is using the service token, not your account. Clear Settings → Service key or refresh after sign-in.",
+            "error",
+          );
+        }
+      } else {
+        setStatus(
+          "ok",
+          "Connected" + (ping.backend ? " · " + ping.backend : ""),
+        );
+      }
     } else if (ping.status === "unauthorized") {
       setStatus("bad", "Sign in");
     } else {

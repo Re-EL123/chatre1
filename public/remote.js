@@ -48,12 +48,23 @@
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     };
+    // Signed-in users must use Firebase ID token only — never fall back to
+    // the site service key (that yields "Service token cannot list threads").
     if (window.ChatreAuth && window.ChatreAuth.isSignedIn()) {
-      const token = await window.ChatreAuth.getIdToken(false);
+      let token = null;
+      try {
+        token = await window.ChatreAuth.getIdToken(false);
+        if (!token) token = await window.ChatreAuth.getIdToken(true);
+      } catch (e) {
+        console.warn("getIdToken failed", e);
+      }
       if (token) {
         h.Authorization = "Bearer " + token;
         return h;
       }
+      throw new Error(
+        "Signed in, but Firebase could not issue an ID token. Refresh the page or sign out and back in.",
+      );
     }
     syncKeyFromUi();
     const key = apiKey();
