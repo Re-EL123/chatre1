@@ -64,6 +64,9 @@
     { name: "suggest_connectors", desc: "Present connector options to the user with Connect/Use buttons (pass directory UUIDs from search_mcp_registry)", params: { uuids: "array", question: "string" } },
     { name: "call_mcp", desc: "Call a tool on a connected MCP server (pass server uuid, tool name, arguments)", params: { server: "string", tool: "string", arguments: "object" } },
     { name: "list_mcp_tools", desc: "List the tools exposed by a connected MCP server", params: { server: "string" } },
+    { name: "list_connectors", desc: "List linked GitHub/Vercel/Supabase/Firebase accounts", params: {} },
+    { name: "connector_status", desc: "Check one app connector", params: { provider: "string", test: "boolean" } },
+    { name: "connector_request", desc: "Call the user's linked GitHub/Vercel/Supabase/Firebase API", params: { provider: "string", method: "string", path: "string", url: "string", body: "object" } },
     { name: "git_init", desc: "Initialize a git repository", params: {} },
     { name: "git_add", desc: "Stage a file for commit", params: { path: "string" } },
     { name: "git_commit", desc: "Commit staged changes", params: { message: "string" } },
@@ -340,6 +343,20 @@
 
       case "list_mcp_tools":
         return await listMcpToolsTool(p.server);
+
+      case "list_connectors":
+        return await listConnectorsLocal();
+
+      case "connector_status":
+        return await connectorStatusLocal(p);
+
+      case "connector_request":
+        return {
+          ok: false,
+          tool: "connector_request",
+          error:
+            "connector_request runs on the remote agent. Use a signed-in remote session so your encrypted tokens stay on the server.",
+        };
 
       case "desktop_status":
       case "desktop_open":
@@ -2696,6 +2713,72 @@
           ? tools.map(function (t) { return (t.name || t) + (t.description ? " — " + t.description : ""); }).join("\n")
           : result.note || "(no tools discovered)",
     };
+  }
+
+  async function listConnectorsLocal() {
+    if (!window.ChatreRemote || !window.ChatreRemote.listConnectors) {
+      return {
+        ok: false,
+        tool: "list_connectors",
+        error: "Remote API required — sign in with CHATRE_API_BASE",
+      };
+    }
+    try {
+      const data = await window.ChatreRemote.listConnectors();
+      const connectors = (data && data.connectors) || {};
+      const linked = Object.keys(connectors).filter(function (k) {
+        return connectors[k] && connectors[k].connected;
+      });
+      return {
+        ok: true,
+        tool: "list_connectors",
+        connectors: connectors,
+        linked: linked,
+        text: linked.length
+          ? "Connected: " + linked.join(", ")
+          : "No apps linked. Open Settings → Integrations.",
+      };
+    } catch (e) {
+      return { ok: false, tool: "list_connectors", error: e.message || String(e) };
+    }
+  }
+
+  async function connectorStatusLocal(params) {
+    const provider = String((params && params.provider) || "").toLowerCase();
+    if (!window.ChatreRemote || !window.ChatreRemote.testConnector) {
+      return {
+        ok: false,
+        tool: "connector_status",
+        error: "Remote API required",
+      };
+    }
+    try {
+      if (params && params.test) {
+        const live = await window.ChatreRemote.testConnector(provider);
+        return {
+          ok: !!(live && live.ok),
+          tool: "connector_status",
+          provider: provider,
+          live: live,
+          text:
+            live && live.ok
+              ? provider + " OK" + (live.login ? " as " + live.login : "")
+              : (live && live.error) || "failed",
+        };
+      }
+      const data = await window.ChatreRemote.listConnectors();
+      const c = data && data.connectors && data.connectors[provider];
+      return {
+        ok: true,
+        tool: "connector_status",
+        provider: provider,
+        connected: !!(c && c.connected),
+        meta: c && c.meta,
+        text: c && c.connected ? provider + " linked" : provider + " not connected",
+      };
+    } catch (e) {
+      return { ok: false, tool: "connector_status", error: e.message || String(e) };
+    }
   }
 
   function ensureDir(path) {

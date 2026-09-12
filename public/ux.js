@@ -112,6 +112,7 @@
     }
     initAuthUi();
     initByokUi();
+    initConnectorsUi();
     refreshModelCatalog();
   }
 
@@ -155,6 +156,7 @@
       adminSec.classList.toggle("is-admin", !!isAdmin);
     }
     refreshByokStatus();
+    refreshConnectorsStatus();
     refreshModelCatalog();
     if (window.ChatreToolbar && window.ChatreToolbar.paintAccount) {
       window.ChatreToolbar.paintAccount();
@@ -216,6 +218,170 @@
     el.textContent = saved.length
       ? "Saved: " + saved.join(", ")
       : "No provider keys saved yet.";
+  }
+
+  function connectorMetaFromUi() {
+    var raw = $("connector-meta") && $("connector-meta").value.trim();
+    var provider = $("connector-provider") && $("connector-provider").value;
+    var meta = {};
+    if (!raw) return meta;
+    if (provider === "supabase") meta.projectUrl = raw;
+    else if (provider === "firebase") meta.projectId = raw;
+    else meta.label = raw;
+    return meta;
+  }
+
+  function refreshConnectorsStatus() {
+    var el = $("connector-status");
+    var list = $("connector-list");
+    var profile =
+      window.ChatreAuth &&
+      window.ChatreAuth.state &&
+      window.ChatreAuth.state.profile;
+    if (!profile) {
+      if (el) el.textContent = "Sign in to connect GitHub / Vercel / Supabase / Firebase.";
+      if (list) list.innerHTML = "";
+      return;
+    }
+    var connectors = profile.connectors || {};
+    var linked = Object.keys(connectors).filter(function (k) {
+      return connectors[k] && connectors[k].connected;
+    });
+    if (el) {
+      el.textContent = linked.length
+        ? "Connected: " + linked.join(", ")
+        : "No apps connected yet.";
+    }
+    if (list) {
+      list.innerHTML = ["github", "vercel", "supabase", "firebase"]
+        .map(function (p) {
+          var c = connectors[p];
+          var on = c && c.connected;
+          var who =
+            on && c.meta && (c.meta.login || c.meta.projectId || c.meta.projectUrl)
+              ? " · " + (c.meta.login || c.meta.projectId || c.meta.projectUrl)
+              : "";
+          return (
+            '<div class="connector-row' +
+            (on ? " on" : "") +
+            '"><strong>' +
+            p +
+            "</strong> — " +
+            (on ? "linked" + who : "not connected") +
+            "</div>"
+          );
+        })
+        .join("");
+    }
+  }
+
+  function initConnectorsUi() {
+    var placeholders = {
+      github: "Paste GitHub PAT (ghp_… / github_pat_…)",
+      vercel: "Paste Vercel token (vercel_…)",
+      supabase: "Paste Supabase service_role / anon / personal token",
+      firebase: "Paste Firebase web API key or service-account JSON",
+    };
+    if ($("connector-provider")) {
+      $("connector-provider").addEventListener("change", function () {
+        var p = $("connector-provider").value;
+        if ($("connector-token")) {
+          $("connector-token").placeholder = placeholders[p] || "Paste token";
+        }
+        if ($("connector-meta")) {
+          $("connector-meta").placeholder =
+            p === "supabase"
+              ? "Optional: https://YOUR_PROJECT.supabase.co"
+              : p === "firebase"
+                ? "Optional: Firebase projectId"
+                : "Optional label";
+        }
+      });
+    }
+    if ($("connector-save")) {
+      $("connector-save").addEventListener("click", function () {
+        var provider = $("connector-provider") && $("connector-provider").value;
+        var token = $("connector-token") && $("connector-token").value.trim();
+        if (!window.ChatreRemote || !window.ChatreRemote.saveConnector) return;
+        window.ChatreRemote
+          .saveConnector(provider, token, connectorMetaFromUi())
+          .then(function (r) {
+            if ($("connector-token")) $("connector-token").value = "";
+            return window.ChatreAuth.refreshProfile().then(function () {
+              return r;
+            });
+          })
+          .then(function (r) {
+            refreshConnectorsStatus();
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(
+                "Connected " +
+                  provider +
+                  (r && r.login ? " as " + r.login : ""),
+                "success",
+              );
+            }
+          })
+          .catch(function (e) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(e.message || String(e), "error");
+            }
+          });
+      });
+    }
+    if ($("connector-delete")) {
+      $("connector-delete").addEventListener("click", function () {
+        var provider = $("connector-provider") && $("connector-provider").value;
+        window.ChatreRemote
+          .deleteConnector(provider)
+          .then(function () {
+            return window.ChatreAuth.refreshProfile();
+          })
+          .then(function () {
+            refreshConnectorsStatus();
+            if (window.ChatreKit) {
+              window.ChatreKit.toast("Disconnected " + provider, "info");
+            }
+          })
+          .catch(function (e) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(e.message || String(e), "error");
+            }
+          });
+      });
+    }
+    if ($("connector-test")) {
+      $("connector-test").addEventListener("click", function () {
+        var provider = $("connector-provider") && $("connector-provider").value;
+        var typed = $("connector-token") && $("connector-token").value.trim();
+        var el = $("connector-status");
+        if (el) el.textContent = "Testing " + provider + "…";
+        window.ChatreRemote
+          .testConnector(provider, typed || undefined, connectorMetaFromUi())
+          .then(function (r) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(
+                r && r.ok
+                  ? "OK — " + (r.login || provider)
+                  : (r && r.error) || "Test failed",
+                r && r.ok ? "success" : "error",
+              );
+            }
+            if (el) {
+              el.textContent =
+                r && r.ok
+                  ? "Test OK: " + provider + (r.login ? " → " + r.login : "")
+                  : "Test failed: " + ((r && r.error) || "unknown");
+            }
+          })
+          .catch(function (e) {
+            if (window.ChatreKit) {
+              window.ChatreKit.toast(e.message || String(e), "error");
+            }
+            if (el) el.textContent = e.message || String(e);
+          });
+      });
+    }
   }
 
   function initByokUi() {

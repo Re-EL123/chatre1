@@ -185,6 +185,56 @@
     });
   }
 
+  async function listConnectors() {
+    return request("/api/me?action=connectors", { method: "GET" });
+  }
+
+  async function saveConnector(provider, token, meta) {
+    return request("/api/me?action=connectors", {
+      method: "PUT",
+      body: JSON.stringify({
+        provider: provider,
+        token: token,
+        meta: meta || {},
+      }),
+    });
+  }
+
+  async function deleteConnector(provider) {
+    return request(
+      "/api/me?action=connectors&provider=" + encodeURIComponent(provider),
+      { method: "DELETE" },
+    );
+  }
+
+  async function testConnector(provider, token, meta) {
+    const base = apiBase();
+    if (!base) throw new Error("CHATRE_API_BASE not set");
+    const h = await authHeaders();
+    const body = { provider: provider };
+    if (token) body.token = token;
+    if (meta) body.meta = meta;
+    const res = await fetch(base + "/api/me?action=connectors&op=test", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify(body),
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    if (data && typeof data === "object" && ("ok" in data || data.error)) {
+      if (!("ok" in data)) data.ok = res.ok;
+      return data;
+    }
+    if (!res.ok) {
+      throw new Error((data && data.error) || "API " + res.status);
+    }
+    return data;
+  }
+
   async function deleteByok(provider) {
     return request(
       "/api/me?action=byok&provider=" + encodeURIComponent(provider),
@@ -637,6 +687,10 @@
     saveByok,
     deleteByok,
     testByok,
+    listConnectors,
+    saveConnector,
+    deleteConnector,
+    testConnector,
     memoryGet,
     memorySet,
     memoryDelete,

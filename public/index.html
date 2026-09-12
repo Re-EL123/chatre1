@@ -3935,6 +3935,41 @@
           </p>
           <p id="byok-status" style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-light)"></p>
         </div>
+        <div class="settings-section">
+          <h3>Integrations</h3>
+          <p style="margin:0 0 0.45rem;font-size:0.8rem;color:var(--text-light)">
+            Connect your own GitHub, Vercel, Supabase, or Firebase account. Tokens are encrypted server-side and used only by the agent for your requests — never shown again after save.
+          </p>
+          <select id="connector-provider">
+            <option value="github">GitHub</option>
+            <option value="vercel">Vercel</option>
+            <option value="supabase">Supabase</option>
+            <option value="firebase">Firebase</option>
+          </select>
+          <input
+            id="connector-token"
+            type="password"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            placeholder="Paste PAT / token (GitHub: ghp_… or github_pat_…)"
+          />
+          <input
+            id="connector-meta"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="Optional: project URL (Supabase) or projectId (Firebase)"
+          />
+          <div class="onboard-actions" style="margin-top:0.35rem">
+            <button type="button" class="btn" id="connector-save">Connect</button>
+            <button type="button" class="btn" id="connector-test">Test</button>
+            <button type="button" class="btn" id="connector-delete">Disconnect</button>
+          </div>
+          <p id="connector-status" style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-light)"></p>
+          <div id="connector-list" style="margin-top:0.5rem;font-size:0.78rem;color:var(--text-light)"></div>
+        </div>
         <div class="settings-section" id="settings-admin-section">
           <h3>Admin service key <span style="font-weight:400;text-transform:none;letter-spacing:0">(RBAC)</span></h3>
           <div id="settings-key-slot"></div>

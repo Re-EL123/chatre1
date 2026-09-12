@@ -362,6 +362,29 @@
         actions.appendChild(useBtn);
       } else {
         const connectBtn = mkBtn("Connect", "connect-btn", () => {
+          const name = String(c.name || c.uuid || "").toLowerCase();
+          const map = {
+            github: "github",
+            vercel: "vercel",
+            supabase: "supabase",
+            firebase: "firebase",
+          };
+          let provider = null;
+          Object.keys(map).forEach(function (k) {
+            if (name.indexOf(k) >= 0) provider = map[k];
+          });
+          if (provider && window.ChatreUX && window.ChatreUX.openSettings) {
+            window.ChatreUX.openSettings();
+            var sel = document.getElementById("connector-provider");
+            if (sel) sel.value = provider;
+            if (window.ChatreKit && window.ChatreKit.toast) {
+              window.ChatreKit.toast(
+                "Paste your " + provider + " token under Settings → Integrations",
+                "info",
+              );
+            }
+            return;
+          }
           if (window.ChatreMCP) window.ChatreMCP.connect(c.uuid);
           statusEl.textContent = "connected";
           actions.replaceChild(useBtn, connectBtn);
