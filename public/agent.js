@@ -92,11 +92,14 @@
       const lastUser =
         [...messages].reverse().find((m) => m.role === "user") || null;
       const userText = (lastUser && lastUser.content) || "";
-      const autoSkills =
+      let autoSkills =
         (window.ChatreSkills &&
           window.ChatreSkills.detectSkills &&
           window.ChatreSkills.detectSkills(userText)) ||
         [];
+      if (autoSkills.length && window.ChatreSkills.pickPrimarySkill) {
+        autoSkills = window.ChatreSkills.pickPrimarySkill(autoSkills, null);
+      }
 
       if (autoSkills.length && callbacks.onSkills) {
         callbacks.onSkills(autoSkills);
@@ -138,6 +141,25 @@
           briefing.executor_brief =
             "Complete the user request thoroughly. Match tools to the request — do not use a generic script.";
         }
+      }
+
+      if (!briefing.done_when) {
+        briefing.done_when =
+          briefing.task_type === "document"
+            ? "File exists under /home/user/documents from create_pdf or create_document"
+            : (briefing.success_criteria && briefing.success_criteria[0]) ||
+              "Goal completed with workspace evidence";
+      }
+      if (
+        autoSkills.length &&
+        window.ChatreSkills &&
+        window.ChatreSkills.pickPrimarySkill
+      ) {
+        autoSkills = window.ChatreSkills.pickPrimarySkill(
+          autoSkills,
+          briefing.task_type,
+        );
+        if (callbacks.onSkills) callbacks.onSkills(autoSkills);
       }
 
       callbacks.onAnalysis && callbacks.onAnalysis(briefing);

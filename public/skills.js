@@ -456,12 +456,32 @@
     );
   }
 
+  function pickPrimarySkill(skills, taskType) {
+    var list = Array.isArray(skills) ? skills.slice() : [];
+    var t = String(taskType || "").toLowerCase();
+    var prefer = {
+      document: "documents",
+      build: "coding",
+      debug: "debugging",
+      git: "git",
+      research: "research",
+      browser: "browser",
+      run: "computer",
+      mixed: "coding",
+    }[t];
+    if (prefer && list.indexOf(prefer) >= 0) return [prefer];
+    if (prefer) return [prefer];
+    if (list.length) return [list[0]];
+    return [];
+  }
+
   window.ChatreSkills = {
     SKILLS,
     listSkills,
     getSkill,
     formatSkill,
     detectSkills,
+    pickPrimarySkill,
     skillBrief,
     toolsForSkills,
   };

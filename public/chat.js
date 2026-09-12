@@ -1662,6 +1662,34 @@
               echoShellToTerminal(ev.result);
             } else if (ev.type === "shell_chunk") {
               echoShellChunk(ev);
+            } else if (ev.type === "workspace") {
+              showStep(
+                "Workspace: " +
+                  (ev.fileCount || 0) +
+                  " files" +
+                  (ev.paths && ev.paths.length
+                    ? " · " + ev.paths.slice(0, 4).join(", ")
+                    : ""),
+                false,
+              );
+              if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+            } else if (ev.type === "diagnostics") {
+              const d = ev.diagnostics || {};
+              showStep(
+                "Run stats: " +
+                  (d.task_type || "?") +
+                  " · " +
+                  (d.steps || 0) +
+                  " steps · " +
+                  (d.toolsUsed || 0) +
+                  " tools · " +
+                  (d.stopReason || "done") +
+                  (d.deliverySuccess ? " · delivered" : " · no delivery") +
+                  (d.filesTouched && d.filesTouched.length
+                    ? " · " + d.filesTouched.slice(-2).join(", ")
+                    : ""),
+                false,
+              );
             } else if (ev.type === "awaiting_shell") {
               stopThinking();
               showStep(

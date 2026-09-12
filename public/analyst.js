@@ -137,6 +137,7 @@
       success_criteria: Array.isArray(o.success_criteria)
         ? o.success_criteria.map(String)
         : [],
+      done_when: String(o.done_when || o.doneWhen || "").trim(),
       approach: Array.isArray(o.approach) ? o.approach.map(String) : [],
       todos: todos,
       tools_priority: toolsPriority,
@@ -175,6 +176,9 @@
       "## Task type",
       b.task_type || "mixed",
     ];
+    if (b.done_when) {
+      lines.push("", "## Done when (hard stop)", b.done_when);
+    }
     if (b.success_criteria && b.success_criteria.length) {
       lines.push("", "## Success criteria (must meet before finishing)");
       b.success_criteria.forEach(function (c, i) {
