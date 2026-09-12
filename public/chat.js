@@ -1323,10 +1323,39 @@
             } else if (ev.type === "resume") {
               startThinking("Resumed at step " + ev.step + "/" + ev.max);
             } else if (ev.type === "skills") {
-              showStep(
-                "Skills: " + ((ev.skills && ev.skills.join(", ")) || "none"),
-                false,
-              );
+              if (ev.skills && ev.skills.length) {
+                showStep("Skills: " + ev.skills.join(", "), false);
+              }
+            } else if (ev.type === "gate") {
+              // Internal agent steering — do not render in chat.
+            } else if (ev.type === "text") {
+              stopThinking();
+              if (tokenEl) {
+                tokenEl.remove();
+                tokenEl = null;
+              }
+              const rawText = String(ev.text || "");
+              if (
+                ev.gate ||
+                /^\[internal\]/i.test(rawText.trim()) ||
+                /^Continue:\s*(inspect first|plan \+|deliver the work|verify\b)/i.test(
+                  rawText.trim(),
+                )
+              ) {
+                // Hide legacy/internal finish-gate copy from the transcript.
+              } else {
+                showStep(rawText, !!ev.final);
+                if (ev.usage && window.ChatrePanels) {
+                  window.ChatrePanels.updateUsageMeter({
+                    ...ev.usage,
+                    model: modelSelect.value,
+                  });
+                }
+                if (ev.final) {
+                  chatHistory.push({ role: "assistant", content: rawText });
+                  trimHistory();
+                }
+              }
             } else if (ev.type === "phase") {
               startThinking(ev.text || ev.phase || "Working…");
               if (timeline && timeline.setPhase) {
@@ -1505,16 +1534,27 @@
                 tokenEl.remove();
                 tokenEl = null;
               }
-              showStep(ev.text, !!ev.final);
-              if (ev.usage && window.ChatrePanels) {
-                window.ChatrePanels.updateUsageMeter({
-                  ...ev.usage,
-                  model: modelSelect.value,
-                });
-              }
-              if (ev.final) {
-                chatHistory.push({ role: "assistant", content: ev.text });
-                trimHistory();
+              const rawText = String(ev.text || "");
+              if (
+                ev.gate ||
+                /^\[internal\]/i.test(rawText.trim()) ||
+                /^Continue:\s*(inspect first|plan \+|deliver the work|verify\b)/i.test(
+                  rawText.trim(),
+                )
+              ) {
+                // hide internal gates
+              } else {
+                showStep(rawText, !!ev.final);
+                if (ev.usage && window.ChatrePanels) {
+                  window.ChatrePanels.updateUsageMeter({
+                    ...ev.usage,
+                    model: modelSelect.value,
+                  });
+                }
+                if (ev.final) {
+                  chatHistory.push({ role: "assistant", content: rawText });
+                  trimHistory();
+                }
               }
             } else if (ev.type === "tool_start") {
               if (tokenEl) {
@@ -2933,10 +2973,21 @@
                 tokenEl.remove();
                 tokenEl = null;
               }
-              showStep(ev.text, !!ev.final);
-              if (ev.final) {
-                chatHistory.push({ role: "assistant", content: ev.text });
-                trimHistory();
+              const rawText = String(ev.text || "");
+              if (
+                ev.gate ||
+                /^\[internal\]/i.test(rawText.trim()) ||
+                /^Continue:\s*(inspect first|plan \+|deliver the work|verify\b)/i.test(
+                  rawText.trim(),
+                )
+              ) {
+                // hide internal gates
+              } else {
+                showStep(rawText, !!ev.final);
+                if (ev.final) {
+                  chatHistory.push({ role: "assistant", content: rawText });
+                  trimHistory();
+                }
               }
             } else if (ev.type === "tool_start") {
               if (tokenEl) {

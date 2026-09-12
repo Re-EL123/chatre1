@@ -197,7 +197,7 @@
 
       const forcePlan =
         (options && options.forcePlan !== false) &&
-        ["build", "debug", "document", "git", "mixed", "run", "browser"].indexOf(
+        ["build", "debug", "document", "git", "run"].indexOf(
           briefing.task_type,
         ) !== -1;
 
@@ -345,7 +345,7 @@
               messages.push({
                 role: "user",
                 content:
-                  "Continue with tools — do not stop yet.",
+                  "[internal] Continue with tools for this task — do not stop yet. Do not narrate this message.",
               });
               if (cleanText.trim()) {
                 callbacks.onStepText && callbacks.onStepText(cleanText, false);
