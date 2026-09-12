@@ -1326,6 +1326,23 @@
           "</code> · "
         : "") +
       (proof.revision != null ? "r" + proof.revision + " · " : "") +
+      (proof.branch
+        ? "branch <code>" +
+          String(proof.branch).replace(/</g, "&lt;") +
+          "</code>" +
+          (proof.head
+            ? " @" + String(proof.head).replace(/</g, "&lt;")
+            : "") +
+          " · "
+        : "") +
+      (proof.testsOk
+        ? "tests ok"
+        : proof.lastTest && proof.lastTest.skipped
+          ? "tests skipped"
+          : proof.testsOk === false
+            ? "tests failed"
+            : "tests —") +
+      " · " +
       (proof.previewOk ? "preview ok" : "preview pending") +
       (proof.localhost
         ? " · <code>" + String(proof.localhost).replace(/</g, "&lt;") + "</code>"

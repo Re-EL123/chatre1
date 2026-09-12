@@ -20,6 +20,11 @@
     resumeReason: "",
     threadId: null,
     threadTitle: "",
+    repo: null,
+    repoBranch: null,
+    repoDirty: null,
+    testsOk: null,
+    lastTest: null,
   };
 
   function $(id) {
@@ -451,6 +456,7 @@
             state.activeProject = null;
           }
         }
+        await refreshRepoStatus(wsId);
         renderFileTree(tree, state.files);
       } catch (e) {
         tree.innerHTML =
@@ -467,6 +473,124 @@
     });
     state.files = files;
     renderFileTree(tree, state.files);
+  }
+
+  async function refreshRepoStatus(wsIdOpt) {
+    const r = remote();
+    if (!r || !r.enabled() || typeof r.getRepo !== "function") return null;
+    const wsId =
+      wsIdOpt || remoteState().workspaceId || state.workspaceId || null;
+    if (!wsId) return null;
+    try {
+      const data = await r.getRepo(wsId);
+      state.repo = (data && data.repo) || null;
+      state.repoBranch = (data && data.branch) || null;
+      state.repoDirty =
+        data && data.dirty != null ? data.dirty : null;
+      state.testsOk = data ? !!data.testsOk : null;
+      state.lastTest = (data && data.lastTest) || null;
+      if (data && data.status && data.status.head) {
+        state.repoHead = data.status.head;
+      } else {
+        state.repoHead = (data && data.head) || null;
+      }
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function seedCloneChat(url) {
+    const u = String(url || "").trim();
+    if (!u) return;
+    const msg =
+      "Clone this repo with git_clone, explore with search_code, then run_tests: " +
+      u;
+    const input = $("chat-input") || document.querySelector("textarea#chat-input");
+    if (input) {
+      input.value = msg;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+    if (window.ChatreChat && typeof window.ChatreChat.sendMessage === "function") {
+      window.ChatreChat.sendMessage(msg);
+    } else if (
+      window.ChatreCore &&
+      typeof window.ChatreCore.sendUserMessage === "function"
+    ) {
+      window.ChatreCore.sendUserMessage(msg);
+    }
+  }
+
+  function renderRepoBar(root) {
+    const bar = document.createElement("div");
+    bar.className = "ide-repo-bar";
+    const branch = state.repoBranch || (state.repo && state.repo.branch) || "—";
+    const dirty =
+      state.repoDirty != null
+        ? state.repoDirty
+        : state.repo && state.repo.dirty != null
+          ? state.repo.dirty
+          : null;
+    const dirtyLabel =
+      dirty == null ? "·" : dirty === 0 ? "clean" : dirty + " dirty";
+    let testLabel = "tests —";
+    let testClass = "";
+    if (state.lastTest && state.lastTest.skipped) {
+      testLabel = "tests skip";
+      testClass = "skip";
+    } else if (state.testsOk === true) {
+      testLabel = "tests ✓";
+      testClass = "pass";
+    } else if (state.testsOk === false && state.lastTest) {
+      testLabel = "tests ✗";
+      testClass = "fail";
+    }
+    const hasRepo = !!(state.repo && state.repo.mode === "git");
+    bar.innerHTML =
+      '<div class="ide-repo-row">' +
+      '<span class="ide-repo-branch" title="Branch">' +
+      (window.ChatreKit ? window.ChatreKit.iconHtml("git-branch", 12) + " " : "") +
+      escapeHtml(String(branch)) +
+      "</span>" +
+      '<span class="ide-repo-dirty">' +
+      escapeHtml(dirtyLabel) +
+      "</span>" +
+      '<span class="ide-repo-tests ' +
+      testClass +
+      '">' +
+      escapeHtml(testLabel) +
+      "</span>" +
+      '<button type="button" class="ide-repo-refresh" title="Refresh status">↻</button>' +
+      "</div>" +
+      (hasRepo
+        ? ""
+        : '<div class="ide-repo-clone">' +
+          '<input type="url" class="ide-repo-url" placeholder="https://github.com/org/repo" />' +
+          '<button type="button" class="ide-repo-clone-btn">Clone</button>' +
+          "</div>");
+    const refreshBtn = bar.querySelector(".ide-repo-refresh");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", async function () {
+        await refreshRepoStatus();
+        const tree = $("file-tree");
+        if (tree) renderFileTree(tree, state.files);
+      });
+    }
+    const cloneBtn = bar.querySelector(".ide-repo-clone-btn");
+    const urlInput = bar.querySelector(".ide-repo-url");
+    if (cloneBtn && urlInput) {
+      cloneBtn.addEventListener("click", function () {
+        seedCloneChat(urlInput.value);
+      });
+      urlInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          seedCloneChat(urlInput.value);
+        }
+      });
+    }
+    root.appendChild(bar);
   }
 
   function renderFileTree(root, files) {
@@ -508,6 +632,7 @@
       });
     });
     root.appendChild(head);
+    renderRepoBar(root);
 
     if (slugs.length) {
       const projSec = document.createElement("div");
@@ -1559,6 +1684,7 @@
     refreshAuthStatus,
     refreshThreads,
     refreshFiles,
+    refreshRepoStatus,
     openFilesPanel,
     setActiveProject,
     updateUsageMeter,

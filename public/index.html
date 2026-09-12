@@ -1297,6 +1297,53 @@
         font-size: 0.74rem;
         color: #9ad8f0;
       }
+      .ide-repo-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        padding: 0.35rem 0.35rem 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 0.35rem;
+        font-size: 0.72rem;
+      }
+      .ide-repo-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .ide-repo-branch {
+        color: #9ad8f0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      .ide-repo-dirty { opacity: 0.75; }
+      .ide-repo-tests.pass { color: #7dffb3; }
+      .ide-repo-tests.fail { color: #f87171; }
+      .ide-repo-tests.skip { opacity: 0.7; }
+      .ide-repo-refresh,
+      .ide-repo-clone-btn {
+        border: 1px solid rgba(76, 184, 232, 0.28);
+        background: rgba(16, 28, 42, 0.7);
+        color: #c8eaf8;
+        border-radius: 4px;
+        padding: 0.1rem 0.4rem;
+        cursor: pointer;
+        font-size: 0.7rem;
+      }
+      .ide-repo-clone {
+        display: flex;
+        gap: 0.3rem;
+      }
+      .ide-repo-url {
+        flex: 1;
+        min-width: 0;
+        background: rgba(8, 14, 22, 0.85);
+        border: 1px solid rgba(76, 184, 232, 0.22);
+        color: #d7eef8;
+        border-radius: 4px;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
+      }
       .ide-section {
         display: flex;
         flex-wrap: wrap;

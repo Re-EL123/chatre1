@@ -38,7 +38,12 @@
     { name: "delete_file", desc: "Delete a file or directory", params: { path: "string", recursive: "boolean" } },
     { name: "copy_file", desc: "Copy a file or directory", params: { src: "string", dest: "string" } },
     { name: "find_files", desc: "Find files by name pattern", params: { pattern: "string" } },
-    { name: "search_code", desc: "Search file contents for text", params: { pattern: "string", path: "string" } },
+    { name: "search_code", desc: "Search file contents (rg on server / in-memory locally)", params: { pattern: "string", path: "string" } },
+    { name: "git_clone", desc: "Clone a git remote into /home/user/projects/<slug>/", params: { url: "string", slug: "string?", branch: "string?" } },
+    { name: "repo_open", desc: "Open/refresh a remote repo (alias for git_clone)", params: { url: "string", slug: "string?", branch: "string?" } },
+    { name: "run_tests", desc: "Run project tests (npm test / pytest); sets testsOk", params: { cmd: "string?", timeoutMs: "number?" } },
+    { name: "repo_diagnostics", desc: "Optional tsc/eslint diagnostics", params: {} },
+    { name: "git_diff", desc: "Show git diff (working tree or cached)", params: { path: "string?", cached: "boolean?" } },
     { name: "run_javascript", desc: "Execute JavaScript code", params: { code: "string" } },
     { name: "run_python", desc: "Execute Python code", params: { code: "string" } },
     { name: "create_document", desc: "Create a markdown document (saved + downloadable)", params: { title: "string", content: "string" } },
@@ -73,7 +78,7 @@
     { name: "git_commit", desc: "Commit staged changes", params: { message: "string" } },
     { name: "git_status", desc: "Show git status", params: {} },
     { name: "git_log", desc: "Show commit history", params: {} },
-    { name: "git_push", desc: "Push commits to the simulated remote", params: { remote: "string", branch: "string" } },
+    { name: "git_push", desc: "Push commits to remote (server) or simulated remote", params: { remote: "string", branch: "string" } },
   ];
 
   function core() {
@@ -399,6 +404,10 @@
         break;
       case "git_commit":
         if (!p.message) return fail("git_commit requires message");
+        break;
+      case "git_clone":
+      case "repo_open":
+        if (!(p.url || p.repo || p.remote)) return fail(tool + " requires url");
         break;
       case "use_skill":
         if (!p.name) return fail("use_skill requires name");
@@ -787,6 +796,35 @@
 
       case "git_push":
         return gitTool("push", p, common);
+
+      case "git_diff":
+        return gitTool("diff", p, common);
+
+      case "git_clone":
+      case "repo_open":
+        return {
+          ok: false,
+          tool: tool,
+          error:
+            "git_clone/repo_open runs on the server agent (real git cache). Use agent mode with a remote URL.",
+        };
+
+      case "run_tests":
+        return {
+          ok: false,
+          tool: "run_tests",
+          error:
+            "run_tests runs on the server agent against the repo cache. Use agent mode.",
+        };
+
+      case "repo_diagnostics":
+        return {
+          ok: true,
+          tool: "repo_diagnostics",
+          skipped: true,
+          text: "No local diagnostics — use server agent for tsc/eslint",
+          diagnostics: [],
+        };
 
       default:
         return { ok: false, tool, error: "Unknown tool: " + tool };
@@ -3427,8 +3465,15 @@
         return {
           ok: true,
           tool: "git_push",
-          text: "Pushed " + git.commits.length + " commit(s) to " + remote + "/" + branch + " (" + git.remotes[remote].tip + ")",
-          remote: git.remotes[remote],
+          text: "Pushed to " + remote + "/" + branch,
+        };
+      }
+      case "diff": {
+        return {
+          ok: true,
+          tool: "git_diff",
+          output: "(local simulated git — no unified diff; use server agent for real git_diff)",
+          simulated: true,
         };
       }
       default:

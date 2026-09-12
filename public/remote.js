@@ -363,6 +363,13 @@
     );
   }
 
+  async function getRepo(id) {
+    return request(
+      "/api/workspace?action=repo&id=" + encodeURIComponent(id),
+      { method: "GET" },
+    );
+  }
+
   async function getWorkspace(id) {
     const q = id ? "?id=" + encodeURIComponent(id) : "";
     return request("/api/workspace" + q, { method: "GET" });
@@ -768,6 +775,7 @@
     deleteThread,
     getMessages,
     getWorkspace,
+    getRepo,
     setActiveProject,
     exportWorkspace,
     getFile,
