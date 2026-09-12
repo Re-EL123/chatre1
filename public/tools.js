@@ -79,6 +79,11 @@
     { name: "git_status", desc: "Show git status", params: {} },
     { name: "git_log", desc: "Show commit history", params: {} },
     { name: "git_push", desc: "Push commits to remote (server) or simulated remote", params: { remote: "string", branch: "string" } },
+    { name: "create_pull_request", desc: "Create a GitHub PR via linked connector", params: { title: "string", body: "string?", head: "string?", base: "string?" } },
+    { name: "list_pull_requests", desc: "List GitHub PRs for the active repo", params: { state: "string?", limit: "number?" } },
+    { name: "get_pull_request", desc: "Get one GitHub PR by number", params: { number: "number" } },
+    { name: "review_pull_request", desc: "Review a GitHub PR (APPROVE|REQUEST_CHANGES|COMMENT)", params: { number: "number", event: "string?", body: "string?" } },
+    { name: "get_ci_status", desc: "GitHub Checks / commit status for a ref", params: { ref: "string?", branch: "string?" } },
   ];
 
   function core() {
@@ -408,6 +413,13 @@
       case "git_clone":
       case "repo_open":
         if (!(p.url || p.repo || p.remote)) return fail(tool + " requires url");
+        break;
+      case "create_pull_request":
+        if (!p.title) return fail("create_pull_request requires title");
+        break;
+      case "get_pull_request":
+      case "review_pull_request":
+        if (!(p.number || p.pr || p.pull)) return fail(tool + " requires number");
         break;
       case "use_skill":
         if (!p.name) return fail("use_skill requires name");
@@ -824,6 +836,19 @@
           skipped: true,
           text: "No local diagnostics — use server agent for tsc/eslint",
           diagnostics: [],
+        };
+
+      case "create_pull_request":
+      case "list_pull_requests":
+      case "get_pull_request":
+      case "review_pull_request":
+      case "get_ci_status":
+        return {
+          ok: false,
+          tool: tool,
+          error:
+            tool +
+            " runs on the signed-in remote agent with your GitHub connector (Settings → Integrations).",
         };
 
       default:

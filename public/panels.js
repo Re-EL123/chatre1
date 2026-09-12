@@ -936,6 +936,22 @@ function seedCloneChat(url) {
         });
         strip.appendChild(b);
       });
+      if (hasRepo) {
+        const prBtn = document.createElement("button");
+        prBtn.type = "button";
+        prBtn.className = "ide-run-btn";
+        prBtn.textContent = "Create PR";
+        prBtn.title = "Ask the agent to open a GitHub pull request";
+        prBtn.addEventListener("click", function () {
+          const br = state.repoBranch || (state.repo && state.repo.branch) || "HEAD";
+          seedAgentMessage(
+            "Open a GitHub pull request for branch `" +
+              br +
+              "` with create_pull_request (title summarizing the changes, body with summary + test plan). Ensure run_tests / get_ci_status as needed. Push only if required and approved.",
+          );
+        });
+        strip.appendChild(prBtn);
+      }
     }
     const refreshBtn = bar.querySelector(".ide-repo-refresh");
     if (refreshBtn) {
@@ -981,6 +997,7 @@ function renderFileTree(root, files) {
       state.activeProject = null;
     }
     const slugs = Object.keys(projects).sort();
+    state.roots = slugs.slice();
 
     const head = document.createElement("div");
     head.className = "ide-explorer-head";
@@ -990,6 +1007,9 @@ function renderFileTree(root, files) {
       (state.activeProject
         ? 'Active: <strong>' + escapeHtml(state.activeProject) + "</strong>"
         : "No active project") +
+      (slugs.length > 1
+        ? ' · roots: ' + escapeHtml(slugs.join(", "))
+        : "") +
       "</div>";
     head.title = "Right-click to export the workspace";
     head.addEventListener("contextmenu", function (e) {

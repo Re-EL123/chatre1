@@ -1342,6 +1342,18 @@
           : proof.testsOk === false
             ? "tests failed"
             : "tests —") +
+      (proof.ciOk === true
+        ? " · CI ok"
+        : proof.ciOk === false
+          ? " · CI pending"
+          : "") +
+      (proof.prUrl
+        ? ' · <a href="' +
+          String(proof.prUrl).replace(/"/g, "") +
+          '" target="_blank" rel="noopener">PR' +
+          (proof.prNumber ? " #" + proof.prNumber : "") +
+          "</a>"
+        : "") +
       " · " +
       (proof.previewOk ? "preview ok" : "preview pending") +
       (proof.localhost
@@ -1361,6 +1373,50 @@
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;") +
       "</div>";
+    chatMessages.appendChild(card);
+    scrollToBottom();
+  }
+
+  function showPrCard(ev) {
+    if (!chatMessages || !ev) return;
+    const pr = ev.pr || {};
+    const card = document.createElement("div");
+    card.className = "pr-card";
+    const action = ev.action || "update";
+    let body = "";
+    if (action === "ci") {
+      body =
+        "<strong>CI status</strong>" +
+        '<div class="pr-card-meta">' +
+        (ev.ciOk ? "CI ok" : "CI not green") +
+        (ev.lastCi && ev.lastCi.ref
+          ? " · <code>" +
+            String(ev.lastCi.ref).replace(/</g, "&lt;") +
+            "</code>"
+          : "") +
+        "</div>";
+    } else {
+      const num = pr.number != null ? "#" + pr.number : "";
+      const title = String(pr.title || "Pull request").replace(/</g, "&lt;");
+      const url = pr.html_url
+        ? String(pr.html_url).replace(/"/g, "&quot;")
+        : "";
+      body =
+        "<strong>PR " +
+        num +
+        "</strong> " +
+        title +
+        '<div class="pr-card-meta">' +
+        (pr.state || action) +
+        (ev.event ? " · " + ev.event : "") +
+        (url
+          ? ' · <a href="' +
+            url +
+            '" target="_blank" rel="noopener">Open on GitHub</a>'
+          : "") +
+        "</div>";
+    }
+    card.innerHTML = body;
     chatMessages.appendChild(card);
     scrollToBottom();
   }
@@ -1892,6 +1948,8 @@
               ) {
                 window.ChatrePanels.applyProblemsEvent(ev);
               }
+            } else if (ev.type === "pr") {
+              showPrCard(ev);
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
@@ -3670,6 +3728,8 @@
               ) {
                 window.ChatrePanels.applyProblemsEvent(ev);
               }
+            } else if (ev.type === "pr") {
+              showPrCard(ev);
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
