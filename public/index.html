@@ -3910,6 +3910,15 @@
           <div class="message-input-wrap">
             <div class="composer-toolbar">
               <div id="composer-modes" class="composer-modes" role="tablist" aria-label="Composer mode"></div>
+              <div class="composer-agent-pick" style="display:flex;align-items:center;gap:0.35rem">
+                <label for="agent-select" class="sr-only">Agent</label>
+                <select id="agent-select" aria-label="Active agent" title="Named agent" style="font-size:0.75rem;max-width:7.5rem"></select>
+                <select id="explore-thoroughness" aria-label="Explore thoroughness" title="Explore thoroughness" hidden style="font-size:0.72rem">
+                  <option value="quick">quick</option>
+                  <option value="medium" selected>medium</option>
+                  <option value="very thorough">very thorough</option>
+                </select>
+              </div>
               <div class="composer-tools">
                 <button type="button" class="btn composer-tool" id="composer-attach" data-tip="Attach files" aria-label="Attach">
                   <i data-lucide="paperclip" style="width:14px;height:14px" aria-hidden="true"></i>
@@ -4134,8 +4143,16 @@
           </label>
           <p style="margin:0.35rem 0 0;font-size:0.75rem;color:var(--text-light)">
             Autopilot auto-extends budget twice, runs one critic repair, and skips plan approval.
-            High-risk tools (desktop_exec, git_push) still ask.
+            High-risk tools (desktop_exec, git_push) still ask. Named agents (build/plan/explore) enforce allow/ask/deny permissions.
           </p>
+        </div>
+        <div class="settings-section" id="settings-agents-section">
+          <h3>Custom agents</h3>
+          <p style="margin:0 0 0.5rem;font-size:0.8rem;color:var(--text-light)">
+            Generate a specialized agent (OpenCode-style). It is saved to your account and appears in the agent picker.
+          </p>
+          <textarea id="agent-generate-input" rows="3" placeholder="e.g. A strict code-reviewer that only comments on recently changed files…" style="width:100%;font:inherit;font-size:0.85rem"></textarea>
+          <button type="button" class="btn" id="agent-generate-btn" style="margin-top:0.45rem">Generate agent</button>
         </div>
         <div class="settings-section" id="settings-pwa-section">
           <h3>Install &amp; permissions</h3>
@@ -4288,6 +4305,7 @@
     <script src="/motion.js"></script>
     <script src="/projects.js"></script>
     <script src="/preview.js"></script>
+    <script src="/agents-ui.js"></script>
     <script src="/ux.js"></script>
     <script src="/composer-flow.js"></script>
     <script src="/composer.js"></script>

@@ -478,6 +478,37 @@
     }
   }
 
+  async function listAgents() {
+    return request("/api/agents", { method: "GET" });
+  }
+
+  async function generateAgent(description, opts) {
+    const o = opts || {};
+    return request("/api/agents?action=generate", {
+      method: "POST",
+      body: JSON.stringify({
+        description: description,
+        save: o.save !== false,
+        model: o.model || undefined,
+        workspaceHint: o.workspaceHint || "",
+      }),
+    });
+  }
+
+  async function saveAgent(agent) {
+    return request("/api/agents?action=save", {
+      method: "POST",
+      body: JSON.stringify({ agent: agent }),
+    });
+  }
+
+  async function deleteAgent(name) {
+    return request(
+      "/api/agents?name=" + encodeURIComponent(name || ""),
+      { method: "DELETE" },
+    );
+  }
+
   async function runAgentStream({
     message,
     threadId,
@@ -493,6 +524,10 @@
     autonomy,
     approvedTools,
     autoResumeCount,
+    agent,
+    agentName,
+    composerMode,
+    thoroughness,
   }) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
@@ -514,6 +549,22 @@
         (window.ChatreAutonomy && window.ChatreAutonomy.get
           ? window.ChatreAutonomy.get()
           : "assist"),
+      agent:
+        agent ||
+        agentName ||
+        (window.ChatreAgents && window.ChatreAgents.getActive
+          ? window.ChatreAgents.getActive()
+          : "build"),
+      composerMode:
+        composerMode ||
+        (window.ChatreComposer && window.ChatreComposer.getMode
+          ? window.ChatreComposer.getMode()
+          : null),
+      thoroughness:
+        thoroughness ||
+        (window.ChatreAgents && window.ChatreAgents.getThoroughness
+          ? window.ChatreAgents.getThoroughness()
+          : "medium"),
     };
     if (Array.isArray(approvedTools) && approvedTools.length) {
       body.approvedTools = approvedTools;
@@ -716,5 +767,9 @@
     execStream,
     runAgentStream,
     chatStream,
+    listAgents,
+    generateAgent,
+    saveAgent,
+    deleteAgent,
   };
 })();

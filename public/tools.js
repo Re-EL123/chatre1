@@ -296,9 +296,69 @@
 
   // ─── Execution ────────────────────────────────────────────────────
 
+  var EDIT_TOOLS_FE = {
+    write_file: 1,
+    append_file: 1,
+    delete_file: 1,
+    copy_file: 1,
+    create_directory: 1,
+    patch_file: 1,
+    apply_patch: 1,
+    create_document: 1,
+    create_pdf: 1,
+    git_commit: 1,
+    git_push: 1,
+  };
+
+  function localAgentPermission(tool, params) {
+    var agent =
+      (window.ChatreAgents && window.ChatreAgents.getActive && window.ChatreAgents.getActive()) ||
+      "build";
+    var path = (params && (params.path || params.file)) || "";
+    if (agent === "plan") {
+      if (EDIT_TOOLS_FE[tool]) {
+        if (/\/documents\/plans\//i.test(path) || /\/PLAN\.md$/i.test(path) || /\/plan\.md$/i.test(path)) {
+          return { ok: true };
+        }
+        return {
+          ok: false,
+          error: 'Permission denied by agent "plan": edits blocked (plan markdown only)',
+        };
+      }
+      if (/^(execute_command|run_javascript|run_python|process_manage)$/.test(tool)) {
+        return { ok: false, error: 'Permission denied by agent "plan": bash blocked' };
+      }
+    }
+    if (agent === "explore") {
+      if (EDIT_TOOLS_FE[tool] || /^(execute_command|run_javascript|run_python|process_manage|delegate_task)$/.test(tool)) {
+        return {
+          ok: false,
+          error: 'Permission denied by agent "explore": read-only',
+        };
+      }
+    }
+    if (/\.env($|\.)/i.test(String(path).split("/").pop() || "") && !/\.env\.example$/i.test(path)) {
+      return {
+        ok: false,
+        needs_approval: true,
+        error: "Secret/dotenv path requires approval: " + path,
+      };
+    }
+    return { ok: true };
+  }
+
   async function executeTool(call, options) {
     const { tool, params } = call;
     const p = params || {};
+    const perm = localAgentPermission(tool, p);
+    if (!perm.ok) {
+      return {
+        ok: false,
+        tool: tool,
+        error: perm.error,
+        needs_approval: !!perm.needs_approval,
+      };
+    }
     if (window.ChatreAllowlists && options && options.taskType) {
       const gate = window.ChatreAllowlists.assertToolAllowed(
         tool,

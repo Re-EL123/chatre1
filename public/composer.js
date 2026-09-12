@@ -56,6 +56,15 @@
       plan: true,
     },
     {
+      id: "explore",
+      label: "Explore",
+      placeholder: "Search the workspace (read-only)…",
+      agent: true,
+      browser: false,
+      desktop: false,
+      explore: true,
+    },
+    {
       id: "image",
       label: "Image",
       placeholder: "Describe an image to generate…",
@@ -165,6 +174,17 @@
       if (window.ChatreUI && window.ChatreUI.setImageMode) {
         window.ChatreUI.setImageMode(!!m.image || state.mode === "image");
       }
+      if (window.ChatreAgents && window.ChatreAgents.setActive) {
+        if (m.plan || state.mode === "plan") {
+          window.ChatreAgents.setActive("plan");
+        } else if (m.explore || state.mode === "explore") {
+          window.ChatreAgents.setActive("explore");
+        } else if (state.mode === "agent" || state.mode === "code") {
+          if (window.ChatreAgents.getActive() === "plan" || window.ChatreAgents.getActive() === "explore") {
+            window.ChatreAgents.setActive("build");
+          }
+        }
+      }
     }
   }
 
@@ -213,6 +233,10 @@
       el.hidden = false;
       el.textContent =
         "Plan mode writes a plan only. Use Approve & execute when you are ready to build.";
+    } else if (m.explore || state.mode === "explore") {
+      el.hidden = false;
+      el.textContent =
+        "Explore mode is read-only — search and read files, no edits.";
     } else {
       el.hidden = true;
       el.textContent = "";

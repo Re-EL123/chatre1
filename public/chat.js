@@ -72,6 +72,7 @@
     { cat: "mode", cmd: "/mode desktop", desc: "Switch to Desktop mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("desktop"); } },
     { cat: "mode", cmd: "/mode code", desc: "Switch to Code mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("code"); } },
     { cat: "mode", cmd: "/mode plan", desc: "Switch to Plan mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("plan"); } },
+    { cat: "mode", cmd: "/mode explore", desc: "Switch to Explore mode (read-only)", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("explore"); } },
     { cat: "mode", cmd: "/plan", desc: "Plan mode — plan only, then Approve & execute", action: (arg) => {
       if (window.ChatreComposer) window.ChatreComposer.setMode("plan");
       const task = String(arg || "").trim();
@@ -1795,6 +1796,20 @@
                   (ev.ok === false ? " · errors found" : " · debug ok"),
                 false,
               );
+            } else if (ev.type === "agent") {
+              showStep(
+                "Agent: " +
+                  (ev.name || "?") +
+                  (ev.description ? " — " + String(ev.description).slice(0, 80) : ""),
+                false,
+              );
+              if (ev.name && window.ChatreAgents && window.ChatreAgents.setActive) {
+                // Don't overwrite user pick mid-run; only hint
+              }
+            } else if (ev.type === "thread_title") {
+              if (ev.title && window.ChatrePanels && window.ChatrePanels.refreshThreads) {
+                window.ChatrePanels.refreshThreads();
+              }
             } else if (ev.type === "shell_chunk") {
               echoShellChunk(ev);
             } else if (ev.type === "workspace") {
