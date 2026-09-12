@@ -45,6 +45,7 @@
     { name: "create_pdf", desc: "Create a downloadable PDF file (Latin script text; use create_document for other scripts)", params: { title: "string", content: "string" } },
     { name: "export_document", desc: "Download an existing workspace file", params: { path: "string" } },
     { name: "verify_project", desc: "Sanity-check a project directory", params: { path: "string" } },
+    { name: "preview_project", desc: "Live localhost preview + end-to-end debug (required before done)", params: { path: "string", slug: "string" } },
     { name: "view_tree", desc: "Show the workspace file tree", params: { path: "string" } },
     { name: "ask_user_input", desc: "Ask the user a question with tappable option buttons (2-4 short, mutually exclusive choices)", params: { question: "string", options: "array" } },
     { name: "clarify", desc: "Structured multi-choice questions (Hermes-style clarify)", params: { question: "string", options: "array", recommended: "number?" } },
@@ -550,6 +551,9 @@
 
       case "verify_project":
         return verifyProjectTool(p.path);
+
+      case "preview_project":
+        return await previewProjectTool(p, common);
 
       case "view_tree":
         return viewTreeTool(p.path);
@@ -1975,6 +1979,168 @@
       text: issues.length
         ? "Verification warnings:\n- " + issues.join("\n- ")
         : "Project looks healthy (" + files.length + " files).",
+    };
+  }
+
+  function portForRoot(root) {
+    var s = String(root || "project");
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return 4173 + (h % 800);
+  }
+
+  function collectProjectFileMap(root) {
+    var prefix = String(root || "").replace(/\/$/, "");
+    var map = {};
+    var store = fs() || {};
+    Object.keys(store).forEach(function (p) {
+      var f = store[p];
+      if (!f || f.type === "dir") return;
+      if (!(p === prefix || p.indexOf(prefix + "/") === 0)) return;
+      var rel = p === prefix ? "" : p.slice(prefix.length + 1);
+      if (!rel) return;
+      map[rel] = {
+        content: String(f.content || ""),
+        encoding: f.encoding || "utf8",
+        mime: /\.css$/i.test(rel)
+          ? "text/css"
+          : /\.js$/i.test(rel)
+            ? "text/javascript"
+            : /\.html?/i.test(rel)
+              ? "text/html"
+              : "text/plain",
+      };
+    });
+    return map;
+  }
+
+  function staticDebugProject(root, fileMap) {
+    var errors = [];
+    var warnings = [];
+    var keys = Object.keys(fileMap || {});
+    if (!keys.length) {
+      errors.push({ severity: "error", path: root, message: "No files under project root" });
+    }
+    keys.forEach(function (rel) {
+      if (!String(fileMap[rel].content || "").trim()) {
+        errors.push({ severity: "error", path: rel, message: "Empty file" });
+      }
+    });
+    var entry =
+      fileMap["index.html"]
+        ? "index.html"
+        : fileMap["index.htm"]
+          ? "index.htm"
+          : keys.filter(function (k) {
+              return /\.html?$/i.test(k);
+            })[0] || null;
+    if (!entry && keys.some(function (k) { return /\.(html?|css|js)$/i.test(k); })) {
+      errors.push({ severity: "error", path: root, message: "No index.html entry found" });
+    }
+    keys.forEach(function (rel) {
+      if (!/\.js$/i.test(rel)) return;
+      try {
+        // eslint-disable-next-line no-new-func
+        new Function(String(fileMap[rel].content || ""));
+      } catch (e) {
+        errors.push({
+          severity: "error",
+          path: rel,
+          message: "JS syntax: " + (e.message || e),
+        });
+      }
+    });
+    if (entry) {
+      var html = String(fileMap[entry].content || "");
+      var re = /(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+      var m;
+      while ((m = re.exec(html))) {
+        var ref = m[1].split("?")[0].split("#")[0];
+        if (!ref || /^(https?:|data:|#|mailto:)/i.test(ref)) continue;
+        ref = ref.replace(/^\.\//, "");
+        if (/\.(css|js|json|png|jpe?g|gif|svg|webp)$/i.test(ref) && !fileMap[ref] && !fileMap[ref.replace(/^\//, "")]) {
+          errors.push({
+            severity: "error",
+            path: entry,
+            message: "Missing asset referenced by HTML: " + ref,
+          });
+        }
+      }
+    }
+    return { ok: errors.length === 0, errors: errors, warnings: warnings, entry: entry };
+  }
+
+  async function previewProjectTool(p) {
+    var slug = p && p.slug;
+    var root = (p && (p.path || p.root)) || null;
+    if (!root && slug) root = "/home/user/projects/" + slug;
+    if (!root) {
+      try {
+        if (window.ChatrePanels && window.ChatrePanels.state && window.ChatrePanels.state.activeProject) {
+          root = "/home/user/projects/" + window.ChatrePanels.state.activeProject;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    root = resolve(root || cwd());
+    var fileMap = collectProjectFileMap(root);
+    var debug = staticDebugProject(root, fileMap);
+    var port = portForRoot(root);
+    var entry = debug.entry || "index.html";
+    var preview = {
+      root: root,
+      port: port,
+      url: "http://localhost:" + port + "/" + entry,
+      origin: "http://localhost:" + port,
+      entry: entry,
+      files: fileMap,
+      fileCount: Object.keys(fileMap).length,
+    };
+    var client = { ok: debug.ok, errors: [] };
+    if (window.ChatrePreview && window.ChatrePreview.open) {
+      client = await window.ChatrePreview.open({
+        preview: preview,
+        errors: debug.errors,
+        ok: debug.ok,
+        path: root,
+      });
+    }
+    var allErrors = []
+      .concat(debug.errors || [])
+      .concat((client && client.errors) || []);
+    // Deduplicate by message+path
+    var seen = {};
+    allErrors = allErrors.filter(function (e) {
+      var k = (e.path || "") + "|" + (e.message || "");
+      if (seen[k]) return false;
+      seen[k] = true;
+      return true;
+    });
+    var ok = allErrors.length === 0;
+    return {
+      ok: ok,
+      tool: "preview_project",
+      path: root,
+      entry: entry,
+      fileCount: preview.fileCount,
+      errors: allErrors,
+      warnings: debug.warnings || [],
+      preview: preview,
+      localhost: preview.url,
+      port: port,
+      text: ok
+        ? "Live preview ok at " + preview.url + " (" + preview.fileCount + " files)"
+        : "Preview/debug found " +
+          allErrors.length +
+          " error(s):\n" +
+          allErrors
+            .slice(0, 12)
+            .map(function (e) {
+              return "- [" + (e.path || "?") + "] " + e.message;
+            })
+            .join("\n") +
+          "\nFix then re-run preview_project. Do not claim done yet.",
     };
   }
 

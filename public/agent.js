@@ -67,6 +67,7 @@
     "git_log",
     "list_skills",
     "verify_project",
+    "preview_project",
     "search_mcp_registry",
     "list_mcp_tools",
   ]);
@@ -89,6 +90,7 @@
   // Tools that count as a verification step.
   const VERIFYING_TOOLS = new Set([
     "verify_project",
+    "preview_project",
     "execute_command",
     "execute_code",
     "run_javascript",
@@ -720,7 +722,7 @@
               messages.push({
                 role: "user",
                 content:
-                  "You wrote files but verified nothing. Before finishing, verify: run verify_project, and tests / run_javascript / run_python / commands if appropriate. Then give the final summary WITHOUT tool blocks.",
+                  "You wrote files but did not run a live preview. Before finishing, call preview_project on the project root (opens localhost preview + debug). Fix any errors, re-run preview_project until ok, then give the final summary WITHOUT tool blocks.",
               });
               if (cleanText.trim()) {
                 callbacks.onStepText && callbacks.onStepText(cleanText, false);

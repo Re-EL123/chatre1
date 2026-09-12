@@ -1782,6 +1782,19 @@
                 window.ChatreUX.pinShellResult(ev.result);
               }
               echoShellToTerminal(ev.result);
+              if (window.ChatrePreview) {
+                window.ChatrePreview.handleAgentEvent(ev);
+              }
+            } else if (ev.type === "preview") {
+              if (window.ChatrePreview) {
+                window.ChatrePreview.handleAgentEvent(ev);
+              }
+              showStep(
+                "Live preview · " +
+                  (ev.localhost || (ev.preview && ev.preview.url) || "localhost") +
+                  (ev.ok === false ? " · errors found" : " · debug ok"),
+                false,
+              );
             } else if (ev.type === "shell_chunk") {
               echoShellChunk(ev);
             } else if (ev.type === "workspace") {
@@ -3457,6 +3470,19 @@
                 window.ChatreComposerFlow.noteToolResult(ev.tool, ev.result);
               }
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+              if (window.ChatrePreview) {
+                window.ChatrePreview.handleAgentEvent(ev);
+              }
+            } else if (ev.type === "preview") {
+              if (window.ChatrePreview) {
+                window.ChatrePreview.handleAgentEvent(ev);
+              }
+              showStep(
+                "Live preview · " +
+                  (ev.localhost || (ev.preview && ev.preview.url) || "localhost") +
+                  (ev.ok === false ? " · errors found" : " · debug ok"),
+                false,
+              );
             } else if (ev.type === "auto_resume") {
               startThinking(
                 "Auto-resuming (" + (ev.count || 1) + "/" + (ev.max || 2) + ")…",

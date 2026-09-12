@@ -165,6 +165,7 @@
       "execute_code",
       "process_manage",
       "verify_project",
+      "preview_project",
       "read_file",
       "write_file",
       "append_file",

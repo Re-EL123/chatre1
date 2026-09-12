@@ -1420,6 +1420,92 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .live-preview-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 4200;
+        display: none;
+        align-items: stretch;
+        justify-content: center;
+        padding: 1.25rem;
+        background: rgba(4, 8, 12, 0.72);
+        backdrop-filter: blur(4px);
+      }
+      .live-preview-modal.open {
+        display: flex;
+      }
+      .live-preview-card {
+        width: min(1100px, 100%);
+        height: min(860px, 100%);
+        margin: auto;
+        display: flex;
+        flex-direction: column;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        background: #0b1014;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      }
+      .live-preview-bar {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.55rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        background: #101820;
+      }
+      .live-preview-url {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.78rem;
+        color: #7dffb3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .live-preview-actions {
+        display: flex;
+        gap: 0.35rem;
+        flex-shrink: 0;
+      }
+      .live-preview-body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr minmax(180px, 260px);
+        min-height: 0;
+      }
+      #live-preview-frame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #06100c;
+      }
+      .live-preview-console {
+        border-left: 1px solid var(--border-color);
+        padding: 0.6rem;
+        overflow: auto;
+        font-size: 0.72rem;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        background: #0a0f14;
+      }
+      .live-preview-console .lp-ok {
+        color: #8aa898;
+      }
+      .live-preview-console .lp-err {
+        color: #ff8f7a;
+        margin-bottom: 0.45rem;
+        line-height: 1.35;
+      }
+      @media (max-width: 800px) {
+        .live-preview-body {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr 140px;
+        }
+        .live-preview-console {
+          border-left: 0;
+          border-top: 1px solid var(--border-color);
+        }
+      }
       .ide-chevron {
         width: 0.7rem;
         opacity: 0.7;
@@ -4201,6 +4287,7 @@
     <script src="/ui-adv.js"></script>
     <script src="/motion.js"></script>
     <script src="/projects.js"></script>
+    <script src="/preview.js"></script>
     <script src="/ux.js"></script>
     <script src="/composer-flow.js"></script>
     <script src="/composer.js"></script>
