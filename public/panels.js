@@ -174,6 +174,9 @@
     if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
       window.ChatreComposer.paintPrimaryButton();
     }
+    if (window.ChatreComposerFlow && window.ChatreComposerFlow.paintMicroActions) {
+      window.ChatreComposerFlow.paintMicroActions();
+    }
     if (on) {
       const run = $("composer-run");
       if (run) {
@@ -967,11 +970,26 @@
     setInterval(refreshAuthStatus, 60000);
   }
 
+  function openFilesPanel() {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    const mobile =
+      window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    if (mobile) {
+      shell.classList.remove("show-threads", "show-browser");
+      shell.classList.add("show-files");
+    } else {
+      shell.classList.remove("hide-files");
+    }
+    refreshFiles();
+  }
+
   window.ChatrePanels = {
     init,
     refreshAuthStatus,
     refreshThreads,
     refreshFiles,
+    openFilesPanel,
     updateUsageMeter,
     rememberWrite,
     setResumeAvailable,

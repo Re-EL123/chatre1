@@ -394,7 +394,7 @@
 
       const forcePlan =
         (options && options.forcePlan !== false) &&
-        ["build", "debug", "document", "git", "run"].indexOf(
+        ["build", "debug", "document", "git", "run", "mixed"].indexOf(
           briefing.task_type,
         ) !== -1;
 
@@ -417,14 +417,27 @@
       }
 
       // Slim skill context + analyst orders (not a generic workflow dump).
-      const preamble = buildPreamble(autoSkills, intent, executorOrders, userText);
+      const preamble = buildPreamble(autoSkills, intent, executorOrders, userText, briefing);
 
-      const enabledList =
-        intent && intent.tools
-          ? intent.tools
-          : window.ChatreSkills && window.ChatreSkills.toolsForSkills
-            ? window.ChatreSkills.toolsForSkills(autoSkills)
-            : null;
+      // Prefer analyst task_type allowlist over intent when they disagree —
+      // empty intent.tools ("chat") was blocking write_file/shell on builds.
+      let enabledList = null;
+      if (
+        forcePlan ||
+        (briefing.task_type &&
+          ["build", "debug", "document", "git", "run", "mixed"].indexOf(
+            briefing.task_type,
+          ) !== -1)
+      ) {
+        enabledList = null; // unrestricted for build-like work
+      } else if (intent && intent.tools && intent.tools.length) {
+        enabledList = intent.tools;
+      } else if (
+        window.ChatreSkills &&
+        window.ChatreSkills.toolsForSkills
+      ) {
+        enabledList = window.ChatreSkills.toolsForSkills(autoSkills);
+      }
       const enabledSet = enabledList ? new Set(enabledList) : null;
 
       // Seed todos from the analyst when present.
@@ -659,7 +672,7 @@
                   (fullAssistantText ? "\n\n" : "") + cleanText;
               } else {
                 callbacks.onPhase &&
-                  callbacks.onPhase("tool", "Writing real files into the workspace…");
+                  callbacks.onPhase("tool", "Waiting for tool calls…");
               }
               continue;
             }
@@ -1200,27 +1213,46 @@
    * intent-scoped task description, skill playbooks, and the list of
    * enabled tools so the model knows exactly what it may do.
    */
-  function buildPreamble(skills, intent, executorOrders, userText) {
+  function buildPreamble(skills, intent, executorOrders, userText, briefing) {
     const parts = [];
+    const taskType = (briefing && briefing.task_type) || (intent && intent.kind);
+    const buildLike =
+      taskType &&
+      ["build", "debug", "document", "git", "run", "mixed"].indexOf(taskType) !==
+        -1;
     const enabled =
-      intent && intent.tools
-        ? intent.tools
-        : window.ChatreSkills && window.ChatreSkills.toolsForSkills
-          ? window.ChatreSkills.toolsForSkills(skills || [])
-          : [];
+      buildLike
+        ? null
+        : intent && intent.tools && intent.tools.length
+          ? intent.tools
+          : window.ChatreSkills && window.ChatreSkills.toolsForSkills
+            ? window.ChatreSkills.toolsForSkills(skills || [])
+            : [];
+
+    parts.push(
+      "## Tool calling\n" +
+        "Call tools with a fenced ```tool JSON block. Do not narrate Writing files / Running shell — emit tools.\n" +
+        'Example:\n```tool\n{"tool":"write_file","params":{"path":"/home/user/projects/demo/index.html","content":"..."}}\n```\n' +
+        "Use execute_command, run_javascript, run_python, execute_code, skills, and file tools as needed.",
+    );
 
     // Analyst orders first — this is the task-specific prompt for the executor.
     if (executorOrders && String(executorOrders).trim()) {
       parts.push(String(executorOrders).trim());
     }
 
-    if (intent) {
+    if (enabled === null) {
+      parts.push(
+        "## Enabled tools for this task\n" +
+          "Full workspace tools available (files, shell, python/js, skills). Prefer write_file for artifacts.",
+      );
+    } else if (intent) {
       parts.push(
         "## Enabled tools for this task\n" +
           (enabled.length
             ? enabled.join(", ")
-            : "(none — answer directly without tools)") +
-          ".\nCalls to any other tool will be rejected.",
+            : "answer directly; tools optional") +
+          ".\nCalls outside this list may be rejected.",
       );
     }
 

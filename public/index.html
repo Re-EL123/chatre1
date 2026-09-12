@@ -2745,6 +2745,65 @@
         color: var(--text-light);
         font-size: 0.72rem;
       }
+      .composer-status-stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        align-items: center;
+        width: 100%;
+        margin: 0.15rem 0 0.1rem;
+      }
+      .composer-status-stack[hidden] { display: none !important; }
+      .composer-status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        padding: 0.12rem 0.45rem;
+        border-radius: 6px;
+        border: 1px solid rgba(76, 184, 232, 0.22);
+        background: rgba(12, 24, 36, 0.45);
+        font-size: 0.7rem;
+        color: #9ad8f0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .composer-status-pill.ok {
+        border-color: rgba(72, 180, 120, 0.45);
+        color: #8fdfb0;
+      }
+      .composer-status-pill.warn {
+        border-color: rgba(220, 160, 70, 0.45);
+        color: #efc07a;
+      }
+      .composer-micro-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin: 0 0 0.4rem;
+      }
+      .composer-micro-actions[hidden] { display: none !important; }
+      .composer-micro-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.28rem 0.65rem;
+        border-radius: 999px;
+        border: 1px solid rgba(76, 184, 232, 0.35);
+        background: rgba(20, 40, 58, 0.85);
+        color: #c8eaf8;
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+      .composer-micro-pill:hover {
+        border-color: rgba(76, 184, 232, 0.65);
+        background: rgba(28, 56, 78, 0.95);
+      }
+      .composer-micro-pill i {
+        width: 12px;
+        height: 12px;
+      }
       .composer-esc-hint {
         margin-left: 0.5rem;
         font-size: 0.72rem;
@@ -3381,9 +3440,11 @@
                 <span id="composer-run-budget" class="composer-run-budget"></span>
                 <span id="composer-esc-hint" class="composer-esc-hint" hidden></span>
               </div>
+              <div id="composer-status-stack" class="composer-status-stack" hidden></div>
               <div id="composer-approve" class="composer-approve" hidden></div>
               <div id="composer-queue" class="composer-queue" hidden></div>
             </div>
+            <div id="composer-micro-actions" class="composer-micro-actions" hidden></div>
             <div id="composer-busy" hidden></div>
             <div id="composer-guidance" class="composer-guidance" hidden>
               <input id="composer-guidance-input" type="text" placeholder="Add guidance…" />
@@ -3694,6 +3755,7 @@
     <script src="/plan-ui.js"></script>
     <script src="/ui-adv.js"></script>
     <script src="/ux.js"></script>
+    <script src="/composer-flow.js"></script>
     <script src="/composer.js"></script>
     <script src="/toolbar.js"></script>
     <script src="/agent.js"></script>

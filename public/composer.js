@@ -47,6 +47,15 @@
       desktop: false,
     },
     {
+      id: "plan",
+      label: "Plan",
+      placeholder: "Describe what to plan (save plan → Approve & execute)…",
+      agent: true,
+      browser: false,
+      desktop: false,
+      plan: true,
+    },
+    {
       id: "image",
       label: "Image",
       placeholder: "Describe an image to generate…",
@@ -200,6 +209,10 @@
       el.hidden = false;
       el.textContent =
         "Desktop mode can control your machine via the companion. Confirm sensitive actions.";
+    } else if (m.plan || state.mode === "plan") {
+      el.hidden = false;
+      el.textContent =
+        "Plan mode writes a plan only. Use Approve & execute when you are ready to build.";
     } else {
       el.hidden = true;
       el.textContent = "";
@@ -321,6 +334,14 @@
     var bits = [];
     var f = composerFlags();
     var text = String(message || "");
+    if (f.mode === "plan" || (modeObj() && modeObj().plan)) {
+      if (
+        window.ChatreComposerFlow &&
+        window.ChatreComposerFlow.wrapPlanMessage
+      ) {
+        return window.ChatreComposerFlow.wrapPlanMessage(text);
+      }
+    }
     var wantsPdf =
       /\bpdf\b/i.test(text) ||
       /\b(report|guide|manual|essay|book|confessions?)\b/i.test(text);
@@ -338,7 +359,7 @@
         );
       } else {
         bits.push(
-          "[Prefer coding tools: explore, patch_file, execute_command, verify.]",
+          "[Prefer coding tools: view_tree, list_directory, read_file, write_file, patch_file, apply_patch, execute_command, execute_code, run_javascript, run_python, verify_project.]",
         );
       }
     }
@@ -713,6 +734,28 @@
         },
       },
       {
+        cat: "mode",
+        cmd: "/mode plan",
+        desc: "Switch to Plan mode (plan-only)",
+        run: function () {
+          setMode("plan");
+        },
+      },
+      {
+        cat: "mode",
+        cmd: "/plan",
+        desc: "Plan mode — plan only, then Approve & execute",
+        run: function () {
+          setMode("plan");
+          if (window.ChatreKit && window.ChatreKit.toast) {
+            window.ChatreKit.toast(
+              "Plan mode on — describe the task, then Approve & execute",
+              "info",
+            );
+          }
+        },
+      },
+      {
         cat: "run",
         cmd: "/clear",
         desc: "Clear chat",
@@ -925,18 +968,20 @@
     var guide = $("composer-guidance");
     var stop = $("stop-button");
     var escHint = $("composer-esc-hint");
+    var phase = "Working…";
+    var tool = "";
+    if (typeof meta === "string") {
+      if (meta === "agent") phase = "Agent running…";
+      else if (meta === "image") phase = "Generating image…";
+      else if (meta === "plan") phase = "Planning…";
+      else phase = meta || phase;
+    } else if (meta && typeof meta === "object") {
+      phase = meta.phase || meta.step || "Working…";
+      tool = meta.tool || meta.lastTool || "";
+    }
     if (run) {
       if (busy) {
         run.hidden = false;
-        var phase = "Working…";
-        var tool = "";
-        if (typeof meta === "string") {
-          if (meta === "agent") phase = "Agent running…";
-          else if (meta === "image") phase = "Generating image…";
-        } else if (meta && typeof meta === "object") {
-          phase = meta.phase || meta.step || "Working…";
-          tool = meta.tool || meta.lastTool || "";
-        }
         if ($("composer-busy-phase")) $("composer-busy-phase").textContent = phase;
         if ($("composer-busy-tool")) {
           $("composer-busy-tool").textContent = tool ? "· " + tool : "";
@@ -948,8 +993,20 @@
             window.ChatrePanels.state.canResume) ||
           (window.ChatreUX &&
             window.ChatreUX.state &&
-            window.ChatreUX.state.pauseReason);
+            window.ChatreUX.state.pauseReason) ||
+          !!window.__pendingExecutePlan;
         if (!paused) run.hidden = true;
+      }
+    }
+    if (window.ChatreComposerFlow) {
+      if (busy) {
+        window.ChatreComposerFlow.markRunning(true, phase);
+        if (tool) {
+          window.ChatreComposerFlow.updateStatusStack({ tool: tool });
+        }
+      } else {
+        window.ChatreComposerFlow.markRunning(false);
+        window.ChatreComposerFlow.paintMicroActions();
       }
     }
     if (guide) guide.hidden = !busy;
@@ -969,7 +1026,7 @@
     var run = $("composer-run");
     if (!run || !window.ChatreUX || !window.ChatreUX.state) return;
     var st = window.ChatreUX.state;
-    var active = !!(st.running || st.pauseReason);
+    var active = !!(st.running || st.pauseReason || window.__pendingExecutePlan);
     if (active) {
       run.hidden = false;
       if ($("composer-busy-phase")) {
@@ -979,6 +1036,14 @@
       if ($("composer-run-budget") && st.maxSteps != null) {
         $("composer-run-budget").textContent =
           (st.usedSteps || 0) + "/" + st.maxSteps + " steps";
+      }
+      if (window.ChatreComposerFlow) {
+        window.ChatreComposerFlow.updateStatusStack({
+          phase: st.step || st.pauseReason || st.phase || "",
+          running: !!st.running,
+          tool: st.lastTool || "",
+        });
+        window.ChatreComposerFlow.paintMicroActions();
       }
     } else if (!state.queue.length) {
       run.hidden = true;

@@ -29,7 +29,7 @@
   const SLASH_COMMANDS = [
     { cat: "image", cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
     { cat: "run", cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; window.__pendingUserInput = null; window.__pendingConnectors = null; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
-    { cat: "run", cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model (Chatre + BYOK)\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/mode <chat|agent|browse|desktop|code|image>`: Switch composer mode\n- `/agent`: Toggle Agent/Chat composer mode\n\nModes live in the composer toolbar. Use ⌘/Ctrl+K for the command palette.") },
+    { cat: "run", cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model (Chatre + BYOK)\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/plan`: Switch to Plan mode (plan-only → Approve & execute)\n- `/mode <chat|agent|browse|desktop|code|plan|image>`: Switch composer mode\n- `/agent`: Toggle Agent/Chat composer mode\n\nModes live in the composer toolbar. Use ⌘/Ctrl+K for the command palette.") },
     { cat: "model", cmd: "/model", desc: "Show Chatre + BYOK models", action: () => {
       const opts = Array.from(modelSelect.options || []);
       const chatre = [];
@@ -71,6 +71,16 @@
     { cat: "mode", cmd: "/mode browse", desc: "Switch to Browse mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("browse"); } },
     { cat: "mode", cmd: "/mode desktop", desc: "Switch to Desktop mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("desktop"); } },
     { cat: "mode", cmd: "/mode code", desc: "Switch to Code mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("code"); } },
+    { cat: "mode", cmd: "/mode plan", desc: "Switch to Plan mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("plan"); } },
+    { cat: "mode", cmd: "/plan", desc: "Plan mode — plan only, then Approve & execute", action: (arg) => {
+      if (window.ChatreComposer) window.ChatreComposer.setMode("plan");
+      const task = String(arg || "").trim();
+      if (task && window.ChatreUI && window.ChatreUI.composeAndSend) {
+        window.ChatreUI.composeAndSend(task);
+      } else {
+        addMessage("assistant", "Plan mode on. Describe the task — I'll write a plan file only. Then use **Approve & execute** to build.");
+      }
+    } },
     { cat: "mode", cmd: "/mode image", desc: "Switch to Image mode", action: () => { if (window.ChatreComposer) window.ChatreComposer.setMode("image"); } },
     { cat: "settings", cmd: "/settings", desc: "Open settings", action: () => { if (window.ChatreUX && window.ChatreUX.openSettings) window.ChatreUX.openSettings(); } },
     { cat: "run", cmd: "/skills", desc: "List agent skills", action: () => {
@@ -380,7 +390,10 @@
     if (chatContainer) {
       chatContainer.classList.toggle("processing", busy);
       chatContainer.classList.toggle("imaging", busy && mode === "image");
-      chatContainer.classList.toggle("agenting", busy && mode === "agent");
+      chatContainer.classList.toggle(
+        "agenting",
+        busy && (mode === "agent" || mode === "plan"),
+      );
     }
     if (busy) {
       stopButton.classList.add("visible");
@@ -391,11 +404,32 @@
       activeAbort = null;
     }
     if (window.ChatreComposer && window.ChatreComposer.setBusyUi) {
-      window.ChatreComposer.setBusyUi(busy, mode || "chat");
+      var busyMeta = mode || "chat";
+      if (
+        busy &&
+        window.ChatreComposerFlow &&
+        window.ChatreComposerFlow.isPlanMode &&
+        window.ChatreComposerFlow.isPlanMode()
+      ) {
+        busyMeta = "plan";
+      }
+      window.ChatreComposer.setBusyUi(busy, busyMeta);
     }
     if (!busy && window.ChatreComposer && window.ChatreComposer.flushQueue) {
       window.ChatreComposer.flushQueue();
     }
+  }
+
+  function shouldSkipPlanApproval() {
+    const auto =
+      window.ChatreAutonomy &&
+      window.ChatreAutonomy.get &&
+      window.ChatreAutonomy.get() === "autopilot";
+    const planMode =
+      window.ChatreComposerFlow &&
+      window.ChatreComposerFlow.isPlanMode &&
+      window.ChatreComposerFlow.isPlanMode();
+    return !!(auto || planMode);
   }
 
   function startThinking(label) {
@@ -1201,7 +1235,17 @@
 
   async function runAgentTask(message, opts) {
     opts = opts || {};
-    setBusy(true, "agent");
+    const planModeRun =
+      !!(opts.planMode) ||
+      !!(
+        window.ChatreComposerFlow &&
+        window.ChatreComposerFlow.isPlanMode &&
+        window.ChatreComposerFlow.isPlanMode()
+      );
+    if (window.ChatreComposerFlow && window.ChatreComposerFlow.resetStatus) {
+      window.ChatreComposerFlow.resetStatus();
+    }
+    setBusy(true, planModeRun ? "plan" : "agent");
     if (
       window.ChatrePwa &&
       !localStorage.getItem("chatre_perms_asked") &&
@@ -1226,7 +1270,7 @@
       trimHistory();
     }
 
-    startThinking("Chatre is planning");
+    startThinking(planModeRun ? "Chatre is drafting a plan" : "Chatre is planning");
 
     const agentBody = document.createElement("div");
     agentBody.className = "agent-body";
@@ -1483,6 +1527,13 @@
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_clarify");
               }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Waiting for your choice",
+                  running: false,
+                });
+                window.ChatreComposerFlow.paintMicroActions();
+              }
               if (window.ChatreUX) {
                 window.ChatreUX.pauseRun("Waiting for your choice");
               }
@@ -1526,6 +1577,13 @@
               };
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
+              }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Waiting for plan approval",
+                  running: false,
+                });
+                window.ChatreComposerFlow.paintMicroActions();
               }
               if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
                 window.ChatreUIAdv.openPlanDrawer(
@@ -1656,6 +1714,13 @@
               }
               const card = showTool(ev);
               toolCards[ev.id || ev.tool] = card;
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Running tool",
+                  tool: ev.tool || "",
+                  running: true,
+                });
+              }
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
@@ -1670,6 +1735,9 @@
                   ev.result.previous,
                   ev.result.content,
                 );
+              }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.noteToolResult(ev.tool, ev.result);
               }
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
               if (
@@ -1711,6 +1779,9 @@
                     : ""),
                 false,
               );
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.noteDiagnostics(d);
+              }
             } else if (ev.type === "awaiting_shell") {
               stopThinking();
               showStep(
@@ -1832,9 +1903,18 @@
                 chatHistory.push({ role: "assistant", content: ev.response });
                 trimHistory();
               }
+              if (ev.response) finalText = ev.response;
               if (window.ChatrePanels) {
                 window.ChatrePanels.refreshThreads();
                 window.ChatrePanels.refreshFiles();
+              }
+              if (planModeRun && window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.handlePlanModeComplete(finalText || ev.response || "", {
+                  filesTouched:
+                    (window.ChatreComposerFlow.status &&
+                      window.ChatreComposerFlow.status.filesTouched) ||
+                    [],
+                });
               }
             }
         };
@@ -1856,10 +1936,7 @@
             window.ChatreAutonomy && window.ChatreAutonomy.get
               ? window.ChatreAutonomy.get()
               : "assist",
-          skipPlanApproval:
-            window.ChatreAutonomy &&
-            window.ChatreAutonomy.get &&
-            window.ChatreAutonomy.get() === "autopilot",
+          skipPlanApproval: shouldSkipPlanApproval(),
           onEvent: handleAgentEvent,
         });
       } else if (window.ChatreAgent && window.ChatreTools) {
@@ -1875,10 +1952,7 @@
         const agentResult = await window.ChatreAgent.run(initialMessages, {
           model: modelSelect.value,
           maxTokens: 3072,
-          skipPlanApproval:
-            window.ChatreAutonomy &&
-            window.ChatreAutonomy.get &&
-            window.ChatreAutonomy.get() === "autopilot",
+          skipPlanApproval: shouldSkipPlanApproval(),
           callbacks: {
             onSkills: (skills) => {
               if (skills && skills.length) {
@@ -1989,10 +2063,23 @@
               }
               const card = showTool(call);
               toolCards[call.id] = card;
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Running tool",
+                  tool: (call && call.tool) || "",
+                  running: true,
+                });
+              }
             },
             onToolResult: (call, result) => {
               const card = toolCards[call.id];
               if (card) updateTool(card, result);
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.noteToolResult(
+                  (call && call.tool) || "",
+                  result,
+                );
+              }
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
             },
             onDone: (res) => {
@@ -2006,6 +2093,13 @@
                     String(res.response || "").length / 4,
                   ),
                 });
+              }
+              if (res && res.response) finalText = res.response;
+              if (planModeRun && window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.handlePlanModeComplete(
+                  res.response || finalText || "",
+                  {},
+                );
               }
               // Surface usage directly in the agent card.
               if (!agentEl.querySelector(".agent-meta")) {
@@ -2098,6 +2192,16 @@
       stopThinking();
       if (window.ChatreUX) window.ChatreUX.endRun();
       setBusy(false);
+      if (
+        planModeRun &&
+        window.ChatreComposerFlow &&
+        !window.__pendingExecutePlan &&
+        finalText
+      ) {
+        window.ChatreComposerFlow.handlePlanModeComplete(finalText, {});
+      } else if (window.ChatreComposerFlow) {
+        window.ChatreComposerFlow.paintMicroActions();
+      }
       userInput.focus();
       if (!skipChips) {
         appendSuggestionChips(agentEl, finalText || "project");
@@ -3153,6 +3257,13 @@
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_clarify");
               }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Waiting for your choice",
+                  running: false,
+                });
+                window.ChatreComposerFlow.paintMicroActions();
+              }
               if (window.ChatreUX) {
                 window.ChatreUX.pauseRun("Waiting for your choice");
               }
@@ -3196,6 +3307,13 @@
               };
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
+              }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Waiting for plan approval",
+                  running: false,
+                });
+                window.ChatreComposerFlow.paintMicroActions();
               }
               if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
                 window.ChatreUIAdv.openPlanDrawer(
@@ -3285,10 +3403,20 @@
               if (window.__activePlanChecklist && window.__activePlanChecklist.markStepProgress) {
                 window.__activePlanChecklist.markStepProgress(ev.tool || "");
               }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: "Running tool",
+                  tool: ev.tool || "",
+                  running: true,
+                });
+              }
               toolCards[ev.id || ev.tool] = showTool(ev);
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.noteToolResult(ev.tool, ev.result);
+              }
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
             } else if (ev.type === "auto_resume") {
               startThinking(
