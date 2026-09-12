@@ -1546,19 +1546,26 @@
               startThinking(ev.text || ev.phase || "Working…");
               if (timeline && timeline.setPhase) {
                 const p = ev.phase || "";
-                timeline.setPhase(
-                  p === "analyze"
+                const mapped =
+                  p === "analyze" || p === "intake"
                     ? "analyze"
-                    : p === "critique"
+                    : p === "critique" || p === "monitor"
                       ? "critique"
-                      : p === "plan"
+                      : p === "plan" || p === "strategy" || p === "research"
                         ? "plan"
-                        : "tool",
-                  ev.text || p || "Working",
-                );
+                        : p === "verify" || p === "done"
+                          ? "analyze"
+                          : "tool";
+                timeline.setPhase(mapped, ev.text || p || "Working");
               }
               if (window.ChatreUX) {
                 window.ChatreUX.setPhase(ev.phase || "tool", ev.text || ev.phase);
+              }
+              if (window.ChatreComposerFlow) {
+                window.ChatreComposerFlow.updateStatusStack({
+                  phase: ev.text || ev.phase || "Working",
+                  running: true,
+                });
               }
             } else if (ev.type === "awaiting_login") {
               stopThinking();
@@ -1690,6 +1697,18 @@
                 );
                 chatMessages.appendChild(card);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
+              }
+            } else if (ev.type === "team") {
+              const label =
+                ev.event === "specialist_minted"
+                  ? "Specialist minted: " +
+                    ((ev.specialist && ev.specialist.name) || "custom")
+                  : ev.event === "specialist_mint_failed"
+                    ? "Specialist mint skipped"
+                    : "Team: " + (ev.event || "update");
+              showStep(label, false);
+              if (timeline && timeline.setPhase) {
+                timeline.setPhase("plan", label);
               }
             } else if (ev.type === "critique") {
               const c = ev.critique || {};
