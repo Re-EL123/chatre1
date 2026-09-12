@@ -35,6 +35,15 @@
   }
 
   function companionStartCommand() {
+    var os =
+      (window.ChatrePwa &&
+        window.ChatrePwa.detectPlatform &&
+        window.ChatrePwa.detectPlatform().os) ||
+      "linux";
+    if (window.ChatrePwa && window.ChatrePwa.companionInstall) {
+      var guide = window.ChatrePwa.companionInstall(os);
+      if (guide && guide.command) return guide.command;
+    }
     return (
       "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN npm run companion:start"
     );

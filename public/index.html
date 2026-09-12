@@ -3527,6 +3527,24 @@
             Sign in as a user for normal workspaces. Optional admin users: set <code>CHATRE_ADMIN_EMAILS</code> on the API.
           </p>
         </div>
+        <div class="settings-section" id="settings-autonomy-section">
+          <h3>Agent autonomy</h3>
+          <label for="autonomy-select" style="font-size:0.8rem;color:var(--text-light)">Level</label>
+          <select id="autonomy-select" aria-label="Autonomy level">
+            <option value="ask">Ask — approve plans &amp; risky tools</option>
+            <option value="assist">Assist — default</option>
+            <option value="autopilot">Autopilot — skip plans, auto-resume</option>
+          </select>
+          <p id="autonomy-label" style="margin:0.4rem 0 0;font-size:0.75rem;color:var(--text-light)"></p>
+          <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.65rem;font-size:0.82rem">
+            <input type="checkbox" id="prefer-byok-toggle" checked />
+            Prefer BYOK (OpenRouter etc.) over free Workers AI
+          </label>
+          <p style="margin:0.35rem 0 0;font-size:0.75rem;color:var(--text-light)">
+            Autopilot auto-extends budget twice, runs one critic repair, and skips plan approval.
+            High-risk tools (desktop_exec, git_push) still ask.
+          </p>
+        </div>
         <div class="settings-section" id="settings-pwa-section">
           <h3>Install &amp; permissions</h3>
           <p id="pwa-device-meta" style="margin:0"></p>
@@ -3661,6 +3679,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <script src="/config.js"></script>
     <script src="/pwa.js"></script>
+    <script src="/autonomy.js"></script>
     <script src="/auth.js"></script>
     <script src="/auth-screen.js"></script>
     <script src="/skills.js"></script>

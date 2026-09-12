@@ -85,6 +85,9 @@
     try {
       var data = await window.ChatreRemote.getMe();
       state.profile = data.user || null;
+      if (state.profile && window.ChatreAutonomy && window.ChatreAutonomy.applyFromProfile) {
+        window.ChatreAutonomy.applyFromProfile(state.profile);
+      }
       notify();
       return state.profile;
     } catch (e) {

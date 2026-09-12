@@ -529,6 +529,44 @@
     wireUi();
   }
 
+  function companionInstall(os) {
+    var api =
+      "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN";
+    var o = String(os || (detectPlatform().os) || "linux").toLowerCase();
+    if (o === "windows") {
+      return {
+        title: "Desktop companion on Windows",
+        steps: [
+          "Install Node.js 20+ from nodejs.org",
+          "Open PowerShell in the chatre-api folder",
+          "npm install",
+          api + " npm run companion:start",
+        ],
+        command: api + " npm run companion:start",
+      };
+    }
+    if (o === "macos") {
+      return {
+        title: "Desktop companion on macOS",
+        steps: [
+          "brew install node (if needed)",
+          "cd chatre-api && npm install",
+          api + " npm run companion:start",
+        ],
+        command: api + " npm run companion:start",
+      };
+    }
+    return {
+      title: "Desktop companion on Linux",
+      steps: [
+        "Install Node.js 20+",
+        "cd chatre-api && npm install",
+        api + " npm run companion:start",
+      ],
+      command: api + " npm run companion:start",
+    };
+  }
+
   window.ChatrePwa = {
     detectPlatform: detectPlatform,
     installGuide: installGuide,
@@ -540,5 +578,6 @@
     requestPersistentStorage: requestPersistentStorage,
     snapshotPermissions: snapshotPermissions,
     openInstallPanel: openInstallPanel,
+    companionInstall: companionInstall,
   };
 })();

@@ -320,6 +320,16 @@
       });
       if (current) sel.value = current;
       if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+      // Capture BYOK flags from catalog groups for prefer-BYOK routing
+      var flags = {};
+      (data.groups || []).forEach(function (g) {
+        var p = String(g.provider || "").toLowerCase();
+        if (p && p !== "chatre") flags[p] = true;
+      });
+      window.__chatreByokFlags = flags;
+      if (window.ChatreAutonomy && window.ChatreAutonomy.applyByokPreference) {
+        window.ChatreAutonomy.applyByokPreference();
+      }
     } catch (e) {
       /* keep existing options */
     }

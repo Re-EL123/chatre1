@@ -150,7 +150,12 @@
         !isLightLocal &&
         options &&
         options.skipPlanApproval !== true &&
-        typeof callbacks.onAwaitPlan === 'function'
+        !(
+          window.ChatreAutonomy &&
+          window.ChatreAutonomy.shouldSkipPlanApproval &&
+          window.ChatreAutonomy.shouldSkipPlanApproval(briefing.task_type)
+        ) &&
+        typeof callbacks.onAwaitPlan === "function"
       ) {
         const edited = await callbacks.onAwaitPlan(briefing);
         if (edited === null || edited === false) {

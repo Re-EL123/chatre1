@@ -182,7 +182,9 @@
           $("composer-busy-phase").textContent =
             reason === "awaiting_plan"
               ? "Waiting for plan approval"
-              : reason === "awaiting_login"
+              : reason === "awaiting_approval"
+                ? "Waiting for tool approval — then Resume"
+                : reason === "awaiting_login"
                 ? "Waiting for login — then Resume"
                 : reason === "companion_offline"
                   ? "Desktop companion offline"
@@ -217,7 +219,8 @@
           thr.agentRun &&
           (thr.agentRun.status === "interrupted" ||
             thr.agentRun.status === "awaiting_plan" ||
-            thr.agentRun.status === "awaiting_login");
+            thr.agentRun.status === "awaiting_login" ||
+            thr.agentRun.status === "awaiting_approval");
         const usageHint =
           thr.lastUsage && thr.lastUsage.totalTokensEst
             ? " · ~" + thr.lastUsage.totalTokensEst + " tok"
@@ -234,6 +237,9 @@
         } else if (status === "awaiting_plan") {
           statusClass = "plan";
           statusLabel = "Awaiting plan";
+        } else if (status === "awaiting_approval") {
+          statusClass = "plan";
+          statusLabel = "Needs approval";
         } else if (status === "interrupted" || interrupted) {
           statusClass = "interrupted";
           statusLabel = "Interrupted";

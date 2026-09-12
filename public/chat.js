@@ -1680,30 +1680,92 @@
               openTerminalPanel();
             } else if (ev.type === "error") {
               showStep("Agent error: " + (ev.error || "unknown"), true);
+            } else if (ev.type === "auto_resume") {
+              startThinking(
+                "Auto-resuming (" +
+                  (ev.count || 1) +
+                  "/" +
+                  (ev.max || 2) +
+                  ")…",
+              );
+              if (window.ChatreUX) {
+                window.ChatreUX.updateRunCenter({
+                  running: true,
+                  pauseReason: "",
+                  step: "Auto-resume " + (ev.count || 1),
+                });
+              }
+            } else if (ev.type === "awaiting_approval") {
+              stopThinking();
+              window.__pendingToolApproval = {
+                tool: ev.tool,
+                params: ev.params,
+              };
+              showStep(
+                "Approval needed for `" +
+                  (ev.tool || "tool") +
+                  "`.\n" +
+                  (ev.reason || "") +
+                  "\n\nClick **Resume** to approve, or change autonomy in Settings.",
+                true,
+              );
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_approval");
+              }
+              if (window.ChatreComposer && window.ChatreComposer.showApproveChip) {
+                window.ChatreComposer.showApproveChip("approve");
+              }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun("Approve tool — Resume");
+              }
+            } else if (ev.type === "autonomy") {
+              /* policy echo — no UI spam */
             } else if (ev.type === "interrupted") {
               stopThinking();
               if (tokenEl) {
                 tokenEl.remove();
                 tokenEl = null;
               }
-              showStep(
-                (ev.response || "Agent paused for durability.") +
-                  "\n\nClick **Resume** to continue from the last checkpoint.",
-                true,
-              );
+              const canAuto =
+                window.ChatreAutonomy &&
+                window.ChatreAutonomy.shouldAutoResumeUi &&
+                window.ChatreAutonomy.shouldAutoResumeUi() &&
+                (ev.reason === "time_budget" || ev.reason === "step_budget");
+              if (canAuto && !window.__autoResumeBusy) {
+                window.__autoResumeBusy = true;
+                showStep(
+                  (ev.response || "Extending run…") +
+                    "\n\n*(auto-resuming under " +
+                    (window.ChatreAutonomy.get() || "assist") +
+                    ")*",
+                  false,
+                );
+                setTimeout(function () {
+                  window.__autoResumeBusy = false;
+                  if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+                    window.ChatreUI.resumeAgent();
+                  }
+                }, 400);
+              } else {
+                showStep(
+                  (ev.response || "Agent paused for durability.") +
+                    "\n\nClick **Resume** to continue from the last checkpoint.",
+                  true,
+                );
+                if (window.ChatrePanels) {
+                  window.ChatrePanels.setResumeAvailable(true);
+                  window.ChatrePanels.refreshThreads();
+                  window.ChatrePanels.refreshFiles();
+                }
+                if (window.ChatreUX) {
+                  window.ChatreUX.pauseRun("Paused — click Resume");
+                }
+              }
               if (ev.usage && window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
                   ...ev.usage,
                   model: modelSelect.value,
                 });
-              }
-              if (window.ChatrePanels) {
-                window.ChatrePanels.setResumeAvailable(true);
-                window.ChatrePanels.refreshThreads();
-                window.ChatrePanels.refreshFiles();
-              }
-              if (window.ChatreUX) {
-                window.ChatreUX.pauseRun("Paused — click Resume");
               }
             } else if (ev.type === "done") {
               if (window.ChatreUX) window.ChatreUX.endRun();
@@ -1734,6 +1796,14 @@
           workspaceId: remoteState.workspaceId || null,
           model: modelSelect.value,
           signal: activeAbort.signal,
+          autonomy:
+            window.ChatreAutonomy && window.ChatreAutonomy.get
+              ? window.ChatreAutonomy.get()
+              : "assist",
+          skipPlanApproval:
+            window.ChatreAutonomy &&
+            window.ChatreAutonomy.get &&
+            window.ChatreAutonomy.get() === "autopilot",
           onEvent: handleAgentEvent,
         });
       } else if (window.ChatreAgent && window.ChatreTools) {
@@ -1749,6 +1819,10 @@
         const agentResult = await window.ChatreAgent.run(initialMessages, {
           model: modelSelect.value,
           maxTokens: 3072,
+          skipPlanApproval:
+            window.ChatreAutonomy &&
+            window.ChatreAutonomy.get &&
+            window.ChatreAutonomy.get() === "autopilot",
           callbacks: {
             onSkills: (skills) => {
               if (skills && skills.length) {
@@ -2929,6 +3003,13 @@
         if (approvingPlan) {
           window.__pendingPlan = null;
         }
+        const pendingTool = window.__pendingToolApproval;
+        const approvedTools = [];
+        if (pendingTool && pendingTool.tool) {
+          approvedTools.push(pendingTool.tool);
+          approvedTools.push("session");
+          window.__pendingToolApproval = null;
+        }
         await window.ChatreRemote.runAgentStream({
           resume: true,
           approvePlan: approvingPlan,
@@ -2937,6 +3018,11 @@
           workspaceId: remoteState.workspaceId || null,
           model: modelSelect.value,
           signal: activeAbort.signal,
+          autonomy:
+            window.ChatreAutonomy && window.ChatreAutonomy.get
+              ? window.ChatreAutonomy.get()
+              : "assist",
+          approvedTools: approvedTools.length ? approvedTools : undefined,
           onEvent: (ev) => {
             if (ev.type === "start") {
               window.__chatreRemote = {
@@ -3107,17 +3193,54 @@
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
               if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
-            } else if (ev.type === "interrupted") {
+            } else if (ev.type === "auto_resume") {
+              startThinking(
+                "Auto-resuming (" + (ev.count || 1) + "/" + (ev.max || 2) + ")…",
+              );
+            } else if (ev.type === "awaiting_approval") {
+              stopThinking();
+              window.__pendingToolApproval = {
+                tool: ev.tool,
+                params: ev.params,
+              };
               showStep(
-                (ev.response || "Paused again.") +
-                  "\n\nClick **Resume** to continue.",
+                "Approval needed for `" +
+                  (ev.tool || "tool") +
+                  "`. Click **Resume** to approve.",
                 true,
               );
               if (window.ChatrePanels) {
-                window.ChatrePanels.setResumeAvailable(true);
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_approval");
               }
               if (window.ChatreUX) {
-                window.ChatreUX.pauseRun("Paused — click Resume");
+                window.ChatreUX.pauseRun("Approve tool — Resume");
+              }
+            } else if (ev.type === "interrupted") {
+              const canAuto =
+                window.ChatreAutonomy &&
+                window.ChatreAutonomy.shouldAutoResumeUi &&
+                window.ChatreAutonomy.shouldAutoResumeUi();
+              if (canAuto && !window.__autoResumeBusy) {
+                window.__autoResumeBusy = true;
+                showStep("*(auto-resuming…)*", false);
+                setTimeout(function () {
+                  window.__autoResumeBusy = false;
+                  if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+                    window.ChatreUI.resumeAgent();
+                  }
+                }, 400);
+              } else {
+                showStep(
+                  (ev.response || "Paused again.") +
+                    "\n\nClick **Resume** to continue.",
+                  true,
+                );
+                if (window.ChatrePanels) {
+                  window.ChatrePanels.setResumeAvailable(true);
+                }
+                if (window.ChatreUX) {
+                  window.ChatreUX.pauseRun("Paused — click Resume");
+                }
               }
             } else if (ev.type === "done") {
               if (window.ChatreUX) window.ChatreUX.endRun();

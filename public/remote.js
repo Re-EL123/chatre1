@@ -428,6 +428,9 @@
     approvePlan,
     briefing,
     skipPlanApproval,
+    autonomy,
+    approvedTools,
+    autoResumeCount,
   }) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
@@ -444,7 +447,16 @@
       workspaceId,
       model,
       stream: true,
+      autonomy:
+        autonomy ||
+        (window.ChatreAutonomy && window.ChatreAutonomy.get
+          ? window.ChatreAutonomy.get()
+          : "assist"),
     };
+    if (Array.isArray(approvedTools) && approvedTools.length) {
+      body.approvedTools = approvedTools;
+    }
+    if (autoResumeCount != null) body.autoResumeCount = autoResumeCount;
     if (resume || approvePlan) {
       body.resume = true;
       if (approvePlan) body.approvePlan = true;
@@ -453,7 +465,14 @@
       if (message) body.message = message;
     } else {
       body.message = message;
-      if (skipPlanApproval) body.skipPlanApproval = true;
+      if (
+        skipPlanApproval ||
+        (window.ChatreAutonomy &&
+          window.ChatreAutonomy.get &&
+          window.ChatreAutonomy.get() === "autopilot")
+      ) {
+        body.skipPlanApproval = true;
+      }
     }
 
     const res = await fetch(base + "/api/agent", {
