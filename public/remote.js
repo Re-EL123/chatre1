@@ -427,6 +427,7 @@
     resume,
     approvePlan,
     briefing,
+    briefingSeed,
     skipPlanApproval,
     autonomy,
     approvedTools,
@@ -457,6 +458,7 @@
       body.approvedTools = approvedTools;
     }
     if (autoResumeCount != null) body.autoResumeCount = autoResumeCount;
+    if (briefingSeed) body.briefingSeed = briefingSeed;
     if (resume || approvePlan) {
       body.resume = true;
       if (approvePlan) body.approvePlan = true;

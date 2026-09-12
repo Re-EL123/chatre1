@@ -727,6 +727,7 @@
       }
       return runAgentTask(message, {
         resumeMessages: resumeBecauseClarification || continueIntent ? stashed : null,
+        resumeRemote: resumeBecauseClarification,
       });
     }
 
@@ -1468,6 +1469,26 @@
                 chatMessages.appendChild(card);
                 scrollToBottom();
               }
+            } else if (ev.type === "awaiting_clarify") {
+              stopThinking();
+              const clarifyPayload = {
+                type: "user_input",
+                question: ev.question || ev.reason || "Please choose:",
+                options: Array.isArray(ev.options) ? ev.options : [],
+                questions: ev.questions,
+              };
+              showStep(clarifyPayload.question, true);
+              window.__pendingUserInput = clarifyPayload;
+              window.__pendingClarification = true;
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_clarify");
+              }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun("Waiting for your choice");
+              }
+              if (clarifyPayload.options && clarifyPayload.options.length) {
+                renderOptionButtons(agentBody, clarifyPayload);
+              }
             } else if (ev.type === "action_trace") {
               const t = ev.trace || {};
               const line = document.createElement("div");
@@ -1824,6 +1845,13 @@
           workspaceId: remoteState.workspaceId || null,
           model: modelSelect.value,
           signal: activeAbort.signal,
+          resume: !!(opts && opts.resumeRemote),
+          briefingSeed: (function () {
+            if (!window.__pendingTemplateBriefing) return undefined;
+            const seed = window.__pendingTemplateBriefing;
+            window.__pendingTemplateBriefing = null;
+            return seed;
+          })(),
           autonomy:
             window.ChatreAutonomy && window.ChatreAutonomy.get
               ? window.ChatreAutonomy.get()
@@ -2112,7 +2140,7 @@
       );
     if (tool === "export_document") return "path: " + (params.path || "");
     if (tool === "use_skill") return "skill: " + (params.name || "");
-    if (tool === "ask_user_input")
+    if (tool === "ask_user_input" || tool === "clarify")
       return (
         "→ " +
         String(params.question || "").slice(0, 80) +
@@ -2120,6 +2148,23 @@
         (Array.isArray(params.options) ? params.options.length : 0) +
         " options]"
       );
+    if (tool === "execute_code")
+      return (
+        (params.language || "js") +
+        " · " +
+        String(params.code || "").slice(0, 60)
+      );
+    if (tool === "apply_patch") return "V4A patch";
+    if (tool === "delegate_task")
+      return "goal: " + String(params.goal || "").slice(0, 80);
+    if (tool === "process_manage")
+      return String(params.action || "") + " " + String(params.command || params.process_id || "");
+    if (tool === "web_extract") return "url: " + (params.url || "");
+    if (tool === "session_search") return "q: " + (params.query || "");
+    if (tool === "image_generate")
+      return String(params.prompt || "").slice(0, 80);
+    if (tool === "text_to_speech")
+      return String(params.text || "").slice(0, 60);
     if (tool === "search_mcp_registry")
       return (
         "search: " +
@@ -3038,6 +3083,10 @@
           approvedTools.push("session");
           window.__pendingToolApproval = null;
         }
+        // Plan approval implies session tools for this run.
+        if (approvingPlan && approvedTools.indexOf("session") < 0) {
+          approvedTools.push("session");
+        }
         await window.ChatreRemote.runAgentStream({
           resume: true,
           approvePlan: approvingPlan,
@@ -3089,6 +3138,26 @@
               if (chatMessages) {
                 chatMessages.appendChild(card);
                 scrollToBottom();
+              }
+            } else if (ev.type === "awaiting_clarify") {
+              stopThinking();
+              const clarifyPayload = {
+                type: "user_input",
+                question: ev.question || ev.reason || "Please choose:",
+                options: Array.isArray(ev.options) ? ev.options : [],
+                questions: ev.questions,
+              };
+              showStep(clarifyPayload.question, true);
+              window.__pendingUserInput = clarifyPayload;
+              window.__pendingClarification = true;
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_clarify");
+              }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun("Waiting for your choice");
+              }
+              if (clarifyPayload.options && clarifyPayload.options.length) {
+                renderOptionButtons(agentBody, clarifyPayload);
               }
             } else if (ev.type === "action_trace") {
               const t = ev.trace || {};

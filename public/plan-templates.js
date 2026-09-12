@@ -88,6 +88,27 @@
       executor_brief:
         "Build exactly what was asked. Explore first, implement, verify, then finish with file paths and run instructions.",
     },
+    {
+      id: "document",
+      label: "Write document",
+      task_type: "document",
+      understanding: "User wants a downloadable document or PDF.",
+      goal: "Produce a real file under /home/user/documents",
+      success_criteria: [
+        "create_document or create_pdf succeeds",
+        "File path reported to the user",
+      ],
+      approach: [
+        "Decide markdown vs PDF from the request",
+        "Draft structured content",
+        "create_document or create_pdf",
+        "Confirm path in Files panel",
+      ],
+      tools_priority: ["create_document", "create_pdf"],
+      max_steps: 6,
+      executor_brief:
+        "Deliver one real downloadable file via create_document or create_pdf under /home/user/documents. Do not invent download links.",
+    },
   ];
 
   function getTemplate(id) {

@@ -7,6 +7,52 @@
   const MAX_ITERATIONS = 25;
   const MAX_CONTEXT_TOKENS = 24000;
 
+  function localProjectSlug(text) {
+    const raw = String(text || "project")
+      .toLowerCase()
+      .replace(
+        /\b(design|create|make|build|me|a|an|the|in|with|using|html|css|js|javascript)\b/g,
+        " ",
+      )
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40);
+    return raw || "project";
+  }
+
+  function extractLocalProjectFiles(text) {
+    const src = String(text || "");
+    const out = [];
+    const seen = {};
+    function add(rel, content) {
+      const path = String(rel || "")
+        .replace(/^\/+/, "")
+        .replace(/^home\/user\/projects\/[^/]+\//, "")
+        .trim();
+      const body = String(content || "").trim();
+      if (!path || !body || body.length < 8 || seen[path]) return;
+      seen[path] = true;
+      out.push({ relativePath: path, content: body });
+    }
+    const fenceRe = /```(\w+)?([^\n]*)\n([\s\S]*?)```/g;
+    let m;
+    while ((m = fenceRe.exec(src))) {
+      const lang = String(m[1] || "").toLowerCase();
+      const meta = String(m[2] || "").trim();
+      const body = m[3];
+      let rel = "";
+      const pathEq = meta.match(/(?:path|file)\s*[=:]\s*([^\s]+)/i);
+      if (pathEq) rel = pathEq[1];
+      else if (/\.(html?|css|js)$/i.test(meta)) rel = meta.split(/\s+/).pop();
+      else if (lang === "html" || /<!DOCTYPE|<html[\s>]/i.test(body)) {
+        rel = "index.html";
+      } else if (lang === "css") rel = "style.css";
+      else if (lang === "js" || lang === "javascript") rel = "script.js";
+      if (rel) add(rel.replace(/^["']|["']$/g, ""), body);
+    }
+    return out;
+  }
+
   // Read-only tools that are safe to run in parallel (no shared mutable state).
   const PARALLEL_SAFE = new Set([
     "read_file",
@@ -34,12 +80,17 @@
     "create_directory",
     "create_document",
     "create_pdf",
+    "patch_file",
+    "apply_patch",
+    "image_generate",
+    "text_to_speech",
   ]);
 
   // Tools that count as a verification step.
   const VERIFYING_TOOLS = new Set([
     "verify_project",
     "execute_command",
+    "execute_code",
     "run_javascript",
     "run_python",
   ]);
@@ -148,6 +199,106 @@
           briefing.executor_brief =
             "Complete the user request thoroughly. Match tools to the request — do not use a generic script.";
         }
+      }
+
+      // Starter-chip template seed (Research / Build / Fill form).
+      if (window.__pendingTemplateBriefing) {
+        const seeded = window.__pendingTemplateBriefing;
+        window.__pendingTemplateBriefing = null;
+        briefing = Object.assign({}, seeded, briefing, {
+          understanding:
+            String(briefing.understanding || "").trim() || seeded.understanding,
+          goal: String(briefing.goal || "").trim() || seeded.goal,
+          task_type: briefing.task_type || seeded.task_type,
+          success_criteria:
+            briefing.success_criteria && briefing.success_criteria.length
+              ? briefing.success_criteria
+              : seeded.success_criteria,
+          approach:
+            briefing.approach && briefing.approach.length
+              ? briefing.approach
+              : seeded.approach,
+          todos:
+            briefing.todos && briefing.todos.length
+              ? briefing.todos
+              : seeded.todos,
+          tools_priority:
+            briefing.tools_priority && briefing.tools_priority.length
+              ? briefing.tools_priority
+              : seeded.tools_priority,
+          executor_brief:
+            String(briefing.executor_brief || "").trim() ||
+            seeded.executor_brief,
+          template_id: seeded.template_id || briefing.template_id,
+        });
+      }
+
+      // Fill blank analyst output from plan templates (same as API enrichBriefing).
+      const sparse =
+        !(
+          String(briefing.understanding || "").trim() ||
+          String(briefing.executor_brief || "").trim()
+        ) ||
+        !(
+          (briefing.approach && briefing.approach.length) ||
+          (briefing.todos && briefing.todos.length)
+        );
+      if (
+        sparse &&
+        window.ChatrePlanTemplates &&
+        window.ChatrePlanTemplates.briefingFromTemplate
+      ) {
+        const type = String(briefing.task_type || "").toLowerCase();
+        const map = {
+          research: "research",
+          browser: "fill-form",
+          build: "build",
+          debug: "build",
+          git: "build",
+          run: "build",
+          mixed: "build",
+          document: "document",
+        };
+        const tid = briefing.template_id || map[type];
+        if (tid) {
+          const seeded = window.ChatrePlanTemplates.briefingFromTemplate(
+            tid,
+            briefing.goal || userText,
+          );
+          if (seeded) {
+            briefing = Object.assign({}, seeded, briefing, {
+              understanding:
+                String(briefing.understanding || "").trim() ||
+                seeded.understanding,
+              executor_brief:
+                String(briefing.executor_brief || "").trim() ||
+                seeded.executor_brief,
+              approach:
+                briefing.approach && briefing.approach.length
+                  ? briefing.approach
+                  : seeded.approach,
+              todos:
+                briefing.todos && briefing.todos.length
+                  ? briefing.todos
+                  : seeded.todos,
+              success_criteria:
+                briefing.success_criteria && briefing.success_criteria.length
+                  ? briefing.success_criteria
+                  : seeded.success_criteria,
+              tools_priority:
+                briefing.tools_priority && briefing.tools_priority.length
+                  ? briefing.tools_priority
+                  : seeded.tools_priority,
+            });
+          }
+        }
+      }
+      if (!String(briefing.understanding || "").trim()) {
+        briefing.understanding = "Execute the user request directly.";
+      }
+      if (!String(briefing.executor_brief || "").trim()) {
+        briefing.executor_brief =
+          "Complete the user request thoroughly. Match tools to the request — do not use a generic script.";
       }
 
       if (!briefing.done_when) {
@@ -417,27 +568,129 @@
               continue;
             }
 
-            // Block chat-only "I saved the files" theatre with zero writes
+            // Block chat-only "I saved the files" theatre — repeat until writes land
+            const deliveryNudges = Number(this._forcedDeliveryNudge || 0);
             if (
               forcePlan &&
-              usedTools === 0 &&
-              !this._forcedDeliveryNudge &&
+              !this.mutatedAny &&
+              deliveryNudges < 4 &&
               i < this.maxIterations - 1 &&
               !looksLikeClarification(cleanText)
             ) {
-              this._forcedDeliveryNudge = true;
+              // Salvage fenced code the model already dumped into chat
+              const salvaged = extractLocalProjectFiles(
+                (fullAssistantText || "") + "\n" + (text || ""),
+              );
+              if (salvaged.length && window.ChatreTools && window.ChatreTools.executeTool) {
+                const slug = localProjectSlug(userText || (briefing && briefing.goal));
+                const root = "/home/user/projects/" + slug;
+                await window.ChatreTools.executeTool(
+                  { tool: "create_directory", params: { path: root } },
+                  {},
+                );
+                let wrote = 0;
+                for (let si = 0; si < salvaged.length; si++) {
+                  const f = salvaged[si];
+                  const path = root + "/" + f.relativePath;
+                  const wr = await window.ChatreTools.executeTool(
+                    {
+                      tool: "write_file",
+                      params: { path: path, content: f.content },
+                    },
+                    {},
+                  );
+                  if (wr && wr.ok !== false) {
+                    wrote += 1;
+                    this.mutatedAny = true;
+                    usedTools += 1;
+                    callbacks.onToolResult &&
+                      callbacks.onToolResult(
+                        { tool: "write_file", params: { path: path } },
+                        wr,
+                      );
+                  }
+                }
+                if (wrote) {
+                  const msg =
+                    "Created project files in your workspace under `" +
+                    root +
+                    "` (" +
+                    wrote +
+                    " files). Open them from the Files panel.";
+                  callbacks.onStepText && callbacks.onStepText(msg, true);
+                  fullAssistantText += (fullAssistantText ? "\n\n" : "") + msg;
+                  callbacks.onDone &&
+                    callbacks.onDone({
+                      response: fullAssistantText,
+                      iterations: i + 1,
+                      cancelled: false,
+                      toolsUsed: usedTools,
+                      intent: intent && intent.name,
+                    });
+                  return {
+                    response: fullAssistantText,
+                    iterations: i + 1,
+                    cancelled: false,
+                    messages,
+                    toolsUsed: usedTools,
+                    intent: intent && intent.name,
+                  };
+                }
+              }
+
+              this._forcedDeliveryNudge = deliveryNudges + 1;
               messages.push({ role: "assistant", content: text || "" });
               messages.push({
                 role: "user",
                 content:
-                  "[internal] No workspace files were created yet. Chat dumps do NOT save files. Immediately call write_file (or create_pdf/create_document) with FULL contents under /home/user/projects/<slug>/ or /home/user/documents/. Then list_directory. Never invent Download links.",
+                  "[internal] No workspace files were created yet (nudge " +
+                  this._forcedDeliveryNudge +
+                  "). Chat dumps do NOT save files. Immediately call write_file with FULL contents under /home/user/projects/<slug>/index.html (and style.css, script.js). Then list_directory. Never invent Download links.",
               });
-              if (cleanText.trim()) {
+              // Do not show lying "Writing files…" essays to the user
+              if (
+                cleanText.trim() &&
+                !/writing (files|index\.html)|files have been created|successfully created/i.test(
+                  cleanText,
+                )
+              ) {
                 callbacks.onStepText && callbacks.onStepText(cleanText, false);
                 fullAssistantText +=
                   (fullAssistantText ? "\n\n" : "") + cleanText;
+              } else {
+                callbacks.onPhase &&
+                  callbacks.onPhase("tool", "Writing real files into the workspace…");
               }
               continue;
+            }
+
+            // Never finish a build/document with zero writes — honest failure
+            if (
+              forcePlan &&
+              !this.mutatedAny &&
+              i >= this.maxIterations - 1 &&
+              !looksLikeClarification(cleanText)
+            ) {
+              const fail =
+                "I could not write project files into the workspace. Nothing was saved under /home/user/projects/. Please try again.";
+              callbacks.onStepText && callbacks.onStepText(fail, true);
+              fullAssistantText = fail;
+              callbacks.onDone &&
+                callbacks.onDone({
+                  response: fail,
+                  iterations: i + 1,
+                  cancelled: false,
+                  toolsUsed: usedTools,
+                  intent: intent && intent.name,
+                });
+              return {
+                response: fail,
+                iterations: i + 1,
+                cancelled: false,
+                messages,
+                toolsUsed: usedTools,
+                intent: intent && intent.name,
+              };
             }
 
             // Post-write verification gate: files changed with zero verification.

@@ -47,6 +47,19 @@
     { name: "verify_project", desc: "Sanity-check a project directory", params: { path: "string" } },
     { name: "view_tree", desc: "Show the workspace file tree", params: { path: "string" } },
     { name: "ask_user_input", desc: "Ask the user a question with tappable option buttons (2-4 short, mutually exclusive choices)", params: { question: "string", options: "array" } },
+    { name: "clarify", desc: "Structured multi-choice questions (Hermes-style clarify)", params: { question: "string", options: "array", recommended: "number?" } },
+    { name: "execute_code", desc: "Run javascript|python|shell snippet", params: { language: "string", code: "string" } },
+    { name: "web_extract", desc: "Fetch URL and extract readable text", params: { url: "string" } },
+    { name: "session_search", desc: "Search recent threads", params: { query: "string" } },
+    { name: "skill_view", desc: "Load a skill playbook", params: { name: "string", style: "string?" } },
+    { name: "skill_manage", desc: "list|view|pin|unpin skills", params: { action: "string", name: "string?" } },
+    { name: "vision_analyze", desc: "Analyze image with vision BYOK", params: { question: "string", image_base64: "string?" } },
+    { name: "video_analyze", desc: "Analyze a video keyframe", params: { question: "string", frame_base64: "string" } },
+    { name: "image_generate", desc: "Generate image to workspace", params: { prompt: "string" } },
+    { name: "text_to_speech", desc: "TTS to mp3 in workspace", params: { text: "string" } },
+    { name: "process_manage", desc: "Background processes start|list|status|read|kill|poll", params: { action: "string", command: "string?" } },
+    { name: "apply_patch", desc: "Apply V4A multi-file patch", params: { patch: "string" } },
+    { name: "delegate_task", desc: "Spawn nested sub-agent for a subgoal", params: { goal: "string", context: "string?" } },
     { name: "search_mcp_registry", desc: "Search available MCP connectors (Jira, Slack, Notion, GitHub, …) by product or task", params: { query: "string", queries: "array" } },
     { name: "suggest_connectors", desc: "Present connector options to the user with Connect/Use buttons (pass directory UUIDs from search_mcp_registry)", params: { uuids: "array", question: "string" } },
     { name: "call_mcp", desc: "Call a tool on a connected MCP server (pass server uuid, tool name, arguments)", params: { server: "string", tool: "string", arguments: "object" } },
@@ -272,6 +285,49 @@
 
       case "ask_user_input":
         return askUserInputTool(p.question, p.options);
+
+      case "clarify":
+        return clarifyToolLocal(p);
+
+      case "execute_code":
+        return await executeCodeToolLocal(p, common);
+
+      case "web_extract": {
+        const extracted = await fetchUrlTool(p);
+        return Object.assign({}, extracted, { tool: "web_extract" });
+      }
+
+      case "session_search":
+        return sessionSearchToolLocal(p);
+
+      case "skill_view":
+        return useSkillTool(p.name || p.skill, p);
+
+      case "skill_manage":
+        return skillManageToolLocal(p);
+
+      case "vision_analyze":
+      case "video_analyze":
+      case "image_generate":
+      case "text_to_speech":
+        return {
+          ok: false,
+          tool: tool,
+          error:
+            tool +
+            " requires the remote agent with OpenAI/OpenRouter BYOK" +
+            (tool === "image_generate" ? " (or FAL_KEY)" : "") +
+            ". Sign in and run via the API.",
+        };
+
+      case "process_manage":
+        return processManageToolLocal(p, common);
+
+      case "apply_patch":
+        return applyPatchToolLocal(p, common);
+
+      case "delegate_task":
+        return await delegateTaskToolLocal(p, options);
 
       case "search_mcp_registry":
         return searchMcpRegistryTool(p.query || p.queries);
@@ -836,6 +892,11 @@
   }
 
   function patchFileTool(p, common) {
+    const patchText = String(p.patch || p.diff || "");
+    if (/\*\*\*\s*Begin Patch/i.test(patchText)) {
+      const applied = applyPatchToolLocal(p, common);
+      return Object.assign({}, applied, { tool: "patch_file" });
+    }
     const path = resolve(p.path || p.file);
     const fileSys = fs();
     if (!path || !fileSys[path] || fileSys[path].type !== "file") {
@@ -1952,7 +2013,549 @@
       question: q,
       options: opts,
       text: q,
+      await_clarify: true,
     };
+  }
+
+  function clarifyToolLocal(p) {
+    const params = p || {};
+    if (params.question && (params.options || params.choices)) {
+      const opts = normalizeOptions(params.options || params.choices);
+      const recommended =
+        params.recommended != null ? Number(params.recommended) : -1;
+      const options = opts.map(function (o, i) {
+        return {
+          label: i === recommended ? o.label + " (Recommended)" : o.label,
+          value: o.value,
+        };
+      });
+      if (options.length < 2) {
+        return {
+          ok: false,
+          tool: "clarify",
+          error: "clarify needs 2-4 choices",
+        };
+      }
+      return {
+        ok: true,
+        tool: "clarify",
+        type: "user_input",
+        question: String(params.question).trim(),
+        options: options.slice(0, 4),
+        allow_free_text: params.allow_free_text !== false,
+        text: String(params.question).trim(),
+        await_clarify: true,
+      };
+    }
+    const questions = Array.isArray(params.questions) ? params.questions : [];
+    if (!questions.length) {
+      return {
+        ok: false,
+        tool: "clarify",
+        error: "Provide question+options or questions[]",
+      };
+    }
+    const q0 = questions[0] || {};
+    const opts = normalizeOptions(q0.options || q0.choices);
+    if (opts.length < 2) {
+      return { ok: false, tool: "clarify", error: "Each question needs 2-4 choices" };
+    }
+    return {
+      ok: true,
+      tool: "clarify",
+      type: "user_input",
+      question: String(q0.question || q0.prompt || "").trim(),
+      options: opts.slice(0, 4),
+      questions: questions.slice(0, 5).map(function (q) {
+        return {
+          question: String(q.question || q.prompt || "").trim(),
+          options: normalizeOptions(q.options || q.choices).slice(0, 4),
+        };
+      }),
+      text: String(q0.question || "").trim(),
+      await_clarify: true,
+    };
+  }
+
+  async function executeCodeToolLocal(p, common) {
+    const lang = String(p.language || p.lang || "javascript").toLowerCase();
+    const code = String(p.code || p.source || "");
+    if (!code.trim()) {
+      return { ok: false, tool: "execute_code", error: "code required" };
+    }
+    if (lang === "javascript" || lang === "js" || lang === "node") {
+      const r = runJSTool(code);
+      return Object.assign({}, r, { tool: "execute_code", language: "javascript" });
+    }
+    if (lang === "python" || lang === "py") {
+      const r = runPyTool(code);
+      return Object.assign({}, r, { tool: "execute_code", language: "python" });
+    }
+    if (lang === "shell" || lang === "bash" || lang === "sh") {
+      const r = executeCommand(code, p.cwd, common);
+      return Object.assign({}, r, { tool: "execute_code", language: "shell" });
+    }
+    return {
+      ok: false,
+      tool: "execute_code",
+      error: "Unsupported language (use javascript|python|shell)",
+    };
+  }
+
+  function sessionSearchToolLocal(p) {
+    const q = String(p.query || p.q || "")
+      .toLowerCase()
+      .trim();
+    if (!q) return { ok: false, tool: "session_search", error: "query required" };
+    const history = (core().history || []).slice(-80);
+    const hits = [];
+    history.forEach(function (m, i) {
+      const content = String((m && m.content) || "");
+      if (content.toLowerCase().indexOf(q) !== -1) {
+        hits.push({
+          role: m.role,
+          index: i,
+          snippet: content.slice(0, 240),
+        });
+      }
+    });
+    return {
+      ok: true,
+      tool: "session_search",
+      query: q,
+      hits: hits.slice(0, Number(p.limit) || 12),
+      text: hits.length
+        ? hits
+            .slice(0, 8)
+            .map(function (h) {
+              return "[" + h.role + "] " + h.snippet;
+            })
+            .join("\n---\n")
+        : "No matches in recent local history",
+    };
+  }
+
+  function skillManageToolLocal(p) {
+    const action = String(p.action || "list").toLowerCase();
+    let pinned = [];
+    try {
+      pinned = JSON.parse(localStorage.getItem("chatre_pinned_skills") || "[]");
+      if (!Array.isArray(pinned)) pinned = [];
+    } catch (e) {
+      pinned = [];
+    }
+    if (action === "list") {
+      const listed = listSkillsTool();
+      return Object.assign({}, listed, {
+        tool: "skill_manage",
+        action: "list",
+        pinned: pinned,
+      });
+    }
+    if (action === "view") {
+      return useSkillTool(p.name || p.skill, p);
+    }
+    if (action === "pin") {
+      const name = String(p.name || p.skill || "").toLowerCase();
+      if (!name) return { ok: false, tool: "skill_manage", error: "name required" };
+      if (pinned.indexOf(name) === -1) pinned.push(name);
+      localStorage.setItem("chatre_pinned_skills", JSON.stringify(pinned));
+      return { ok: true, tool: "skill_manage", action: "pin", name: name, pinned: pinned };
+    }
+    if (action === "unpin") {
+      const name = String(p.name || p.skill || "").toLowerCase();
+      pinned = pinned.filter(function (n) {
+        return n !== name;
+      });
+      localStorage.setItem("chatre_pinned_skills", JSON.stringify(pinned));
+      return { ok: true, tool: "skill_manage", action: "unpin", name: name, pinned: pinned };
+    }
+    return {
+      ok: false,
+      tool: "skill_manage",
+      error: "Unknown action (list|view|pin|unpin)",
+    };
+  }
+
+  const localProcesses = Object.create(null);
+
+  function processManageToolLocal(p, common) {
+    const action = String(p.action || "").toLowerCase();
+    if (action === "start" || action === "run") {
+      const cmd = String(p.command || p.cmd || "").trim();
+      if (!cmd) return { ok: false, tool: "process_manage", error: "command required" };
+      const id = "proc_" + Date.now().toString(36);
+      const result = executeCommand(cmd, p.cwd, common);
+      localProcesses[id] = {
+        id: id,
+        command: cmd,
+        closed: true,
+        exitCode: result && result.code != null ? result.code : result && result.ok ? 0 : 1,
+        buffer: String((result && (result.output || result.text || result.error)) || ""),
+        createdAt: Date.now(),
+      };
+      return {
+        ok: true,
+        tool: "process_manage",
+        process_id: id,
+        command: cmd,
+        text:
+          "Local process " +
+          id +
+          " finished immediately (browser agent has no true background shell). Output:\n" +
+          localProcesses[id].buffer.slice(0, 4000),
+        note: "Use remote agent process_manage for true background jobs.",
+      };
+    }
+    if (action === "list") {
+      const list = Object.keys(localProcesses).map(function (k) {
+        const s = localProcesses[k];
+        return {
+          process_id: s.id,
+          command: s.command,
+          closed: s.closed,
+          exitCode: s.exitCode,
+        };
+      });
+      return {
+        ok: true,
+        tool: "process_manage",
+        processes: list,
+        text: list.length ? JSON.stringify(list) : "No processes",
+      };
+    }
+    if (action === "status" || action === "read") {
+      const s = localProcesses[String(p.process_id || p.id || "")];
+      if (!s) return { ok: false, tool: "process_manage", error: "Unknown process_id" };
+      return {
+        ok: true,
+        tool: "process_manage",
+        process_id: s.id,
+        closed: s.closed,
+        exitCode: s.exitCode,
+        output: s.buffer.slice(-(Number(p.tail) || 8000)),
+        text: s.buffer.slice(-(Number(p.tail) || 8000)),
+      };
+    }
+    if (action === "kill" || action === "stop") {
+      const id = String(p.process_id || p.id || "");
+      if (localProcesses[id]) delete localProcesses[id];
+      return { ok: true, tool: "process_manage", killed: id || null };
+    }
+    if (action === "poll") {
+      return { ok: true, tool: "process_manage", completed: [], text: "none" };
+    }
+    return {
+      ok: false,
+      tool: "process_manage",
+      error: "Unknown action. Use start|list|status|read|kill|poll",
+    };
+  }
+
+  function parseV4aPatchLocal(text) {
+    const raw = String(text || "").replace(/\r\n/g, "\n");
+    let body = raw;
+    if (/\*\*\*\s*Begin Patch/i.test(raw)) {
+      body = raw
+        .replace(/^[\s\S]*?\*\*\*\s*Begin Patch\s*/i, "")
+        .replace(/\*\*\*\s*End Patch[\s\S]*$/i, "");
+    } else if (/\*\*\*\s*End Patch/i.test(raw)) {
+      body = raw.replace(/\*\*\*\s*End Patch[\s\S]*$/i, "");
+    }
+    const ops = [];
+    const lines = body.split("\n");
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^\*\*\*\s*Add File:\s*/i.test(line)) {
+        const path = line.replace(/^\*\*\*\s*Add File:\s*/i, "").trim();
+        i += 1;
+        const content = [];
+        while (i < lines.length && !/^\*\*\*/.test(lines[i])) {
+          const l = lines[i];
+          if (l.startsWith("+") || l.startsWith(" ")) content.push(l.slice(1));
+          i += 1;
+        }
+        ops.push({ type: "add", path: path, content: content.join("\n") });
+        continue;
+      }
+      if (/^\*\*\*\s*Delete File:\s*/i.test(line)) {
+        ops.push({
+          type: "delete",
+          path: line.replace(/^\*\*\*\s*Delete File:\s*/i, "").trim(),
+        });
+        i += 1;
+        continue;
+      }
+      if (/^\*\*\*\s*Move File:\s*/i.test(line)) {
+        const m = line.match(/^\*\*\*\s*Move File:\s*(.+?)\s*->\s*(.+)\s*$/i);
+        if (m) ops.push({ type: "move", from: m[1].trim(), to: m[2].trim() });
+        i += 1;
+        continue;
+      }
+      if (/^\*\*\*\s*Update File:\s*/i.test(line)) {
+        const path = line.replace(/^\*\*\*\s*Update File:\s*/i, "").trim();
+        i += 1;
+        const hunks = [];
+        let current = null;
+        while (i < lines.length && !/^\*\*\*/.test(lines[i])) {
+          const l = lines[i];
+          if (/^@@/.test(l)) {
+            if (current && current.lines.length) hunks.push(current);
+            const hm = l.match(/^@@\s*(.*?)\s*@@/);
+            current = {
+              contextHint: hm ? String(hm[1] || "").trim() : "",
+              lines: [],
+            };
+            i += 1;
+            continue;
+          }
+          if (
+            !current &&
+            l.length &&
+            (l[0] === " " || l[0] === "-" || l[0] === "+" || l[0] === "\\")
+          ) {
+            current = { contextHint: "", lines: [] };
+          }
+          if (current) {
+            current.lines.push(l);
+            i += 1;
+            continue;
+          }
+          i += 1;
+        }
+        if (current && current.lines.length) hunks.push(current);
+        ops.push({ type: "update", path: path, hunks: hunks });
+        continue;
+      }
+      i += 1;
+    }
+    if (!ops.length) return { ok: false, error: "No V4A operations found" };
+    return { ok: true, ops: ops };
+  }
+
+  function applyHunkLocal(content, hunk) {
+    const src = String(content == null ? "" : content);
+    const hunkLines = Array.isArray(hunk) ? hunk : (hunk && hunk.lines) || [];
+    const contextHint =
+      !Array.isArray(hunk) && hunk && hunk.contextHint
+        ? String(hunk.contextHint)
+        : "";
+    const oldParts = [];
+    const newParts = [];
+    for (let hi = 0; hi < hunkLines.length; hi++) {
+      let line = String(hunkLines[hi] || "").replace(/\r$/, "");
+      if (!line.length) continue;
+      if (line.indexOf("\\ No newline") === 0) continue;
+      let p = " ";
+      let rest = line;
+      if (line[0] === " " || line[0] === "-" || line[0] === "+") {
+        p = line[0];
+        rest = line.slice(1);
+      }
+      if (p !== "+") oldParts.push(rest);
+      if (p !== "-") newParts.push(rest);
+    }
+    const oldBlock = oldParts.join("\n");
+    const newBlock = newParts.join("\n");
+    if (oldBlock === newBlock) return { ok: true, content: src };
+    if (!oldBlock) {
+      const ins = newBlock + (newBlock.endsWith("\n") ? "" : "\n");
+      if (contextHint) {
+        const i = src.indexOf(contextHint);
+        if (i < 0 || src.indexOf(contextHint, i + 1) >= 0) {
+          return { ok: false, error: "Addition hint missing or not unique" };
+        }
+        const eol = src.indexOf("\n", i);
+        if (eol < 0) return { ok: true, content: src + "\n" + ins };
+        return {
+          ok: true,
+          content: src.slice(0, eol + 1) + ins + src.slice(eol + 1),
+        };
+      }
+      return {
+        ok: true,
+        content: src + (src.endsWith("\n") || !src ? "" : "\n") + ins,
+      };
+    }
+    let idx = src.indexOf(oldBlock);
+    if (idx < 0 && contextHint) {
+      const hp = src.indexOf(contextHint);
+      if (hp >= 0) {
+        const w0 = Math.max(0, hp - 500);
+        const w1 = Math.min(src.length, hp + 2000);
+        const j = src.slice(w0, w1).indexOf(oldBlock);
+        if (j >= 0) idx = w0 + j;
+      }
+    }
+    if (idx < 0) {
+      if (!src.includes(oldBlock) && src.includes(newBlock)) {
+        return { ok: true, content: src };
+      }
+      return { ok: false, error: "Hunk context not found" };
+    }
+    if (src.indexOf(oldBlock, idx + 1) >= 0 && !contextHint) {
+      return { ok: false, error: "Hunk context not unique" };
+    }
+    return {
+      ok: true,
+      content: src.slice(0, idx) + newBlock + src.slice(idx + oldBlock.length),
+    };
+  }
+
+  function applyPatchToolLocal(p, common) {
+    const patchText = String(p.patch || p.diff || "");
+    const parsed = parseV4aPatchLocal(patchText);
+    if (!parsed.ok) {
+      return { ok: false, tool: "apply_patch", error: parsed.error };
+    }
+    const results = [];
+    for (let oi = 0; oi < parsed.ops.length; oi++) {
+      const op = parsed.ops[oi];
+      if (op.type === "add") {
+        const w = writeFileTool(op.path, op.content, common);
+        results.push({
+          op: "add",
+          path: op.path,
+          ok: !!(w && w.ok !== false),
+          error: w && w.error,
+        });
+        continue;
+      }
+      if (op.type === "delete") {
+        const d = deleteFileTool(op.path, true);
+        results.push({
+          op: "delete",
+          path: op.path,
+          ok: !!(d && d.ok !== false),
+          error: d && d.error,
+        });
+        continue;
+      }
+      if (op.type === "move") {
+        const fileSys = fs();
+        const from = resolve(op.from);
+        if (!from || !fileSys[from] || fileSys[from].type !== "file") {
+          results.push({
+            op: "move",
+            path: op.from,
+            ok: false,
+            error: "source missing",
+          });
+          continue;
+        }
+        const content = String(fileSys[from].content || "");
+        const w = writeFileTool(op.to, content, common);
+        if (w && w.ok !== false) deleteFileTool(from, false);
+        results.push({
+          op: "move",
+          from: op.from,
+          to: op.to,
+          ok: !!(w && w.ok !== false),
+          error: w && w.error,
+        });
+        continue;
+      }
+      if (op.type === "update") {
+        const path = resolve(op.path);
+        const fileSys = fs();
+        if (!path || !fileSys[path] || fileSys[path].type !== "file") {
+          results.push({
+            op: "update",
+            path: op.path,
+            ok: false,
+            error: "file missing",
+          });
+          continue;
+        }
+        let content = String(fileSys[path].content || "");
+        let failed = null;
+        for (let h = 0; h < (op.hunks || []).length; h++) {
+          const r = applyHunkLocal(content, op.hunks[h]);
+          if (!r.ok) {
+            failed = r.error;
+            break;
+          }
+          content = r.content;
+        }
+        if (failed) {
+          results.push({
+            op: "update",
+            path: op.path,
+            ok: false,
+            error: failed,
+          });
+          continue;
+        }
+        const w = writeFileTool(path, content, common);
+        results.push({
+          op: "update",
+          path: op.path,
+          ok: !!(w && w.ok !== false),
+          error: w && w.error,
+        });
+      }
+    }
+    const ok = results.every(function (r) {
+      return r.ok;
+    });
+    return {
+      ok: ok,
+      tool: "apply_patch",
+      results: results,
+      text:
+        (ok ? "Applied" : "Partially failed") +
+        " V4A patch (" +
+        results.length +
+        " ops)",
+    };
+  }
+
+  async function delegateTaskToolLocal(p, options) {
+    const goal = String(p.goal || p.task || "").trim();
+    if (!goal) return { ok: false, tool: "delegate_task", error: "goal required" };
+    if (!window.ChatreAgent || !window.ChatreAgent.run) {
+      return {
+        ok: false,
+        tool: "delegate_task",
+        error: "Local nested agent unavailable; use remote agent",
+      };
+    }
+    const maxSteps = Math.min(Number(p.max_steps) || 3, 4);
+    try {
+      const nested = await window.ChatreAgent.run(
+        [
+          {
+            role: "user",
+            content:
+              "You are a Chatre sub-agent. Complete ONLY this goal, then stop.\n\nGoal: " +
+              goal +
+              (p.context ? "\n\nContext:\n" + String(p.context).slice(0, 3000) : "") +
+              "\n\nPrefer write_file under /home/user/projects.",
+          },
+        ],
+        {
+          model: options && options.model,
+          maxIterations: maxSteps,
+          skipPlanApproval: true,
+          callbacks: {},
+        },
+      );
+      return {
+        ok: true,
+        tool: "delegate_task",
+        response: (nested && nested.response) || "",
+        iterations: nested && nested.iterations,
+        toolsUsed: nested && nested.toolsUsed,
+        text: String((nested && nested.response) || "").slice(0, 4000),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        tool: "delegate_task",
+        error: err && err.message ? err.message : String(err),
+      };
+    }
   }
 
   // ─── MCP connectors ─────────────────────────────────────────────────────

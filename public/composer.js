@@ -867,6 +867,9 @@
     } else if (r.indexOf("login") >= 0 || r.indexOf("awaiting_login") >= 0) {
       label = "Resume after login";
       kind = "login";
+    } else if (r.indexOf("clarify") >= 0 || r.indexOf("choice") >= 0) {
+      label = "Answer & continue";
+      kind = "clarify";
     } else if (
       r.indexOf("desktop") >= 0 ||
       r.indexOf("purchase") >= 0 ||

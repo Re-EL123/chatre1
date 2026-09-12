@@ -186,6 +186,8 @@
                 ? "Waiting for tool approval — then Resume"
                 : reason === "awaiting_login"
                 ? "Waiting for login — then Resume"
+                : reason === "awaiting_clarify"
+                  ? "Waiting for your choice"
                 : reason === "companion_offline"
                   ? "Desktop companion offline"
                   : "Paused — Resume when ready";
@@ -220,6 +222,7 @@
           (thr.agentRun.status === "interrupted" ||
             thr.agentRun.status === "awaiting_plan" ||
             thr.agentRun.status === "awaiting_login" ||
+            thr.agentRun.status === "awaiting_clarify" ||
             thr.agentRun.status === "awaiting_approval");
         const usageHint =
           thr.lastUsage && thr.lastUsage.totalTokensEst
@@ -234,6 +237,9 @@
         } else if (status === "awaiting_login") {
           statusClass = "login";
           statusLabel = "Needs login";
+        } else if (status === "awaiting_clarify") {
+          statusClass = "plan";
+          statusLabel = "Needs choice";
         } else if (status === "awaiting_plan") {
           statusClass = "plan";
           statusLabel = "Awaiting plan";
