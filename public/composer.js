@@ -213,36 +213,10 @@
   function paintChips() {
     var host = $("composer-context-chips");
     if (!host) return;
-    var chips = [];
-    var model = $("model-select");
-    if (model && model.value) {
-      chips.push({
-        id: "model",
-        kind: "model",
-        label: String(model.value).replace(/^[^:]+:/, "").slice(0, 36),
-      });
-    }
-    chips.push({ id: "mode", kind: "mode", label: modeObj().label });
-    var threadLabel =
-      (window.ChatrePanels &&
-        window.ChatrePanels.state &&
-        window.ChatrePanels.state.threadTitle) ||
-      "";
-    if (threadLabel) {
-      chips.push({
-        id: "thread",
-        kind: "thread",
-        label: String(threadLabel).slice(0, 28),
-      });
-    }
-    state.attachments.forEach(function (a) {
-      chips.push(a);
-    });
-    host.innerHTML = chips
+    // Only attachment chips — model/mode live in toolbar + mode tabs.
+    host.innerHTML = state.attachments
       .map(function (c) {
-        return chipHtml(c, !!c.removable || state.attachments.some(function (a) {
-          return a.id === c.id;
-        }));
+        return chipHtml(c, true);
       })
       .join("");
   }
@@ -372,12 +346,21 @@
 
   function paintQueue() {
     var el = $("composer-queue");
+    var run = $("composer-run");
     if (!el) return;
     if (!state.queue.length) {
       el.hidden = true;
       el.innerHTML = "";
+      if (run && !document.body.classList.contains("is-working")) {
+        var paused =
+          window.ChatreUX &&
+          window.ChatreUX.state &&
+          (window.ChatreUX.state.running || window.ChatreUX.state.pauseReason);
+        if (!paused) run.hidden = true;
+      }
       return;
     }
+    if (run) run.hidden = false;
     el.hidden = false;
     el.innerHTML =
       '<span class="composer-queue-label">Queued (' +
@@ -778,19 +761,44 @@
   }
 
   // ── Busy strip + guidance ─────────────────────────────────────────
-  function setBusyUi(busy, meta) {
-    var strip = $("composer-busy");
+  function paintPrimaryButton() {
     var send = $("send-button");
+    if (!send) return;
+    var busy = document.body.classList.contains("is-working");
+    var canResume =
+      window.ChatrePanels &&
+      window.ChatrePanels.state &&
+      window.ChatrePanels.state.canResume;
+    var input = $("user-input");
+    var hasText = !!(input && input.value.trim());
+    send.classList.remove("is-queue", "is-resume");
+    send.disabled = false;
+    if (busy) {
+      send.textContent = "Queue";
+      send.classList.add("is-queue");
+      send.setAttribute("data-primary", "queue");
+    } else if (canResume && !hasText) {
+      send.textContent = "Resume";
+      send.classList.add("is-resume");
+      send.setAttribute("data-primary", "resume");
+    } else {
+      send.textContent = "Send";
+      send.setAttribute("data-primary", "send");
+    }
+  }
+
+  function setBusyUi(busy, meta) {
+    var run = $("composer-run");
     var guide = $("composer-guidance");
-    if (strip) {
-      strip.hidden = !busy;
+    var stop = $("stop-button");
+    if (run) {
       if (busy) {
+        run.hidden = false;
         var phase = "Working…";
         var tool = "";
         if (typeof meta === "string") {
           if (meta === "agent") phase = "Agent running…";
           else if (meta === "image") phase = "Generating image…";
-          else phase = "Working…";
         } else if (meta && typeof meta === "object") {
           phase = meta.phase || meta.step || "Working…";
           tool = meta.tool || meta.lastTool || "";
@@ -799,14 +807,46 @@
         if ($("composer-busy-tool")) {
           $("composer-busy-tool").textContent = tool ? "· " + tool : "";
         }
+      } else if (!state.queue.length) {
+        var paused =
+          (window.ChatrePanels &&
+            window.ChatrePanels.state &&
+            window.ChatrePanels.state.canResume) ||
+          (window.ChatreUX &&
+            window.ChatreUX.state &&
+            window.ChatreUX.state.pauseReason);
+        if (!paused) run.hidden = true;
       }
     }
     if (guide) guide.hidden = !busy;
-    if (send) {
-      send.textContent = busy ? "Queue" : "Send";
-      send.disabled = false;
+    if (stop) {
+      stop.hidden = !busy;
+      stop.classList.toggle("visible", !!busy);
     }
+    paintPrimaryButton();
     document.body.classList.toggle("composer-busy", !!busy);
+  }
+
+  function syncRunFromUx() {
+    var run = $("composer-run");
+    if (!run || !window.ChatreUX || !window.ChatreUX.state) return;
+    var st = window.ChatreUX.state;
+    var active = !!(st.running || st.pauseReason);
+    if (active) {
+      run.hidden = false;
+      if ($("composer-busy-phase")) {
+        $("composer-busy-phase").textContent =
+          st.step || st.pauseReason || st.phase || "Working…";
+      }
+      if ($("composer-run-budget") && st.maxSteps != null) {
+        $("composer-run-budget").textContent =
+          (st.usedSteps || 0) + "/" + st.maxSteps + " steps";
+      }
+    } else if (!state.queue.length) {
+      run.hidden = true;
+      if ($("composer-run-budget")) $("composer-run-budget").textContent = "";
+    }
+    paintPrimaryButton();
   }
 
   function sendGuidance() {
@@ -1036,6 +1076,7 @@
       input.addEventListener("input", function () {
         clearTimeout(state.draftTimer);
         state.draftTimer = setTimeout(saveDraft, 250);
+        paintPrimaryButton();
         // mention trigger
         var val = input.value;
         var caret = input.selectionStart || val.length;
@@ -1241,6 +1282,8 @@
     clearAttachmentsAfterSend: clearAttachmentsAfterSend,
     rememberRecent: rememberRecent,
     setBusyUi: setBusyUi,
+    syncRunFromUx: syncRunFromUx,
+    paintPrimaryButton: paintPrimaryButton,
     paintChips: paintChips,
     addAttachment: addAttachment,
     wantsAgentFromMode: wantsAgentFromMode,

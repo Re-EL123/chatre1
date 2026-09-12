@@ -296,8 +296,7 @@
 
   function setBusy(busy, mode) {
     isProcessing = busy;
-    sendButton.disabled = busy;
-    // Keep input enabled while busy so guidance / queue can be typed.
+    sendButton.disabled = false;
     userInput.disabled = false;
     document.body.classList.toggle("is-working", busy);
     if (chatContainer) {
@@ -307,8 +306,10 @@
     }
     if (busy) {
       stopButton.classList.add("visible");
+      stopButton.hidden = false;
     } else {
       stopButton.classList.remove("visible");
+      stopButton.hidden = true;
       activeAbort = null;
     }
     if (window.ChatreComposer && window.ChatreComposer.setBusyUi) {
@@ -949,6 +950,9 @@
     this.style.height = "auto";
     this.style.height = Math.min(this.scrollHeight, 160) + "px";
     updateSlashSuggestions(this.value);
+    if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
+      window.ChatreComposer.paintPrimaryButton();
+    }
   });
 
   userInput.addEventListener("keydown", function (e) {
@@ -1007,7 +1011,16 @@
     }, 200);
   });
 
-  sendButton.addEventListener("click", sendMessage);
+  sendButton.addEventListener("click", function () {
+    const primary = sendButton.getAttribute("data-primary") || "send";
+    if (primary === "resume") {
+      if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+        window.ChatreUI.resumeAgent();
+      }
+      return;
+    }
+    sendMessage();
+  });
   stopButton.addEventListener("click", stopGeneration);
 
   if (imageModeButton) {

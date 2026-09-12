@@ -1911,9 +1911,25 @@
         gap: 0.25rem;
         align-items: center;
       }
+      .toolbar-panels .ui-label {
+        display: none;
+      }
       .toolbar-icon-btn {
         min-height: 34px;
-        padding: 0.35rem 0.55rem;
+        min-width: 34px;
+        padding: 0.35rem;
+        justify-content: center;
+      }
+      .toolbar-status-pills .api-status {
+        font-size: 0.72rem;
+        padding: 0.2rem 0.5rem;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #settings-open .ui-label {
+        display: none;
       }
       .toolbar-icon-btn.active {
         border-color: rgba(76, 184, 232, 0.55);
@@ -2016,25 +2032,12 @@
 
       #toolbar-overflow { display: none; }
 
-      /* Run bar lives under toolbar primary row */
-      #run-center {
-        display: none;
-        align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-        padding: 0.45rem 0.7rem;
-        margin: 0;
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        background: linear-gradient(180deg, rgba(28, 32, 52, 0.95), rgba(14, 16, 28, 0.92));
-        position: relative;
-        z-index: 35;
-        flex-shrink: 0;
-        width: 100%;
+      /* Run bar folded into composer — keep DOM for JS sync only */
+      #run-center,
+      .run-center-legacy,
+      #agent-resume {
+        display: none !important;
       }
-      #run-center.active { display: flex; }
-
-      /* Budget folded into run center — keep bar for legacy updates but hide */
       #budget-bar { display: none !important; }
 
       .header-tagline { margin: 0; color: var(--text-light); font-size: 0.92rem; }
@@ -2375,32 +2378,51 @@
       .composer-toolbar {
         display: flex;
         align-items: center;
-        gap: 0.45rem;
-        flex-wrap: wrap;
+        gap: 0.4rem;
         margin-bottom: 0.35rem;
+        flex-wrap: nowrap;
+        min-width: 0;
       }
       .composer-modes {
-        display: inline-flex;
-        gap: 0.2rem;
-        padding: 0.15rem;
+        display: flex;
+        gap: 0.15rem;
+        padding: 0.12rem;
         border: 1px solid var(--border-color);
         border-radius: 8px;
         background: rgba(0,0,0,0.18);
+        overflow-x: auto;
+        flex: 1 1 auto;
+        min-width: 0;
+        scrollbar-width: none;
       }
+      .composer-modes::-webkit-scrollbar { display: none; }
       .composer-mode-btn {
         appearance: none;
         border: 0;
         background: transparent;
         color: var(--text-light);
         font: inherit;
-        font-size: 0.75rem;
-        padding: 0.25rem 0.5rem;
+        font-size: 0.72rem;
+        padding: 0.28rem 0.45rem;
         border-radius: 6px;
         cursor: pointer;
+        white-space: nowrap;
+        flex: 0 0 auto;
       }
       .composer-mode-btn.active {
         background: #1a3a4a;
         color: #9ad8f0;
+      }
+      .composer-tools {
+        display: inline-flex;
+        gap: 0.15rem;
+        flex: 0 0 auto;
+      }
+      .composer-tool {
+        min-width: 32px;
+        min-height: 32px;
+        padding: 0.3rem;
+        justify-content: center;
       }
       .composer-safety {
         margin: 0 0 0.3rem;
@@ -2411,14 +2433,15 @@
       .composer-queue {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.3rem;
-        margin-bottom: 0.3rem;
+        gap: 0.25rem;
+        margin-bottom: 0.25rem;
       }
+      .composer-context-chips:empty { display: none; }
       .composer-chip {
         appearance: none;
         font: inherit;
-        font-size: 0.72rem;
-        padding: 0.15rem 0.45rem;
+        font-size: 0.7rem;
+        padding: 0.12rem 0.4rem;
         border-radius: 6px;
         border: 1px solid var(--border-color);
         color: var(--text-light);
@@ -2427,37 +2450,54 @@
         align-items: center;
         gap: 0.25rem;
         cursor: pointer;
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .composer-chip-kind {
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        font-size: 0.62rem;
+        font-size: 0.6rem;
         color: #4cb8e8;
       }
       .composer-chip-x { opacity: 0.7; }
       .composer-queue-label {
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         color: var(--text-light);
         align-self: center;
       }
-      .composer-busy {
+      .composer-run {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.35rem;
         align-items: center;
+        gap: 0.45rem;
+        margin: 0 0 0.35rem;
+        padding: 0.35rem 0.55rem;
+        border: 1px solid rgba(76, 184, 232, 0.28);
+        border-radius: 8px;
+        background: rgba(20, 36, 52, 0.55);
         font-size: 0.78rem;
-        color: #4cb8e8;
-        margin-bottom: 0.3rem;
+        color: #9ad8f0;
       }
-      .composer-busy-hint {
+      .composer-run[hidden] { display: none !important; }
+      .composer-run-status {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        align-items: center;
+        min-width: 0;
+      }
+      .composer-run-budget {
         color: var(--text-light);
         font-size: 0.72rem;
       }
+      .composer-busy { display: none !important; }
       .composer-guidance {
         display: flex;
         gap: 0.35rem;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.35rem;
       }
+      .composer-guidance[hidden] { display: none !important; }
       .composer-guidance input {
         flex: 1;
         min-width: 0;
@@ -2468,6 +2508,30 @@
         padding: 0.4rem 0.55rem;
         font: inherit;
         font-size: 0.85rem;
+      }
+      .composer-actions {
+        display: inline-flex;
+        gap: 0.35rem;
+        align-items: center;
+        flex: 0 0 auto;
+      }
+      .message-input {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.45rem;
+      }
+      .message-input textarea {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      #send-button.is-queue {
+        background: #1a2a38;
+        color: #9ad8f0;
+      }
+      #send-button.is-resume {
+        background: rgba(76, 184, 120, 0.22);
+        color: #b8f0c8;
+        border-color: rgba(76, 184, 120, 0.45);
       }
       #composer-mic.active {
         border-color: #e85d4c;
@@ -2850,7 +2914,7 @@
           <button type="button" id="usage-meter" class="toolbar-pill" hidden title="Usage"></button>
         </div>
 
-        <button type="button" class="btn" id="agent-resume" hidden title="Resume interrupted agent run">
+        <button type="button" class="btn" id="agent-resume" hidden aria-hidden="true" title="Resume interrupted agent run">
           Resume
         </button>
 
@@ -2902,7 +2966,7 @@
         />
       </div>
 
-      <div id="run-center" hidden aria-live="polite">
+      <div id="run-center" class="run-center-legacy" hidden aria-hidden="true" aria-live="polite">
         <div class="run-center-main">
           <div class="run-center-goal" id="run-center-goal">Agent run</div>
           <div class="run-center-step" id="run-center-step">Starting…</div>
@@ -2971,32 +3035,36 @@
           <div class="message-input-wrap">
             <div class="composer-toolbar">
               <div id="composer-modes" class="composer-modes" role="tablist" aria-label="Composer mode"></div>
-              <button type="button" class="btn" id="composer-attach" data-tip="Attach files to workspace">
-                <i data-lucide="paperclip" style="width:14px;height:14px" aria-hidden="true"></i>
-                <span class="ui-label">Attach</span>
-              </button>
-              <input type="file" id="composer-file-input" multiple hidden />
-              <button type="button" class="btn" id="composer-palette-btn" data-tip="Command palette (⌘/Ctrl+K)">
-                <i data-lucide="command" style="width:14px;height:14px" aria-hidden="true"></i>
-              </button>
-              <button type="button" class="btn" id="composer-edit-last" data-tip="Edit last message">
-                <i data-lucide="pencil" style="width:14px;height:14px" aria-hidden="true"></i>
-              </button>
-              <button type="button" class="btn" id="composer-mic" data-tip="Voice dictation">
-                <i data-lucide="mic" style="width:14px;height:14px" aria-hidden="true"></i>
-              </button>
+              <div class="composer-tools">
+                <button type="button" class="btn composer-tool" id="composer-attach" data-tip="Attach files" aria-label="Attach">
+                  <i data-lucide="paperclip" style="width:14px;height:14px" aria-hidden="true"></i>
+                </button>
+                <input type="file" id="composer-file-input" multiple hidden />
+                <button type="button" class="btn composer-tool" id="composer-palette-btn" data-tip="Command palette (⌘/Ctrl+K)" aria-label="Palette">
+                  <i data-lucide="command" style="width:14px;height:14px" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn composer-tool" id="composer-edit-last" data-tip="Edit last message" aria-label="Edit last">
+                  <i data-lucide="pencil" style="width:14px;height:14px" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn composer-tool" id="composer-mic" data-tip="Voice dictation" aria-label="Mic">
+                  <i data-lucide="mic" style="width:14px;height:14px" aria-hidden="true"></i>
+                </button>
+              </div>
             </div>
             <p id="composer-safety" class="composer-safety" hidden></p>
-            <div id="composer-context-chips" class="composer-context-chips" aria-label="Context"></div>
+            <div id="composer-context-chips" class="composer-context-chips" aria-label="Attachments"></div>
             <div id="composer-attach-chips" hidden></div>
-            <div id="composer-queue" class="composer-queue" hidden></div>
-            <div id="composer-busy" class="composer-busy" hidden>
-              <span id="composer-busy-phase">Working…</span>
-              <span id="composer-busy-tool"></span>
-              <span class="composer-busy-hint">Esc to stop · Queue to send after</span>
+            <div id="composer-run" class="composer-run" hidden>
+              <div class="composer-run-status">
+                <span id="composer-busy-phase">Working…</span>
+                <span id="composer-busy-tool"></span>
+                <span id="composer-run-budget" class="composer-run-budget"></span>
+              </div>
+              <div id="composer-queue" class="composer-queue" hidden></div>
             </div>
+            <div id="composer-busy" hidden></div>
             <div id="composer-guidance" class="composer-guidance" hidden>
-              <input id="composer-guidance-input" type="text" placeholder="Add guidance to the live run…" />
+              <input id="composer-guidance-input" type="text" placeholder="Add guidance…" />
               <button type="button" class="btn" id="composer-guidance-send">Add</button>
             </div>
             <div class="message-input" style="position: relative;">
@@ -3004,12 +3072,14 @@
               <div id="mention-suggestions" class="slash-suggestions mention-suggestions" role="listbox" aria-label="Mentions"></div>
               <textarea
                 id="user-input"
-                placeholder="Type a message… ⌘/Ctrl+Enter to send · Esc to stop"
+                placeholder="Type a message…"
                 rows="1"
                 autofocus
               ></textarea>
-              <button type="button" class="btn" id="stop-button">Stop</button>
-              <button type="button" class="btn" id="send-button">Send</button>
+              <div class="composer-actions">
+                <button type="button" class="btn" id="stop-button" hidden>Stop</button>
+                <button type="button" class="btn" id="send-button">Send</button>
+              </div>
             </div>
           </div>
           <div class="terminal-panel" id="terminal-panel" style="display: none;">

@@ -147,48 +147,34 @@
   function setResumeAvailable(on, reason) {
     state.canResume = !!on;
     const btn = $("agent-resume");
-    if (!btn) return;
-    btn.hidden = !on;
-    btn.disabled = !on;
+    if (btn) {
+      btn.hidden = true;
+      btn.setAttribute("aria-hidden", "true");
+      btn.disabled = !on;
+    }
+    if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
+      window.ChatreComposer.paintPrimaryButton();
+    }
     if (on) {
-      btn.classList.add("pulse");
-      const tip =
-        reason === "awaiting_plan"
-          ? "Approve or edit the plan, then continue"
-          : reason === "awaiting_login"
-            ? "Finish login/2FA in the browser, then continue"
-            : reason === "companion_offline"
-              ? "Start the desktop companion, then retry"
-              : "Resume interrupted agent run";
-      btn.title = tip;
-      btn.setAttribute("data-tip", tip);
-      const label =
-        reason === "awaiting_plan"
-          ? "Continue plan"
-          : reason === "awaiting_login"
-            ? "Resume after login"
-            : "Resume agent";
-      const icon =
-        reason === "awaiting_plan"
-          ? "list-checks"
-          : reason === "awaiting_login"
-            ? "shield-alert"
-            : "play";
-      btn.innerHTML =
-        window.ChatreKit && window.ChatreKit.labelWithIcon
-          ? window.ChatreKit.labelWithIcon(icon, label, 14)
-          : label;
-      if (window.ChatreKit) {
-        window.ChatreKit.refreshIcons(btn);
-        window.ChatreKit.tip(btn, tip);
+      const run = $("composer-run");
+      if (run) {
+        run.hidden = false;
+        if ($("composer-busy-phase")) {
+          $("composer-busy-phase").textContent =
+            reason === "awaiting_plan"
+              ? "Waiting for plan approval"
+              : reason === "awaiting_login"
+                ? "Waiting for login — then Resume"
+                : reason === "companion_offline"
+                  ? "Desktop companion offline"
+                  : "Paused — Resume when ready";
+        }
       }
-    } else {
-      btn.classList.remove("pulse");
-      btn.innerHTML =
-        window.ChatreKit && window.ChatreKit.labelWithIcon
-          ? window.ChatreKit.labelWithIcon("play", "Resume", 14)
-          : "Resume";
-      if (window.ChatreKit) window.ChatreKit.refreshIcons(btn);
+    } else if (
+      window.ChatreComposer &&
+      window.ChatreComposer.syncRunFromUx
+    ) {
+      window.ChatreComposer.syncRunFromUx();
     }
   }
 

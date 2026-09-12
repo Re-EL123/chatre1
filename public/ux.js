@@ -295,17 +295,15 @@
 
   // ── Run command center ──────────────────────────────────────────────
   function showRunCenter(on) {
-    var bar = $("run-center");
-    if (!bar) return;
-    bar.hidden = !on;
-    bar.classList.toggle("active", !!on);
+    // Visual run chrome lives in the composer strip only.
+    if (window.ChatreComposer && window.ChatreComposer.syncRunFromUx) {
+      window.ChatreComposer.syncRunFromUx();
+    }
     document.body.classList.toggle("has-run-center", !!on);
   }
 
   function updateRunCenter( partial) {
     if (partial) Object.assign(state, partial);
-    var bar = $("run-center");
-    if (!bar) return;
     var goalEl = $("run-center-goal");
     var stepEl = $("run-center-step");
     var budgetEl = $("run-center-budget");
@@ -339,13 +337,20 @@
         budgetEl.textContent = "";
       }
     }
-    var resume = $("run-center-resume");
-    var stop = $("run-center-stop");
-    if (resume) {
-      resume.hidden = !state.pauseReason;
-    }
-    if (stop) stop.disabled = !state.running && !state.pauseReason;
     showRunCenter(!!(state.running || state.pauseReason));
+    if (window.ChatreComposer) {
+      if (window.ChatreComposer.setBusyUi && state.running) {
+        window.ChatreComposer.setBusyUi(true, {
+          phase: state.step || state.phase || "Working…",
+          tool: state.lastTool || "",
+        });
+      } else if (window.ChatreComposer.syncRunFromUx) {
+        window.ChatreComposer.syncRunFromUx();
+      }
+      if (window.ChatreComposer.paintPrimaryButton) {
+        window.ChatreComposer.paintPrimaryButton();
+      }
+    }
   }
 
   function startRun(goal) {
