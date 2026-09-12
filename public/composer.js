@@ -940,7 +940,7 @@
       stop.classList.toggle("visible", !!busy);
     }
     paintPrimaryButton();
-    document.body.classList.toggle("composer-busy", !!busy);
+    document.body.classList.toggle("is-composer-busy", !!busy);
   }
 
   function syncRunFromUx() {
