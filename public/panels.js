@@ -493,6 +493,15 @@
         ? 'Active: <strong>' + escapeHtml(state.activeProject) + "</strong>"
         : "No active project") +
       "</div>";
+    head.title = "Right-click to export the workspace";
+    head.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      openExplorerMenu(e.clientX, e.clientY, {
+        kind: "workspace",
+        path: "/home/user",
+        name: "workspace",
+      });
+    });
     root.appendChild(head);
 
     if (slugs.length) {
@@ -520,6 +529,16 @@
         row.title = "Set active project " + (p.root || slug);
         row.addEventListener("click", function () {
           setActiveProject(slug);
+        });
+        row.addEventListener("contextmenu", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openExplorerMenu(e.clientX, e.clientY, {
+            kind: "project",
+            path: p.root || "/home/user/projects/" + slug,
+            name: slug,
+            slug: slug,
+          });
         });
         projSec.appendChild(row);
       });
@@ -582,6 +601,8 @@
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "ide-folder-toggle";
+    toggle.setAttribute("data-path", node.path);
+    toggle.title = "Right-click to export folder";
     toggle.innerHTML =
       '<span class="ide-chevron">' +
       (open ? "▾" : "▸") +
@@ -603,6 +624,19 @@
     toggle.addEventListener("click", function () {
       state.expanded[key] = !open;
       renderFileTree($("file-tree"), state.files);
+    });
+    toggle.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const projectMatch = String(node.path || "").match(
+        /^\/home\/user\/projects\/([^/]+)$/,
+      );
+      openExplorerMenu(e.clientX, e.clientY, {
+        kind: "dir",
+        path: node.path,
+        name: node.name,
+        slug: projectMatch ? projectMatch[1] : null,
+      });
     });
     folder.appendChild(toggle);
 
@@ -658,6 +692,15 @@
     });
     row.querySelector(".file-dl").addEventListener("click", function () {
       downloadFile(path);
+    });
+    row.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openExplorerMenu(e.clientX, e.clientY, {
+        kind: "file",
+        path: path,
+        name: name || path.split("/").pop(),
+      });
     });
     host.appendChild(row);
   }
@@ -841,37 +884,261 @@
   }
 
   async function exportZip() {
-    if (!remote() || !remote().enabled()) {
-      alert("Remote API not configured");
-      return;
+    return exportDirectoryZip("/home/user", {
+      zipName: null,
+      label: "workspace",
+    });
+  }
+
+  function fileContentForZip(path, entry) {
+    if (entry == null) return "";
+    if (typeof entry === "string") return entry;
+    const content = entry.content != null ? entry.content : "";
+    if (
+      entry.encoding === "base64" ||
+      (/\.pdf$/i.test(path) &&
+        /^[A-Za-z0-9+/=\s]+$/.test(String(content).slice(0, 80)))
+    ) {
+      try {
+        const bin = atob(String(content).replace(/\s+/g, ""));
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+      } catch (e) {
+        return String(content || "");
+      }
     }
+    return String(content || "");
+  }
+
+  async function collectExportFiles(dirPath) {
+    const root = String(dirPath || "/home/user").replace(/\/$/, "") || "/home/user";
+    const out = {};
+    const take = function (p, contentOrEntry) {
+      if (!p) return;
+      if (root === "/home/user") {
+        out[p] = contentOrEntry;
+        return;
+      }
+      if (p === root || p.indexOf(root + "/") === 0) out[p] = contentOrEntry;
+    };
+
+    Object.keys(state.files || {}).forEach(function (p) {
+      const f = state.files[p];
+      if (!f || f.type === "dir") return;
+      take(p, f);
+    });
+
+    // Local Worker FS may have fresher content
+    const localFs = (window.ChatreCore && window.ChatreCore.fs) || null;
+    if (localFs) {
+      Object.keys(localFs).forEach(function (p) {
+        const f = localFs[p];
+        if (!f || f.type === "dir") return;
+        take(p, f);
+      });
+    }
+
     const wsId = remoteState().workspaceId || state.workspaceId;
-    if (!wsId) {
-      alert("No workspace yet — start an agent chat first.");
-      return;
+    if (remote() && remote().enabled() && wsId && remote().exportWorkspace) {
+      try {
+        const data = await remote().exportWorkspace(wsId);
+        const files = (data && data.files) || {};
+        Object.keys(files).forEach(function (p) {
+          take(p, files[p]);
+        });
+      } catch (e) {
+        /* keep local map */
+      }
     }
+
+    return { root: root, files: out };
+  }
+
+  async function exportDirectoryZip(dirPath, opts) {
+    const o = opts || {};
     if (!window.JSZip) {
       alert("JSZip not loaded");
       return;
     }
-    const data = await remote().exportWorkspace(wsId);
+    const collected = await collectExportFiles(dirPath);
+    const paths = Object.keys(collected.files).sort();
+    if (!paths.length) {
+      const msg =
+        "No files to export under " + (collected.root || dirPath || "/");
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast(msg, "warn");
+      } else {
+        alert(msg);
+      }
+      return;
+    }
+
     const zip = new JSZip();
-    const files = data.files || {};
-    Object.keys(files).forEach((p) => {
-      const rel = p.replace(/^\//, "");
-      zip.file(rel || "file.txt", files[p] || "");
+    const root = collected.root;
+    const folderName =
+      o.folderName ||
+      (root === "/home/user"
+        ? "workspace"
+        : root.split("/").filter(Boolean).pop() || "export");
+
+    paths.forEach(function (p) {
+      let rel;
+      if (root === "/home/user") {
+        rel = p.replace(/^\//, "") || "file.txt";
+      } else if (p === root) {
+        rel = folderName;
+      } else {
+        rel = folderName + "/" + p.slice(root.length + 1);
+      }
+      zip.file(rel, fileContentForZip(p, collected.files[p]));
     });
+
     const blob = await zip.generateAsync({ type: "blob" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().slice(0, 10);
     a.download =
-      "chatre-workspace-" +
-      (data.workspace && data.workspace.id
-        ? data.workspace.id.slice(0, 12)
-        : "export") +
+      (o.zipName ||
+        folderName.replace(/[^\w.\-]+/g, "_") ||
+        "export") +
+      "-" +
+      stamp +
       ".zip";
     a.click();
     URL.revokeObjectURL(a.href);
+
+    if (window.ChatreKit && window.ChatreKit.toast) {
+      window.ChatreKit.toast(
+        "Exported " +
+          paths.length +
+          " file(s) from " +
+          (o.label || folderName),
+        "success",
+      );
+    }
+  }
+
+  function ensureExplorerMenu() {
+    let menu = document.getElementById("explorer-ctx-menu");
+    if (menu) return menu;
+    menu = document.createElement("div");
+    menu.id = "explorer-ctx-menu";
+    menu.className = "explorer-ctx-menu";
+    menu.setAttribute("role", "menu");
+    document.body.appendChild(menu);
+    return menu;
+  }
+
+  function hideExplorerMenu() {
+    const menu = document.getElementById("explorer-ctx-menu");
+    if (!menu) return;
+    menu.classList.remove("open");
+    menu.innerHTML = "";
+  }
+
+  function openExplorerMenu(clientX, clientY, target) {
+    const menu = ensureExplorerMenu();
+    hideExplorerMenu();
+    const t = target || {};
+    const label = document.createElement("div");
+    label.className = "ctx-label";
+    label.textContent = t.name || t.path || "Item";
+    menu.appendChild(label);
+
+    function addItem(text, icon, action) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("role", "menuitem");
+      btn.innerHTML =
+        (window.ChatreKit && icon
+          ? window.ChatreKit.iconHtml(icon, 14) + " "
+          : "") +
+        escapeHtml(text);
+      btn.addEventListener("click", function () {
+        hideExplorerMenu();
+        Promise.resolve()
+          .then(action)
+          .catch(function (err) {
+            const msg = (err && err.message) || String(err);
+            if (window.ChatreKit && window.ChatreKit.toast) {
+              window.ChatreKit.toast(msg, "error");
+            } else {
+              alert(msg);
+            }
+          });
+      });
+      menu.appendChild(btn);
+    }
+
+    function addSep() {
+      const sep = document.createElement("div");
+      sep.className = "ctx-sep";
+      menu.appendChild(sep);
+    }
+
+    if (t.kind === "file") {
+      addItem("Download file", "download", function () {
+        downloadFile(t.path);
+      });
+      addItem("Open", "file", function () {
+        return openFile(t.path);
+      });
+      const parent = String(t.path || "").replace(/\/[^/]+$/, "") || "/home/user";
+      addItem("Export parent folder…", "package", function () {
+        return exportDirectoryZip(parent);
+      });
+    } else if (t.kind === "workspace") {
+      addItem("Export entire workspace", "package", function () {
+        return exportZip();
+      });
+    } else {
+      addItem("Export folder as ZIP", "package", function () {
+        return exportDirectoryZip(t.path || "/home/user", {
+          label: t.name || t.path,
+        });
+      });
+    }
+
+    if (t.slug) {
+      addSep();
+      addItem("Set as active project", "folder-git-2", function () {
+        return setActiveProject(t.slug);
+      });
+    }
+
+    addSep();
+    addItem("Copy path", "copy", async function () {
+      const text = t.path || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast("Copied path", "success");
+      }
+    });
+
+    menu.classList.add("open");
+    if (window.ChatreKit) window.ChatreKit.refreshIcons(menu);
+
+    const pad = 8;
+    const w = menu.offsetWidth || 200;
+    const h = menu.offsetHeight || 160;
+    let left = clientX;
+    let top = clientY;
+    if (left + w > window.innerWidth - pad) left = window.innerWidth - w - pad;
+    if (top + h > window.innerHeight - pad) top = window.innerHeight - h - pad;
+    if (left < pad) left = pad;
+    if (top < pad) top = pad;
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
   }
 
   function escapeHtml(text) {
@@ -1020,6 +1287,18 @@
     if (newBtn) newBtn.addEventListener("click", newThread);
     if (filesRefresh) filesRefresh.addEventListener("click", refreshFiles);
     if (zipBtn) zipBtn.addEventListener("click", exportZip);
+
+    document.addEventListener("click", function (e) {
+      const menu = document.getElementById("explorer-ctx-menu");
+      if (!menu || !menu.classList.contains("open")) return;
+      if (menu.contains(e.target)) return;
+      hideExplorerMenu();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") hideExplorerMenu();
+    });
+    window.addEventListener("blur", hideExplorerMenu);
+    document.addEventListener("scroll", hideExplorerMenu, true);
 
     const drop = $("file-drop");
     const dropInput = $("file-drop-input");
@@ -1193,6 +1472,8 @@
     togglePanel,
     setThreadsCollapsed,
     syncThreadsToggleUi,
+    exportZip,
+    exportDirectoryZip,
     uploadLocalFiles: function (files) {
       if (uploadLocalFilesFn) return uploadLocalFilesFn(files);
       return Promise.reject(new Error("Panels not ready"));

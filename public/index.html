@@ -1365,6 +1365,61 @@
         color: #9ad8f0;
         font-weight: 600;
       }
+      .ide-folder-toggle[data-path],
+      .ide-file[data-path],
+      .ide-project-chip {
+        user-select: none;
+      }
+      .explorer-ctx-menu {
+        position: fixed;
+        z-index: 4000;
+        min-width: 188px;
+        padding: 0.28rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: color-mix(in srgb, var(--bg-secondary, #141820) 94%, #000);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+        display: none;
+      }
+      .explorer-ctx-menu.open {
+        display: block;
+      }
+      .explorer-ctx-menu button {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--text-color, #e8eef5);
+        text-align: left;
+        padding: 0.45rem 0.55rem;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+      .explorer-ctx-menu button:hover,
+      .explorer-ctx-menu button:focus-visible {
+        background: color-mix(in srgb, var(--accent, #4db8ff) 22%, transparent);
+        outline: none;
+      }
+      .explorer-ctx-menu .ctx-sep {
+        height: 1px;
+        margin: 0.25rem 0.35rem;
+        background: var(--border-color);
+      }
+      .explorer-ctx-menu .ctx-label {
+        padding: 0.2rem 0.55rem 0.35rem;
+        font-size: 0.66rem;
+        color: var(--text-light);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .ide-chevron {
         width: 0.7rem;
         opacity: 0.7;
