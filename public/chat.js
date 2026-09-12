@@ -148,6 +148,35 @@
     return headers;
   }
 
+  function isByokModel(model) {
+    return /^(openrouter|anthropic|openai|google):/i.test(String(model || ""));
+  }
+
+  function formatChatError(errMsg) {
+    let msg = String(errMsg || "there was an error processing your request.");
+    const jsonStart = msg.indexOf("{");
+    if (jsonStart >= 0) {
+      try {
+        const j = JSON.parse(msg.slice(jsonStart));
+        if (j && (j.description || j.message)) {
+          msg = j.description || j.message;
+        }
+      } catch {
+        /* keep */
+      }
+    }
+    if (/neurons|daily free allocation|Workers Paid/i.test(msg)) {
+      msg =
+        "Cloudflare Workers AI free quota is exhausted. " +
+        "If you selected OpenRouter, make sure you are signed in with a saved BYOK key — " +
+        "chat must go through the API, not Workers AI. " +
+        "(" +
+        msg.slice(0, 180) +
+        ")";
+    }
+    return msg;
+  }
+
   function escapeHtml(text) {
     return String(text)
       .replace(/&/g, "&amp;")
@@ -722,17 +751,40 @@
     activeAbort = new AbortController();
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: authHeaders(),
-        signal: activeAbort.signal,
-        body: JSON.stringify({
+      const selectedModel = modelSelect.value;
+      let response;
+
+      if (isByokModel(selectedModel)) {
+        if (
+          !window.ChatreRemote ||
+          !window.ChatreRemote.enabled() ||
+          !window.ChatreRemote.hasAuth() ||
+          !window.ChatreRemote.chatStream
+        ) {
+          throw new Error(
+            "OpenRouter / BYOK models need you signed in with CHATRE_API_BASE configured and a key saved under Settings → BYOK. They cannot run on free Workers AI.",
+          );
+        }
+        response = await window.ChatreRemote.chatStream({
           messages: chatHistory,
+          model: selectedModel,
+          maxTokens: DEFAULT_MAX_TOKENS,
           stream: true,
-          model: modelSelect.value,
-          max_tokens: DEFAULT_MAX_TOKENS,
-        }),
-      });
+          signal: activeAbort.signal,
+        });
+      } else {
+        response = await fetch("/api/chat", {
+          method: "POST",
+          headers: authHeaders(),
+          signal: activeAbort.signal,
+          body: JSON.stringify({
+            messages: chatHistory,
+            stream: true,
+            model: selectedModel,
+            max_tokens: DEFAULT_MAX_TOKENS,
+          }),
+        });
+      }
 
       if (!response.ok) {
         let errMsg = "Failed to get response";
@@ -745,11 +797,11 @@
         if (response.status === 429) {
           errMsg =
             errMsg +
-            " Workers AI free quota may be exhausted (or rate-limited). Wait a minute, or add a BYOK key in Settings.";
+            " Workers AI free quota may be exhausted (or rate-limited). Wait a minute, or use a BYOK OpenRouter model while signed in.";
           const ra = response.headers.get("Retry-After");
           if (ra) errMsg += " Retry-After: " + ra + "s.";
         }
-        throw new Error(errMsg);
+        throw new Error(formatChatError(errMsg));
       }
 
       if (!response.body) {
@@ -815,7 +867,7 @@
         console.error(error);
         updateAssistantMessage(
           assistantEl,
-          "Sorry — " + (error.message || "there was an error processing your request."),
+          "Sorry — " + formatChatError(error.message || error),
           false,
         );
       }

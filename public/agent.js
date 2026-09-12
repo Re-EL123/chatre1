@@ -283,6 +283,15 @@
 
           const payloadMessages = preamble.concat(trimAgentMessages(messages));
 
+          const modelName = String(model || "");
+          if (/^(openrouter|anthropic|openai|google):/i.test(modelName)) {
+            throw new Error(
+              "BYOK model " +
+                modelName +
+                " cannot run on the local Worker. Sign in so the remote agent API can use your OpenRouter key.",
+            );
+          }
+
           let text = "";
           const response = await fetch("/api/chat", {
             method: "POST",

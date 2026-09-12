@@ -40,6 +40,42 @@ const RATE_LIMIT_PER_MINUTE = 120;
 const RATE_WINDOW_MS = 60_000;
 const AI_MAX_RETRIES = 3;
 
+const BYOK_MODEL_PREFIX =
+  /^(openrouter|anthropic|openai|google):/i;
+
+function formatWorkersAiError(raw: string, status: number): string {
+  const text = String(raw || "").trim();
+  if (!text) {
+    return status === 429
+      ? "Workers AI free daily quota is exhausted. Select an OpenRouter (or other BYOK) model after saving a key in Settings, or wait until the quota resets."
+      : "Workers AI returned " + status + ".";
+  }
+  try {
+    const j = JSON.parse(text) as {
+      description?: string;
+      message?: string;
+      httpCode?: number;
+    };
+    const desc = j.description || j.message || text;
+    if (status === 429 || j.httpCode === 429 || /neurons|quota|429/i.test(desc)) {
+      return (
+        "Workers AI free quota exhausted (10k neurons/day). " +
+        "Your selected BYOK model was not used — pick an openrouter:… model while signed in, " +
+        "or wait for the daily reset / upgrade Workers Paid. Details: " +
+        desc
+      );
+    }
+    return desc;
+  } catch {
+    if (status === 429 || /neurons|quota/i.test(text)) {
+      return (
+        "Workers AI free quota exhausted. Use a BYOK OpenRouter model (Settings → BYOK) while signed in, or wait for the daily reset."
+      );
+    }
+    return text.length > 400 ? text.slice(0, 400) + "…" : text;
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -325,6 +361,20 @@ async function handleChatRequest(
     if (limited) return limited;
 
     const body = (await request.json()) as ChatRequestBody;
+
+    if (body.model && BYOK_MODEL_PREFIX.test(String(body.model))) {
+      return jsonResponse(
+        {
+          error:
+            "Model " +
+            body.model +
+            " is a BYOK provider model. It must run through the Chatre API (sign in + Settings → BYOK). " +
+            "This Worker only serves Cloudflare Workers AI models and will not fall back to them for BYOK selections.",
+        },
+        400,
+      );
+    }
+
     const mode =
       body.mode === "analyst" ||
       body.mode === "agent" ||
@@ -430,9 +480,7 @@ async function handleChatRequest(
         );
         return jsonResponse(
           {
-            error:
-              bodyText ||
-              "Workers AI returned " + aiResponse.status + ".",
+            error: formatWorkersAiError(bodyText, aiResponse.status),
           },
           aiResponse.status,
         );
@@ -477,8 +525,7 @@ async function handleChatRequest(
       );
       return jsonResponse(
         {
-          error:
-            bodyText || "Workers AI returned " + aiResponse.status + ".",
+          error: formatWorkersAiError(bodyText, aiResponse.status),
         },
         aiResponse.status,
       );

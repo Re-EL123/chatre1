@@ -538,6 +538,42 @@
     return meta;
   }
 
+  async function chatStream(opts) {
+    const o = opts || {};
+    const base = apiBase();
+    if (!base) throw new Error("CHATRE_API_BASE not set");
+    if (!hasAuth()) {
+      throw new Error("Sign in to use BYOK / remote chat.");
+    }
+    const signal = o.signal;
+    const res = await fetch(base + "/api/chat", {
+      method: "POST",
+      headers: await authHeaders(),
+      signal: signal,
+      body: JSON.stringify({
+        messages: o.messages || [],
+        model: o.model || "",
+        stream: o.stream !== false,
+        max_tokens: o.maxTokens || o.max_tokens || 2048,
+      }),
+    });
+    if (!res.ok) {
+      let err = "Chat API failed";
+      try {
+        const j = await res.json();
+        if (j && j.error) err = j.error;
+      } catch {
+        /* ignore */
+      }
+      if (res.status === 429) {
+        err +=
+          " Rate limited or quota exhausted. Check your OpenRouter account, or wait and retry.";
+      }
+      throw new Error(err);
+    }
+    return res;
+  }
+
   async function companionStatus() {
     const base = apiBase();
     if (!base) return { online: false };
@@ -592,5 +628,6 @@
     exec,
     execStream,
     runAgentStream,
+    chatStream,
   };
 })();
