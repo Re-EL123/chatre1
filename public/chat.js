@@ -571,6 +571,7 @@
     const nextCarry = lines.pop() || "";
     let text = "";
     let error = null;
+    let meta = null;
 
     for (let line of lines) {
       line = line.trim();
@@ -586,6 +587,9 @@
         } else if (json.error && typeof json.error.message === "string") {
           error = json.error.message;
         }
+        if (json.meta && typeof json.meta === "object") {
+          meta = Object.assign({}, meta || {}, json.meta);
+        }
         if (typeof json.response === "string") text += json.response;
         else if (typeof json.text === "string") text += json.text;
         else if (typeof json.token === "string") text += json.token;
@@ -594,7 +598,7 @@
       }
     }
 
-    return { text, carry: nextCarry, error };
+    return { text, carry: nextCarry, error, meta };
   }
 
   function updateSlashSuggestions(val) {
@@ -881,6 +885,7 @@
       const decoder = new TextDecoder();
       let carry = "";
       let streamError = null;
+      let streamMeta = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -889,6 +894,7 @@
         const parsed = extractStreamTokens(chunk, carry);
         carry = parsed.carry;
         if (parsed.error) streamError = parsed.error;
+        if (parsed.meta) streamMeta = Object.assign({}, streamMeta || {}, parsed.meta);
         if (parsed.text) {
           responseText += parsed.text;
           updateAssistantMessage(assistantEl, responseText, true);
@@ -903,11 +909,13 @@
           } else {
             const parsed = extractStreamTokens(carry + "\n", "");
             if (parsed.error) streamError = parsed.error;
+            if (parsed.meta) streamMeta = Object.assign({}, streamMeta || {}, parsed.meta);
             if (parsed.text) responseText += parsed.text;
           }
         } catch {
           const parsed = extractStreamTokens(carry + "\n", "");
           if (parsed.error) streamError = parsed.error;
+          if (parsed.meta) streamMeta = Object.assign({}, streamMeta || {}, parsed.meta);
           if (parsed.text) responseText += parsed.text;
         }
       }
@@ -929,11 +937,18 @@
           assistantEl,
           streamError
             ? "Sorry — " + formatChatError(streamError)
-            : "No response from the model. If you are on Gemini 3.x, try again — empty replies usually mean thinking used the output budget.",
+            : "No response from the model. For OpenRouter Gemini / reasoning models, empty replies usually mean thinking used the output budget — retry or raise max tokens.",
           false,
         );
       } else {
-        chatHistory.push({ role: "assistant", content: responseText });
+        const assistantMsg = { role: "assistant", content: responseText };
+        if (streamMeta && streamMeta.reasoning_details) {
+          assistantMsg.reasoning_details = streamMeta.reasoning_details;
+        }
+        if (streamMeta && streamMeta.reasoning) {
+          assistantMsg.reasoning = streamMeta.reasoning;
+        }
+        chatHistory.push(assistantMsg);
         trimHistory();
       }
     } catch (error) {
