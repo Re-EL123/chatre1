@@ -13,7 +13,11 @@
   }
 
   function openSettingsFocus(sel) {
-    if (sel === "#auth-email" || sel === "#auth-signin-email") {
+    if (
+      sel === "#auth-email" ||
+      sel === "#auth-signin-email" ||
+      sel === "#auth-open-gate"
+    ) {
       if (window.ChatreAuthGate && window.ChatreAuthGate.open) {
         window.ChatreAuthGate.open({ tab: "signin" });
         return;
@@ -133,7 +137,7 @@
           api.className + " " + api.textContent,
         );
         if (bad || !(window.ChatreAuth && window.ChatreAuth.isSignedIn())) {
-          openSettingsFocus("#auth-email");
+          openSettingsFocus("#auth-signin-email");
         } else {
           openSettingsFocus(null);
         }

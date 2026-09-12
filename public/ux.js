@@ -116,7 +116,7 @@
   }
 
   function setAuthError(msg) {
-    var el = $("auth-error");
+    var el = $("auth-gate-error") || $("auth-error");
     if (el) el.textContent = msg || "";
   }
 
@@ -163,7 +163,9 @@
       $("auth-signout").addEventListener("click", function () {
         window.ChatreAuth.signOut().then(function () {
           paintAuthUi();
-          openAuthGate({ tab: "signin" });
+          if (window.ChatreKit) {
+            window.ChatreKit.toast("Signed out", "success");
+          }
         });
       });
     }
@@ -476,11 +478,31 @@
 
   function showOnboarding(force) {
     if (!force && onboardingDone()) return;
+    var gate = $("auth-gate");
+    if (!force && gate && !gate.hidden) {
+      // Wait until auth gate is dismissed
+      setTimeout(function () {
+        showOnboarding(false);
+      }, 800);
+      return;
+    }
     var host = $("onboarding-overlay");
     if (!host) return;
     host.hidden = false;
     host.classList.add("open");
-    var step = 1;
+    host.setAttribute("role", "dialog");
+    host.setAttribute("aria-modal", "true");
+    host.setAttribute("aria-hidden", "false");
+    var signed =
+      (window.ChatreAuth && window.ChatreAuth.isSignedIn()) ||
+      (function () {
+        try {
+          return localStorage.getItem("chatre.auth.skip_gate") === "1";
+        } catch (e) {
+          return false;
+        }
+      })();
+    var step = signed ? 2 : 1;
     function paint() {
       host.querySelectorAll("[data-onboard-step]").forEach(function (el) {
         el.hidden = Number(el.getAttribute("data-onboard-step")) !== step;
@@ -509,7 +531,7 @@
       } else if (act === "back") {
         step = Math.max(1, step - 1);
         paint();
-      } else if (act === "focus-key") {
+      } else if (act === "focus-key" || act === "open-auth") {
         openAuthGate({ tab: "signin" });
       } else if (act === "copy-companion") {
         var cmd =
@@ -552,6 +574,34 @@
         if (slash && slash.style.display !== "none" && slash.innerHTML) {
           return;
         }
+        if ($("auth-gate") && !$("auth-gate").hidden) {
+          // Prefer closing overlays over stopping a run
+          if (
+            window.ChatreAuth &&
+            !window.ChatreAuth.isSignedIn() &&
+            localStorage.getItem("chatre.auth.skip_gate") !== "1"
+          ) {
+            // Keep gate open until sign-in or continue-local
+          } else if (window.ChatreAuthGate && window.ChatreAuthGate.close) {
+            window.ChatreAuthGate.close();
+            e.preventDefault();
+            return;
+          }
+        }
+        if (
+          $("composer-palette") &&
+          (!$("composer-palette").hidden ||
+            $("composer-palette").classList.contains("open"))
+        ) {
+          if (window.ChatreComposer && window.ChatreComposer.openPalette) {
+            // close via composer API if exposed; otherwise hide
+            var pal = $("composer-palette");
+            pal.classList.remove("open");
+            pal.hidden = true;
+          }
+          e.preventDefault();
+          return;
+        }
         if ($("settings-drawer") && $("settings-drawer").classList.contains("open")) {
           closeSettings();
           e.preventDefault();
@@ -559,6 +609,7 @@
         }
         if ($("plan-drawer") && $("plan-drawer").classList.contains("open")) {
           $("plan-drawer").classList.remove("open");
+          $("plan-drawer").setAttribute("aria-hidden", "true");
           e.preventDefault();
           return;
         }
@@ -574,18 +625,7 @@
         return;
       }
 
-      if (meta && e.key === "Enter") {
-        if (typing && e.target.id === "user-input") {
-          e.preventDefault();
-          if (window.ChatreUI && window.ChatreUI.sendMessage) {
-            window.ChatreUI.sendMessage();
-          } else {
-            var send = $("send-button");
-            if (send) send.click();
-          }
-        }
-        return;
-      }
+      // Send is handled only by chat.js on #user-input to avoid double-send.
 
       if (meta && !e.shiftKey && (e.key === "b" || e.key === "B")) {
         e.preventDefault();

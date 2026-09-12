@@ -106,6 +106,13 @@
           : name === "reset"
             ? "Send reset link"
             : "Sign in";
+      var formId =
+        name === "signup"
+          ? "auth-form-signup"
+          : name === "reset"
+            ? "auth-form-reset"
+            : "auth-form-signin";
+      submit.setAttribute("form", formId);
     }
 
     setError("");

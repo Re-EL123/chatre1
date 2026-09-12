@@ -164,13 +164,25 @@
       }
     });
 
-    const modeIcons = { chat: "message-circle", agent: "bot", image: "image" };
-    document.querySelectorAll("#mode-control [data-mode]").forEach(function (btn) {
+    const modeIcons = {
+      chat: "message-circle",
+      agent: "bot",
+      browse: "globe",
+      desktop: "monitor",
+      code: "code-2",
+      image: "image",
+    };
+    document.querySelectorAll("#composer-modes [data-mode]").forEach(function (btn) {
       const mode = btn.getAttribute("data-mode");
       const label = (btn.textContent || "").trim();
       if (modeIcons[mode]) {
         btn.innerHTML = labelWithIcon(modeIcons[mode], label, 14);
       }
+      btn.setAttribute("role", "tab");
+      btn.setAttribute(
+        "aria-selected",
+        btn.classList.contains("active") ? "true" : "false",
+      );
     });
 
     const panels = [

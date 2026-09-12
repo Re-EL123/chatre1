@@ -156,11 +156,14 @@
         (m.id === state.mode ? " active" : "") +
         '" data-mode="' +
         m.id +
+        '" role="tab" aria-selected="' +
+        (m.id === state.mode ? "true" : "false") +
         '">' +
         m.label +
         "</button>"
       );
     }).join("");
+    if (kit()) kit().refreshIcons(host);
   }
 
   function paintPlaceholder() {
@@ -171,6 +174,10 @@
       ? "Enter to send · Shift+Enter newline"
       : "⌘/Ctrl+Enter to send · Esc to stop";
     input.placeholder = m.placeholder + " · " + sendHint;
+    var kbd = $("kbd-send");
+    if (kbd) {
+      kbd.textContent = state.enterSends ? "Enter" : "⌘/Ctrl+Enter";
+    }
   }
 
   function paintSafety() {

@@ -29,8 +29,8 @@
   const SLASH_COMMANDS = [
     { cmd: "/image", desc: "Generate an AI image from a prompt", action: (arg) => generateImage(arg || "A futuristic city skyline") },
     { cmd: "/clear", desc: "Clear chat history and terminal", action: () => { chatHistory = []; chatMessages.innerHTML = ""; window.__localResumeMessages = null; window.__pendingClarification = false; window.__pendingUserInput = null; window.__pendingConnectors = null; if (window.ChatrePanels) window.ChatrePanels.setResumeAvailable(false); if (xtermTerminal) xtermTerminal.clear(); showGreeting(); } },
-    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle agent mode (ON by default — plan, build, code, commit, documents)") },
-    { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`\nAgent mode: **" + (agentMode ? "ON" : "OFF") + "**") },
+    { cmd: "/help", desc: "Show help and available commands", action: () => addMessage("assistant", "Available commands:\n- `/image <prompt>`: Generate an AI image\n- `/clear`: Reset chat history\n- `/help`: Show this help message\n- `/model`: Show active model\n- `/terminal`: Toggle terminal panel\n- `/run <cmd>`: Run a shell command\n- `/exec <js>`: Execute JavaScript\n- `/python <code>`: Execute Python\n- `/agent`: Toggle Agent/Chat composer mode\n\nModes live in the composer toolbar (Chat · Agent · Browse · Desktop · Code · Image). Use ⌘/Ctrl+K for the command palette.") },
+    { cmd: "/model", desc: "Show current model info", action: () => addMessage("assistant", "Current active model: `" + modelSelect.value + "`\nAgent mode: **" + (agentMode ? "ON" : "OFF") + "**" + (window.ChatreComposer && window.ChatreComposer.getMode ? "\nComposer mode: **" + window.ChatreComposer.getMode() + "**" : "")) },
     { cmd: "/terminal", desc: "Toggle terminal panel", action: () => toggleTerminal() },
     { cmd: "/run", desc: "Run a shell command", action: (arg) => runShellCommand(arg) },
     { cmd: "/exec", desc: "Execute JavaScript code", action: (arg) => execJS(arg) },
@@ -508,6 +508,16 @@
     let message = userInput.value.trim();
     if (!message) return;
 
+    if (sendMessage._inflight) return;
+    sendMessage._inflight = true;
+    try {
+      await sendMessageBody(message);
+    } finally {
+      sendMessage._inflight = false;
+    }
+  }
+
+  async function sendMessageBody(message) {
     if (
       window.ChatreComposer &&
       window.ChatreComposer.shouldQueueInsteadOfSend &&
@@ -899,17 +909,24 @@
   }
 
   function toggleAgentMode(force) {
-    agentMode = typeof force === "boolean" ? force : !agentMode;
-    const btn = document.getElementById("agent-mode-button");
-    if (btn) {
-      btn.classList.toggle("active", agentMode);
-      btn.setAttribute("aria-pressed", agentMode ? "true" : "false");
+    const next = typeof force === "boolean" ? force : !agentMode;
+    agentMode = next;
+    if (window.ChatreComposer && window.ChatreComposer.setMode) {
+      const cur =
+        window.ChatreComposer.getMode && window.ChatreComposer.getMode();
+      if (next) {
+        if (cur === "chat" || cur === "image") {
+          window.ChatreComposer.setMode("agent", { skipAgent: true });
+        }
+      } else if (cur && cur !== "chat" && cur !== "image") {
+        window.ChatreComposer.setMode("chat", { skipAgent: true });
+      }
     }
     addMessage(
       "assistant",
       agentMode
-        ? "Agent mode **ON**. I will plan, use skills, build code, create documents, run commands, verify, and commit/push when needed."
-        : "Agent mode **OFF**. Normal chat — I still auto-activate for build/code tasks.",
+        ? "Agent mode **ON**. Composer set to Agent — I will plan, use skills, build, and verify."
+        : "Agent mode **OFF**. Composer set to Chat — I still auto-activate for build/code tasks.",
     );
     userInput.focus();
   }
@@ -978,6 +995,7 @@
         window.ChatreComposer.state.enterSends;
       if (enterSends || meta) {
         e.preventDefault();
+        e.stopPropagation();
         sendMessage();
       }
     }
@@ -993,29 +1011,12 @@
   stopButton.addEventListener("click", stopGeneration);
 
   if (imageModeButton) {
-    imageModeButton.addEventListener("click", () => {
-      imageMode = !imageMode;
-      imageModeButton.classList.toggle("active", imageMode);
-      imageModeButton.setAttribute("aria-pressed", imageMode ? "true" : "false");
-      if (window.ChatreComposer && window.ChatreComposer.setMode) {
-        window.ChatreComposer.setMode(imageMode ? "image" : "agent", {
-          skipAgent: true,
-        });
-      }
-      userInput.placeholder = imageMode
-        ? "Describe an image to generate…"
-        : "Type a message… or /image a sunset over Cape Town";
-      userInput.focus();
-    });
+    imageModeButton.hidden = true;
   }
 
   const agentModeButton = document.getElementById("agent-mode-button");
   if (agentModeButton) {
-    agentModeButton.classList.toggle("active", agentMode);
-    agentModeButton.setAttribute("aria-pressed", agentMode ? "true" : "false");
-    agentModeButton.addEventListener("click", () => {
-      toggleAgentMode();
-    });
+    agentModeButton.hidden = true;
   }
 
   const apiKeyInput = document.getElementById("api-key-input");
@@ -1845,10 +1846,29 @@
 
   function openTerminalPanel() {
     const panel = document.getElementById("terminal-panel");
-    if (panel && panel.hidden) toggleTerminal();
-    else if (!terminalReady) {
-      const p = document.getElementById("terminal-panel");
-      if (p) p.hidden = false;
+    if (!panel) return;
+    const hidden =
+      panel.style.display === "none" ||
+      panel.hidden ||
+      getComputedStyle(panel).display === "none";
+    if (hidden) {
+      panel.hidden = false;
+      panel.style.display = "flex";
+      const btn = document.getElementById("terminal-toggle");
+      if (btn) {
+        btn.classList.add("active");
+        btn.setAttribute("aria-pressed", "true");
+      }
+      if (!terminalReady) initTerminal();
+      else if (xtermTerminal && fitAddon) {
+        setTimeout(function () {
+          fitAddon.fit();
+        }, 50);
+      }
+      if (window.ChatreToolbar && window.ChatreToolbar.syncPanelButtons) {
+        window.ChatreToolbar.syncPanelButtons();
+      }
+    } else if (!terminalReady) {
       initTerminal();
     }
   }
@@ -1889,14 +1909,24 @@
   function toggleTerminal() {
     const panel = document.getElementById("terminal-panel");
     const btn = document.getElementById("terminal-toggle");
-    const visible = panel.style.display !== "none";
-    panel.style.display = visible ? "none" : "flex";
-    btn.classList.toggle("active", !visible);
-    if (!visible && !terminalReady) {
-      initTerminal();
+    if (!panel) return;
+    const visible =
+      panel.style.display !== "none" &&
+      !panel.hidden &&
+      getComputedStyle(panel).display !== "none";
+    if (visible) {
+      panel.style.display = "none";
+      panel.hidden = true;
+      if (btn) {
+        btn.classList.remove("active");
+        btn.setAttribute("aria-pressed", "false");
+      }
+    } else {
+      openTerminalPanel();
+      return;
     }
-    if (!visible && xtermTerminal && fitAddon) {
-      setTimeout(() => fitAddon.fit(), 50);
+    if (window.ChatreToolbar && window.ChatreToolbar.syncPanelButtons) {
+      window.ChatreToolbar.syncPanelButtons();
     }
   }
 
@@ -2489,36 +2519,9 @@
   window.ChatreUI = {
     setAgentMode: function (on) {
       agentMode = !!on;
-      const btn = document.getElementById("agent-mode-button");
-      if (btn) {
-        btn.classList.toggle("active", agentMode);
-        btn.setAttribute("aria-pressed", agentMode ? "true" : "false");
-      }
-      if (
-        window.ChatreComposer &&
-        window.ChatreComposer.setMode &&
-        !window.ChatreComposer._syncingMode
-      ) {
-        const cur =
-          window.ChatreComposer.getMode && window.ChatreComposer.getMode();
-        if (!agentMode && cur && cur !== "chat" && cur !== "image") {
-          window.ChatreComposer._syncingMode = true;
-          window.ChatreComposer.setMode("chat", { skipAgent: true });
-          window.ChatreComposer._syncingMode = false;
-        } else if (agentMode && cur === "chat") {
-          window.ChatreComposer._syncingMode = true;
-          window.ChatreComposer.setMode("agent", { skipAgent: true });
-          window.ChatreComposer._syncingMode = false;
-        }
-      }
     },
     setImageMode: function (on) {
       imageMode = !!on;
-      const btn = document.getElementById("image-mode-button");
-      if (btn) {
-        btn.classList.toggle("active", imageMode);
-        btn.setAttribute("aria-pressed", imageMode ? "true" : "false");
-      }
     },
     formatToolParams: formatToolParams,
     stopGeneration: stopGeneration,

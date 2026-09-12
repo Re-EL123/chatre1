@@ -15,11 +15,9 @@
     return n;
   }
 
-  // ── Mode segmented control (legacy — modes live in composer) ───────
+  // ── Mode segmented control (legacy removed — composer owns modes) ───
   function initModeControl() {
-    const wrap = $("mode-control");
-    if (!wrap) return;
-    wrap.hidden = true;
+    /* no-op */
   }
 
   // ── Starter chips ───────────────────────────────────────────────────
@@ -97,51 +95,14 @@
   }
 
   function refreshStatusActions() {
-    const companion = $("companion-status");
-    const api = $("api-status");
-    if (companion && /off|error|bad/i.test(companion.className + companion.textContent)) {
-      setStatusChip("companion", "warn", "Start desktop companion", function () {
-        const cmd =
-          "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN npm run companion:start";
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(cmd).then(
-            function () {
-              if (window.ChatreKit) {
-                window.ChatreKit.toast("Companion start command copied", "success");
-              } else {
-                window.alert("Copied companion start command to clipboard:\n\n" + cmd);
-              }
-            },
-            function () {
-              window.alert(cmd);
-            },
-          );
-        } else {
-          window.alert(cmd);
-        }
-      });
-    } else {
-      setStatusChip("companion", "ok", "", null);
-      const c = $("status-strip") &&
-        $("status-strip").querySelector('[data-chip="companion"]');
-      if (c) c.hidden = true;
-    }
-    if (api && /Unauthorized|Offline|bad|Sign in/i.test(api.className + api.textContent)) {
-      setStatusChip("api", "warn", "Sign in to continue", function () {
-        if (window.ChatreUX && window.ChatreUX.openAuthGate) {
-          window.ChatreUX.openAuthGate({ tab: "signin" });
-        } else if (window.ChatreUX && window.ChatreUX.openSettings) {
-          window.ChatreUX.openSettings();
-        } else {
-          const inp = $("api-key-input");
-          if (inp) inp.focus();
-        }
-      });
-    } else {
-      const c = $("status-strip") &&
-        $("status-strip").querySelector('[data-chip="api"]');
-      if (c) c.hidden = true;
-    }
+    // Connection / companion CTAs live on toolbar pills — keep status-strip
+    // for ephemeral chips only (e.g. login pause).
+    const companion = $("status-strip") &&
+      $("status-strip").querySelector('[data-chip="companion"]');
+    if (companion) companion.hidden = true;
+    const api = $("status-strip") &&
+      $("status-strip").querySelector('[data-chip="api"]');
+    if (api) api.hidden = true;
   }
 
   // ── Budget bar ──────────────────────────────────────────────────────
@@ -473,6 +434,11 @@
       ? window.ChatreKit.labelWithIcon("play", "Try example.com", 14)
       : "Try example.com";
     tryBtn.addEventListener("click", function () {
+      if (window.ChatreComposer && window.ChatreComposer.setMode) {
+        window.ChatreComposer.setMode("browse");
+      } else if (window.ChatreUI && window.ChatreUI.setAgentMode) {
+        window.ChatreUI.setAgentMode(true);
+      }
       if (window.ChatreUI && window.ChatreUI.composeAndSend) {
         window.ChatreUI.composeAndSend(
           "Open example.com and tell me the main heading",

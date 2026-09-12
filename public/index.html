@@ -1370,10 +1370,7 @@
       }
 
       .panel-toggle-bar {
-        display: none;
-        gap: 0.4rem;
-        margin-bottom: 0.5rem;
-        flex-wrap: wrap;
+        display: none !important;
       }
 
       .thread-item {
@@ -1423,10 +1420,6 @@
       }
 
       @media (max-width: 960px) {
-        .panel-toggle-bar {
-          display: flex;
-          flex-shrink: 0;
-        }
         body {
           padding: 0.55rem 0.75rem 0.45rem;
         }
@@ -2066,12 +2059,14 @@
         #usage-meter { max-width: 120px; }
       }
 
+      .mode-control,
+      .legacy-mode-btns,
+      #image-mode-button,
+      #agent-mode-button { display: none !important; }
+
       /* ── Auth gate ─────────────────────────────────────────────── */
       body.auth-gate-open {
         overflow: hidden;
-      }
-      body.auth-gate-open > :not(#auth-gate):not(script) {
-        /* keep spectrum + scripts; dim rest via overlay */
       }
       .auth-gate {
         position: fixed;
@@ -2315,9 +2310,7 @@
 
       #settings-auth-section input,
       #settings-drawer-panel #byok-key,
-      #settings-drawer-panel #byok-provider,
-      #settings-drawer-panel #auth-email,
-      #settings-drawer-panel #auth-password {
+      #settings-drawer-panel #byok-provider {
         width: 100%;
         display: block;
         margin-top: 0.3rem;
@@ -2931,7 +2924,7 @@
       <span id="budget-bar-label"></span>
     </div>
 
-    <div class="panel-toggle-bar">
+    <div class="panel-toggle-bar" hidden aria-hidden="true">
       <button type="button" class="btn" id="toggle-threads-bar">Threads</button>
       <button type="button" class="btn" id="toggle-files-bar">Files</button>
       <button type="button" class="btn" id="toggle-browser-bar">Browser</button>
@@ -3076,10 +3069,10 @@
       </div>
     </div>
 
-    <div id="settings-drawer" aria-hidden="true">
+        <div id="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true">
       <div id="settings-drawer-panel">
         <div class="panel-actions" style="justify-content: space-between; margin-bottom: 0.75rem;">
-          <h2>Settings</h2>
+          <h2 id="settings-title">Settings</h2>
           <button type="button" class="btn" id="settings-close">Close</button>
         </div>
         <div class="settings-section" id="settings-auth-section">
@@ -3089,7 +3082,6 @@
               Sign in to sync threads, workspaces, and BYOK keys across devices.
             </p>
             <button type="button" class="btn" id="auth-open-gate">Sign in / Create account</button>
-            <p id="auth-error" style="color:#ffb4c0;font-size:0.8rem;margin:0.35rem 0 0"></p>
           </div>
           <div id="auth-signed-in" hidden>
             <p id="auth-user-label" style="margin:0 0 0.4rem;font-size:0.9rem"></p>
@@ -3144,7 +3136,7 @@
           <h3>Keyboard</h3>
           <ul class="kbd-list">
             <li><span>Palette</span><kbd>⌘/Ctrl+K</kbd></li>
-            <li><span>Send</span><kbd>⌘/Ctrl+Enter</kbd></li>
+            <li><span id="kbd-send-label">Send</span><kbd id="kbd-send">⌘/Ctrl+Enter</kbd></li>
             <li><span>Stop</span><kbd>Esc</kbd></li>
             <li><span>Threads</span><kbd>⌘/Ctrl+B</kbd></li>
             <li><span>Browser</span><kbd>⌘/Ctrl+Shift+B</kbd></li>
@@ -3178,7 +3170,7 @@
           <h2>Create your account</h2>
           <p>Sign up or sign in so your threads and BYOK keys stay private to you. Chatre models stay the default.</p>
           <div class="onboard-actions">
-            <button type="button" class="btn" data-onboard-action="focus-key">Open settings</button>
+            <button type="button" class="btn" data-onboard-action="open-auth">Sign in</button>
             <button type="button" class="btn" data-onboard-action="next">Next</button>
             <button type="button" class="btn" data-onboard-action="skip">Skip</button>
           </div>
@@ -3204,7 +3196,7 @@
     </div>
 
     <footer>
-      <p>Re-EL Technologies &copy; 2025</p>
+      <p>Re-EL Technologies &copy; 2026</p>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>

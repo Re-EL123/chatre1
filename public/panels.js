@@ -31,7 +31,7 @@
   function setStatus(kind, label) {
     const el = $("api-status");
     if (!el) return;
-    el.className = "api-status " + kind;
+    el.className = "api-status toolbar-pill " + kind;
     el.textContent = label;
     el.title = label;
   }
@@ -39,7 +39,7 @@
   function setCompanionStatus(kind, label) {
     const el = $("companion-status");
     if (!el) return;
-    el.className = "api-status " + kind;
+    el.className = "api-status toolbar-pill " + kind;
     el.textContent = label;
     el.title = label;
   }
