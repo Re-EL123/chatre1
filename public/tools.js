@@ -211,14 +211,26 @@
     };
   }
 
-  /** Strip tool blocks from assistant text for clean display. */
+  /** Strip tool blocks and internal agent steers from assistant text for clean display. */
   function cleanResponseText(text) {
     return String(text || "")
       .replace(/```(?:tool|tool_call|agent|json)\s*\n?[\s\S]*?```/g, "")
       .replace(/^\s*<answer>\s*/im, "")
       .replace(/<\/answer>/gi, "")
       .replace(/<confirmation\b[^>]*\/?>/gi, "")
+      .replace(/^\[internal\][^\n]*(?:\n(?!\[internal\])[^\n]*)*/gim, "")
+      .replace(/^Continue:\s*[^\n]*(?:\n(?!Continue:)[^\n]*)*/gim, "")
+      .replace(/^Continue with tools[^\n]*/gim, "")
       .trim();
+  }
+
+  function isSteerNoise(text) {
+    const t = String(text || "").trim();
+    return (
+      /^\[internal\]/i.test(t) ||
+      /^Continue:\s*/i.test(t) ||
+      /^Continue with tools/i.test(t)
+    );
   }
 
   // ─── Execution ────────────────────────────────────────────────────
@@ -414,7 +426,7 @@
         return createDocTool(p.title, p.content, common);
 
       case "create_pdf":
-        return await createPdfTool(p.title, p.content);
+        return await createPdfTool(p.title, p.content, common);
 
       case "export_document":
         return exportDocTool(p.path || p.file, common);
@@ -1570,7 +1582,7 @@
    * jsPDF's built-in fonts are Latin-only, so non-Latin text degrades to
    * create_document (a downloadable markdown file) instead of garbled glyphs.
    */
-  async function createPdfTool(title, content) {
+  async function createPdfTool(title, content, common) {
     const loaded = await loadPdfLib();
     if (!loaded) {
       return {
@@ -1708,17 +1720,45 @@
       });
 
       const pages = doc.getNumberOfPages();
-      const fname = pdfSlug(title) + ".pdf";
-      doc.save(fname);
+      const safe = pdfSlug(title);
+      const fname = safe + ".pdf";
+      const path = "/home/user/documents/" + fname;
+      const ab = doc.output("arraybuffer");
+      const bytes = new Uint8Array(ab);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(
+          null,
+          bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+        );
+      }
+      const base64 = btoa(binary);
+      ensureDir("/home/user/documents");
+      const parent = "/home/user/documents";
+      if (fs()[parent] && fs()[parent].type === "dir" && !fs()[parent].children.includes(fname)) {
+        fs()[parent].children.push(fname);
+      }
+      fs()[path] = {
+        type: "file",
+        content: base64,
+        encoding: "base64",
+        mime: "application/pdf",
+      };
+      if (common && common.onWrite) common.onWrite(path, base64);
+      if (common && common.onDocument) common.onDocument(path, base64, title);
+      triggerDownload(fname, bytes, "application/pdf");
       return {
         ok: true,
         tool: "create_pdf",
-        path: fname,
+        path: path,
         pages,
+        mime: "application/pdf",
+        encoding: "base64",
         downloaded: true,
         text:
           "Created and downloaded PDF: " +
-          fname +
+          path +
           " (" +
           pages +
           " page" +
@@ -2188,6 +2228,7 @@
     TOOL_DEFINITIONS,
     parseToolCalls,
     cleanResponseText,
+    isSteerNoise,
     executeTool,
     asOpenAITools: function () {
       return TOOL_DEFINITIONS.map(function (t) {

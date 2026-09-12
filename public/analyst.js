@@ -80,21 +80,67 @@
           })
       : [];
 
+    const taskTypeRaw = String(o.task_type || o.taskType || "mixed").toLowerCase();
+    const msg = String(userMessage || "").toLowerCase();
+    // Hard overrides — don't let code-mode prefixes or weak LLM classification
+    // turn a PDF/book request into research/build theatre.
+    let taskType = taskTypeRaw;
+    if (
+      /\bpdf\b/.test(msg) ||
+      /\b(generate|create|make|write)\b.{0,40}\b(book|report|guide|manual|essay)\b/.test(
+        msg,
+      )
+    ) {
+      taskType = "document";
+    } else if (/^\s*(hi|hello|hey|thanks|thank you)\b/.test(msg) && msg.length < 40) {
+      taskType = "chat";
+    }
+
+    let toolsPriority = Array.isArray(o.tools_priority)
+      ? o.tools_priority.map(String)
+      : Array.isArray(o.toolsPriority)
+        ? o.toolsPriority.map(String)
+        : [];
+    if (taskType === "document") {
+      if (/\bpdf\b/.test(msg)) {
+        toolsPriority = ["create_pdf", "create_document"].concat(
+          toolsPriority.filter(function (t) {
+            return t !== "create_pdf" && t !== "create_document";
+          }),
+        );
+      } else if (!toolsPriority.length) {
+        toolsPriority = ["create_document", "create_pdf"];
+      }
+    }
+
+    const doNot = Array.isArray(o.do_not)
+      ? o.do_not.map(String)
+      : Array.isArray(o.doNot)
+        ? o.doNot.map(String)
+        : [];
+    if (taskType === "document") {
+      [
+        "Do not invent download URLs",
+        "Do not dump Python/fpdf or /mnt/data paths",
+        "Do not claim a file exists without a successful create_pdf/create_document tool result",
+      ].forEach(function (rule) {
+        if (doNot.indexOf(rule) < 0) doNot.push(rule);
+      });
+    }
+
     return {
       understanding: String(o.understanding || "").trim(),
       goal:
         String(o.goal || "").trim() ||
         String(userMessage || "").slice(0, 200),
-      task_type: String(o.task_type || o.taskType || "mixed").toLowerCase(),
+      task_type: taskType,
       success_criteria: Array.isArray(o.success_criteria)
         ? o.success_criteria.map(String)
         : [],
       approach: Array.isArray(o.approach) ? o.approach.map(String) : [],
       todos: todos,
-      tools_priority: Array.isArray(o.tools_priority)
-        ? o.tools_priority.map(String)
-        : [],
-      do_not: Array.isArray(o.do_not) ? o.do_not.map(String) : [],
+      tools_priority: toolsPriority,
+      do_not: doNot,
       constraints: Array.isArray(o.constraints) ? o.constraints.map(String) : [],
       needs_clarification: o.needs_clarification === true,
       clarification_question: String(

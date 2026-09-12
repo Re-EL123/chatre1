@@ -218,7 +218,7 @@
     ) {
       found.add("coding");
     }
-    if (/\b(document|readme|markdown|docs|write.?up|spec|pdf|report|guide|manual|essay|proposal|slide)\b/.test(t)) {
+    if (/\b(document|readme|markdown|docs|write.?up|spec|pdf|report|guide|manual|essay|proposal|slide|book)\b/.test(t)) {
       found.add("documents");
     }
     if (/\b(git|commit|push|repo|repository|version control)\b/.test(t)) {

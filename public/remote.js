@@ -114,7 +114,14 @@
       data = null;
     }
     if (!res.ok) {
-      throw new Error((data && data.error) || "API " + res.status);
+      let err = (data && data.error) || "API " + res.status;
+      if (res.status === 429) {
+        err +=
+          " Rate limited or quota exhausted. Wait a minute, or use BYOK in Settings.";
+        const ra = res.headers.get("Retry-After");
+        if (ra) err += " Retry-After: " + ra + "s.";
+      }
+      throw new Error(err);
     }
     return data;
   }
@@ -466,6 +473,12 @@
       }
       if (res.status === 401) {
         err += " — sign in again or check your account / service token.";
+      }
+      if (res.status === 429) {
+        err +=
+          " Rate limited or quota exhausted. Wait a minute, or use BYOK in Settings.";
+        const ra = res.headers.get("Retry-After");
+        if (ra) err += " Retry-After: " + ra + "s.";
       }
       throw new Error(err);
     }

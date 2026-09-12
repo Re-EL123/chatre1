@@ -389,25 +389,39 @@
 
   async function refreshFiles() {
     const tree = $("file-tree");
-    if (!tree || !remote() || !remote().enabled()) return;
-    const wsId = remoteState().workspaceId || state.workspaceId || null;
-    if (!wsId) {
-      tree.innerHTML =
-        '<p class="panel-empty">No workspace yet — start an agent chat.</p>';
+    if (!tree) return;
+
+    // Signed-in remote workspace
+    if (remote() && remote().enabled()) {
+      const wsId = remoteState().workspaceId || state.workspaceId || null;
+      if (!wsId) {
+        tree.innerHTML =
+          '<p class="panel-empty">No workspace yet — start an agent chat.</p>';
+        return;
+      }
+      try {
+        const data = await remote().getWorkspace(wsId);
+        if (data.workspace) {
+          state.workspaceId = data.workspace.id;
+          remoteState().workspaceId = data.workspace.id;
+        }
+        state.files = data.files || {};
+        renderFileTree(tree, state.files);
+      } catch (e) {
+        tree.innerHTML =
+          '<p class="panel-empty">' + escapeHtml(e.message || String(e)) + "</p>";
+      }
       return;
     }
-    try {
-      const data = await remote().getWorkspace(wsId);
-      if (data.workspace) {
-        state.workspaceId = data.workspace.id;
-        remoteState().workspaceId = data.workspace.id;
-      }
-      state.files = data.files || {};
-      renderFileTree(tree, state.files);
-    } catch (e) {
-      tree.innerHTML =
-        '<p class="panel-empty">' + escapeHtml(e.message || String(e)) + "</p>";
-    }
+
+    // Local virtual filesystem (Worker / offline agent)
+    const localFs = (window.ChatreCore && window.ChatreCore.fs) || {};
+    const files = {};
+    Object.keys(localFs).forEach(function (p) {
+      if (localFs[p] && localFs[p].type === "file") files[p] = localFs[p];
+    });
+    state.files = files;
+    renderFileTree(tree, state.files);
   }
 
   function renderFileTree(root, files) {
@@ -455,14 +469,77 @@
     }
   }
 
+  function downloadFile(path) {
+    const f = state.files[path];
+    if (!f) return;
+    const name = path.split("/").pop() || "file.txt";
+    const mime =
+      f.mime ||
+      (/\.pdf$/i.test(path)
+        ? "application/pdf"
+        : /\.md$/i.test(path)
+          ? "text/markdown"
+          : "application/octet-stream");
+    let blob;
+    if (f.encoding === "base64" || (/\.pdf$/i.test(path) && /^[A-Za-z0-9+/=\s]+$/.test(String(f.content || "").slice(0, 80)))) {
+      try {
+        const bin = atob(String(f.content || "").replace(/\s+/g, ""));
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        blob = new Blob([bytes], { type: mime });
+      } catch (e) {
+        blob = new Blob([f.content || ""], { type: "text/plain" });
+      }
+    } else {
+      blob = new Blob([f.content || ""], { type: mime.indexOf("pdf") >= 0 ? "text/plain" : mime });
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   async function openFile(path) {
     state.selectedPath = path;
     const viewer = $("file-viewer");
     const meta = $("file-viewer-path");
     if (!viewer) return;
     const f = state.files[path];
-    const content = f && f.content != null ? String(f.content) : "";
     if (meta) meta.textContent = path;
+
+    const isPdf =
+      /\.pdf$/i.test(path) || (f && f.mime === "application/pdf");
+    if (isPdf && f && f.content != null) {
+      viewer.className = "file-viewer";
+      try {
+        const bin = atob(String(f.content).replace(/\s+/g, ""));
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(
+          new Blob([bytes], { type: "application/pdf" }),
+        );
+        viewer.innerHTML =
+          '<iframe title="PDF preview" src="' +
+          url +
+          '" style="width:100%;height:min(70vh,520px);border:0;border-radius:8px;background:#111"></iframe>' +
+          '<p class="panel-empty" style="margin-top:0.5rem">PDF · ' +
+          escapeHtml(path) +
+          ' · <button type="button" class="btn file-dl-inline">Download</button></p>';
+        const btn = viewer.querySelector(".file-dl-inline");
+        if (btn) btn.addEventListener("click", () => downloadFile(path));
+      } catch (e) {
+        viewer.textContent =
+          "Could not preview PDF. Use Download. (" + (e.message || e) + ")";
+      }
+      if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
+        window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
+      }
+      await refreshFiles();
+      return;
+    }
+
+    const content = f && f.content != null ? String(f.content) : "";
     if (/\.(md|markdown)$/i.test(path) && window.marked && window.DOMPurify) {
       viewer.className = "file-viewer file-preview-md";
       viewer.innerHTML = window.DOMPurify.sanitize(window.marked.parse(content));
@@ -480,7 +557,9 @@
     const f = state.files[path];
     const snippet =
       f && f.content != null
-        ? String(f.content).slice(0, 4000)
+        ? f.encoding === "base64"
+          ? "(binary file)"
+          : String(f.content).slice(0, 4000)
         : "(empty or unread)";
     const prompt =
       "Explain this file and suggest improvements:\n\nPath: " +
@@ -497,17 +576,6 @@
       input.value = prompt;
       input.focus();
     }
-  }
-
-  function downloadFile(path) {
-    const f = state.files[path];
-    if (!f) return;
-    const blob = new Blob([f.content || ""], { type: "text/plain" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = path.split("/").pop() || "file.txt";
-    a.click();
-    URL.revokeObjectURL(a.href);
   }
 
   async function showDiff(path) {
@@ -879,9 +947,9 @@
 
     initMobileDefaults();
     refreshAuthStatus();
+    refreshFiles();
     if (remote() && remote().enabled() && remote().hasAuth && remote().hasAuth()) {
       refreshThreads();
-      refreshFiles();
     }
 
     setInterval(refreshAuthStatus, 60000);

@@ -33,6 +33,7 @@
     "copy_file",
     "create_directory",
     "create_document",
+    "create_pdf",
   ]);
 
   // Tools that count as a verification step.
@@ -304,6 +305,13 @@
             } catch (e) {
               /* ignore */
             }
+            if (response.status === 429) {
+              errMsg =
+                errMsg +
+                " Workers AI free quota may be exhausted (or rate-limited). Wait a minute, or add a BYOK key in Settings.";
+              const ra = response.headers.get("Retry-After");
+              if (ra) errMsg += " Retry-After: " + ra + "s.";
+            }
             throw new Error(errMsg);
           }
 
@@ -361,7 +369,8 @@
               this.mutatedAny &&
               !this.verifiedAny &&
               !this.verifyNudged &&
-              i >= 1
+              i >= 1 &&
+              (briefing && briefing.task_type) !== "document"
             ) {
               this.verifyNudged = true;
               messages.push({ role: "assistant", content: text });
@@ -369,6 +378,29 @@
                 role: "user",
                 content:
                   "You wrote files but verified nothing. Before finishing, verify: run verify_project, and tests / run_javascript / run_python / commands if appropriate. Then give the final summary WITHOUT tool blocks.",
+              });
+              if (cleanText.trim()) {
+                callbacks.onStepText && callbacks.onStepText(cleanText, false);
+                fullAssistantText +=
+                  (fullAssistantText ? "\n\n" : "") + cleanText;
+              }
+              continue;
+            }
+
+            // Document/PDF: require a real create_pdf / create_document before finishing.
+            if (
+              forcePlan &&
+              briefing &&
+              briefing.task_type === "document" &&
+              !this.mutatedAny &&
+              i < this.maxIterations - 1 &&
+              !looksLikeClarification(cleanText)
+            ) {
+              messages.push({ role: "assistant", content: text || "(no file yet)" });
+              messages.push({
+                role: "user",
+                content:
+                  "[internal] Deliver the file now with create_pdf(title, content) or create_document(title, content). Do not claim a download exists until the tool returns ok. Do not narrate this message.",
               });
               if (cleanText.trim()) {
                 callbacks.onStepText && callbacks.onStepText(cleanText, false);
@@ -425,9 +457,52 @@
           const execOptions = {
             taskType: briefing && briefing.task_type,
             toolsPriority: briefing && briefing.tools_priority,
-            onWrite: function () {},
+            onWrite: function (path) {
+              const entry =
+                window.ChatreCore &&
+                window.ChatreCore.fs &&
+                window.ChatreCore.fs[path];
+              if (entry && window.ChatrePanels && window.ChatrePanels.state) {
+                window.ChatrePanels.state.files[path] = Object.assign(
+                  {},
+                  entry,
+                  { path: path },
+                );
+              } else if (
+                window.ChatrePanels &&
+                window.ChatrePanels.rememberWrite
+              ) {
+                window.ChatrePanels.rememberWrite(
+                  path,
+                  null,
+                  arguments[1],
+                );
+              }
+              if (window.ChatrePanels && window.ChatrePanels.refreshFiles) {
+                window.ChatrePanels.refreshFiles();
+              }
+            },
             onCommand: function () {},
             onDocument: function (path, content, title) {
+              const entry =
+                window.ChatreCore &&
+                window.ChatreCore.fs &&
+                window.ChatreCore.fs[path];
+              if (entry && window.ChatrePanels && window.ChatrePanels.state) {
+                window.ChatrePanels.state.files[path] = Object.assign(
+                  {},
+                  entry,
+                  { path: path },
+                );
+              } else if (
+                window.ChatrePanels &&
+                window.ChatrePanels.rememberWrite
+              ) {
+                window.ChatrePanels.rememberWrite(path, null, content);
+              }
+              if (window.ChatrePanels && window.ChatrePanels.refreshFiles) {
+                window.ChatrePanels.refreshFiles();
+              }
               callbacks.onDocument &&
                 callbacks.onDocument(path, content, title);
             },
@@ -705,11 +780,23 @@
   }
 
   function trimAgentMessages(messages) {
-    const request = currentUserRequest(messages);
+    const scrubbed = (messages || []).filter(function (m) {
+      if (!m || !m.content) return true;
+      if (window.ChatreTools && window.ChatreTools.isSteerNoise) {
+        return !window.ChatreTools.isSteerNoise(m.content);
+      }
+      const t = String(m.content).trim();
+      return !(
+        /^\[internal\]/i.test(t) ||
+        /^Continue:\s*/i.test(t) ||
+        /^Continue with tools/i.test(t)
+      );
+    });
+    const request = currentUserRequest(scrubbed);
     const tail = [];
     let total = request ? estimateTokens(request.content) + 4 : 0;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
+    for (let i = scrubbed.length - 1; i >= 0; i--) {
+      const msg = scrubbed[i];
       if (msg === request) continue;
       const t = estimateTokens(msg.content) + 4;
       if (total + t > MAX_CONTEXT_TOKENS && tail.length >= 1) {
@@ -719,7 +806,7 @@
       tail.unshift(msg);
     }
     const out = request ? [request] : [];
-    const dropped = messages.length - (request ? 1 : 0) - tail.length;
+    const dropped = scrubbed.length - (request ? 1 : 0) - tail.length;
     if (dropped > 0) {
       out.push({
         role: "user",

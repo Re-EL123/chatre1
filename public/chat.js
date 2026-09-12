@@ -742,6 +742,13 @@
         } catch {
           /* ignore */
         }
+        if (response.status === 429) {
+          errMsg =
+            errMsg +
+            " Workers AI free quota may be exhausted (or rate-limited). Wait a minute, or add a BYOK key in Settings.";
+          const ra = response.headers.get("Retry-After");
+          if (ra) errMsg += " Retry-After: " + ra + "s.";
+        }
         throw new Error(errMsg);
       }
 
@@ -1526,7 +1533,7 @@
                 tokenEl.className = "token-stream";
                 agentBody.appendChild(tokenEl);
               }
-              tokenEl.textContent += ev.delta || "";
+              tokenEl.textContent += ev.delta || ev.text || "";
               scrollToBottom();
             } else if (ev.type === "text") {
               stopThinking();
@@ -1762,9 +1769,21 @@
                 tokenEl.remove();
                 tokenEl = null;
               }
-              showStep(text, isFinal);
+              if (
+                window.ChatreTools &&
+                window.ChatreTools.isSteerNoise &&
+                window.ChatreTools.isSteerNoise(text)
+              ) {
+                return;
+              }
+              const cleaned =
+                window.ChatreTools && window.ChatreTools.cleanResponseText
+                  ? window.ChatreTools.cleanResponseText(text)
+                  : text;
+              if (!String(cleaned || "").trim()) return;
+              showStep(cleaned, isFinal);
               if (isFinal) {
-                chatHistory.push({ role: "assistant", content: text });
+                chatHistory.push({ role: "assistant", content: cleaned });
                 trimHistory();
               }
             },
@@ -2663,9 +2682,24 @@
       list.forEach((m) => {
         if (!m || !m.role) return;
         if (m.role === "system") return;
-        addMessage(m.role === "assistant" ? "assistant" : "user", m.content || "");
+        const raw = m.content || "";
+        if (
+          window.ChatreTools &&
+          window.ChatreTools.isSteerNoise &&
+          window.ChatreTools.isSteerNoise(raw)
+        ) {
+          return;
+        }
+        const content =
+          m.role === "assistant" &&
+          window.ChatreTools &&
+          window.ChatreTools.cleanResponseText
+            ? window.ChatreTools.cleanResponseText(raw)
+            : raw;
+        if (!String(content || "").trim() && m.role === "assistant") return;
+        addMessage(m.role === "assistant" ? "assistant" : "user", content);
         if (m.role === "user" || m.role === "assistant") {
-          chatHistory.push({ role: m.role, content: m.content || "" });
+          chatHistory.push({ role: m.role, content: content });
         }
       });
       trimHistory();
@@ -2965,7 +2999,7 @@
                 tokenEl.className = "token-stream";
                 agentBody.appendChild(tokenEl);
               }
-              tokenEl.textContent += ev.delta || "";
+              tokenEl.textContent += ev.delta || ev.text || "";
               scrollToBottom();
             } else if (ev.type === "text") {
               stopThinking();
