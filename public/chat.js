@@ -1296,6 +1296,58 @@
 
   // ── Agentic mode ──────────────────────────────────────────────────
 
+  function showDoneProof(proof, audit) {
+    if (!proof || !chatMessages) return;
+    const card = document.createElement("div");
+    card.className = "done-proof-card";
+    const acc = proof.acceptance || {};
+    const rows = (acc.results || [])
+      .slice(0, 8)
+      .map(function (r) {
+        return (
+          "<li class=\"" +
+          (r.pass ? "pass" : "fail") +
+          "\">" +
+          (r.pass ? "✓" : "✗") +
+          " " +
+          String(r.text || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;") +
+          "</li>"
+        );
+      })
+      .join("");
+    card.innerHTML =
+      "<strong>Delivery proof</strong>" +
+      "<div class=\"done-proof-meta\">" +
+      (proof.activeProject
+        ? "Project <code>" +
+          String(proof.activeProject).replace(/</g, "&lt;") +
+          "</code> · "
+        : "") +
+      (proof.revision != null ? "r" + proof.revision + " · " : "") +
+      (proof.previewOk ? "preview ok" : "preview pending") +
+      (proof.localhost
+        ? " · <code>" + String(proof.localhost).replace(/</g, "&lt;") + "</code>"
+        : "") +
+      "</div>" +
+      (rows ? "<ul class=\"done-proof-tests\">" + rows + "</ul>" : "") +
+      (audit && audit.summary
+        ? "<div class=\"done-proof-audit\">Audit · " +
+          (audit.summary.eventCount || 0) +
+          " events · " +
+          (audit.summary.tools || 0) +
+          " tools</div>"
+        : "") +
+      "<div class=\"done-proof-note\">" +
+      String(proof.rollbackNote || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;") +
+      "</div>";
+    chatMessages.appendChild(card);
+    scrollToBottom();
+  }
+
   async function runAgentTask(message, opts) {
     opts = opts || {};
     const planModeRun =
@@ -2035,6 +2087,7 @@
                 trimHistory();
               }
               if (ev.response) finalText = ev.response;
+              if (ev.proof) showDoneProof(ev.proof, ev.audit);
               if (window.ChatrePanels) {
                 window.ChatrePanels.refreshThreads();
                 window.ChatrePanels.refreshFiles();
@@ -3653,6 +3706,7 @@
                 chatHistory.push({ role: "assistant", content: ev.response });
                 trimHistory();
               }
+              if (ev.proof) showDoneProof(ev.proof, ev.audit);
               if (ev.usage && window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
                   ...ev.usage,

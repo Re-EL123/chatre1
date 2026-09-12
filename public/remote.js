@@ -334,6 +334,15 @@
     });
   }
 
+  async function getAudit(threadId) {
+    return request(
+      "/api/threads?id=" +
+        encodeURIComponent(threadId) +
+        "&action=audit",
+      { method: "GET" },
+    );
+  }
+
   async function updateThread(threadId, patch) {
     return request("/api/threads?id=" + encodeURIComponent(threadId), {
       method: "PATCH",
@@ -754,6 +763,7 @@
     createThread,
     listThreads,
     getThread,
+    getAudit,
     updateThread,
     deleteThread,
     getMessages,
