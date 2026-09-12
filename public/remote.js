@@ -370,6 +370,13 @@
     );
   }
 
+  async function getDiagnostics(id) {
+    return request(
+      "/api/workspace?action=diagnostics&id=" + encodeURIComponent(id),
+      { method: "GET" },
+    );
+  }
+
   async function getWorkspace(id) {
     const q = id ? "?id=" + encodeURIComponent(id) : "";
     return request("/api/workspace" + q, { method: "GET" });
@@ -544,6 +551,8 @@
     agentName,
     composerMode,
     thoroughness,
+    activeFile,
+    openFiles,
   }) {
     const base = apiBase();
     if (!base) throw new Error("CHATRE_API_BASE not set");
@@ -587,6 +596,19 @@
     }
     if (autoResumeCount != null) body.autoResumeCount = autoResumeCount;
     if (briefingSeed) body.briefingSeed = briefingSeed;
+    if (activeFile) body.activeFile = activeFile;
+    if (Array.isArray(openFiles) && openFiles.length) {
+      body.openFiles = openFiles.slice(0, 16);
+    } else if (
+      window.ChatrePanels &&
+      window.ChatrePanels.state
+    ) {
+      const ps = window.ChatrePanels.state;
+      if (ps.selectedPath) body.activeFile = body.activeFile || ps.selectedPath;
+      if (Array.isArray(ps.openTabs) && ps.openTabs.length) {
+        body.openFiles = ps.openTabs.slice(0, 16);
+      }
+    }
     if (resume || approvePlan) {
       body.resume = true;
       if (approvePlan) body.approvePlan = true;
@@ -776,6 +798,7 @@
     getMessages,
     getWorkspace,
     getRepo,
+    getDiagnostics,
     setActiveProject,
     exportWorkspace,
     getFile,

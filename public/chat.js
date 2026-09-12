@@ -1885,6 +1885,13 @@
               ) {
                 window.ChatrePanels.applyFileEvent(ev);
               }
+            } else if (ev.type === "problems") {
+              if (
+                window.ChatrePanels &&
+                window.ChatrePanels.applyProblemsEvent
+              ) {
+                window.ChatrePanels.applyProblemsEvent(ev);
+              }
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
@@ -2138,6 +2145,16 @@
               ? window.ChatreAutonomy.get()
               : "assist",
           skipPlanApproval: shouldSkipPlanApproval(),
+          activeFile:
+            window.ChatrePanels && window.ChatrePanels.state
+              ? window.ChatrePanels.state.selectedPath
+              : null,
+          openFiles:
+            window.ChatrePanels &&
+            window.ChatrePanels.state &&
+            Array.isArray(window.ChatrePanels.state.openTabs)
+              ? window.ChatrePanels.state.openTabs
+              : null,
           onEvent: handleAgentEvent,
         });
       } else if (window.ChatreAgent && window.ChatreTools) {
@@ -3422,6 +3439,16 @@
               ? window.ChatreAutonomy.get()
               : "assist",
           approvedTools: approvedTools.length ? approvedTools : undefined,
+          activeFile:
+            window.ChatrePanels && window.ChatrePanels.state
+              ? window.ChatrePanels.state.selectedPath
+              : null,
+          openFiles:
+            window.ChatrePanels &&
+            window.ChatrePanels.state &&
+            Array.isArray(window.ChatrePanels.state.openTabs)
+              ? window.ChatrePanels.state.openTabs
+              : null,
           onEvent: (ev) => {
             if (ev.type === "start") {
               window.__chatreRemote = {
@@ -3635,6 +3662,13 @@
                 window.ChatrePanels.applyFileEvent
               ) {
                 window.ChatrePanels.applyFileEvent(ev);
+              }
+            } else if (ev.type === "problems") {
+              if (
+                window.ChatrePanels &&
+                window.ChatrePanels.applyProblemsEvent
+              ) {
+                window.ChatrePanels.applyProblemsEvent(ev);
               }
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];

@@ -25,6 +25,12 @@
     repoDirty: null,
     testsOk: null,
     lastTest: null,
+    openTabs: [],
+    viewerMode: "source",
+    problems: [],
+    problemCount: 0,
+    lastDiagnostics: null,
+    runConfigs: null,
   };
 
   function $(id) {
@@ -456,8 +462,11 @@
             state.activeProject = null;
           }
         }
+        loadOpenTabs();
         await refreshRepoStatus(wsId);
+        await refreshDiagnostics(wsId);
         renderFileTree(tree, state.files);
+        renderFileTabs();
       } catch (e) {
         tree.innerHTML =
           '<p class="panel-empty">' + escapeHtml(e.message || String(e)) + "</p>";
@@ -489,6 +498,17 @@
         data && data.dirty != null ? data.dirty : null;
       state.testsOk = data ? !!data.testsOk : null;
       state.lastTest = (data && data.lastTest) || null;
+      state.lastDiagnostics = (data && data.lastDiagnostics) || state.lastDiagnostics;
+      state.problemCount =
+        data && data.problemCount != null
+          ? data.problemCount
+          : state.lastDiagnostics &&
+              Array.isArray(state.lastDiagnostics.problems)
+            ? state.lastDiagnostics.problems.length
+            : state.problemCount;
+      if (data && Array.isArray(data.runConfigs)) {
+        state.runConfigs = data.runConfigs;
+      }
       if (data && data.status && data.status.head) {
         state.repoHead = data.status.head;
       } else {
@@ -500,7 +520,327 @@
     }
   }
 
-  function seedCloneChat(url) {
+  
+  function tabsStorageKey() {
+    const id = remoteState().workspaceId || state.workspaceId || "local";
+    return "chatre.openTabs." + id;
+  }
+
+  function loadOpenTabs() {
+    try {
+      const raw = sessionStorage.getItem(tabsStorageKey());
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) state.openTabs = arr.map(String).slice(0, 12);
+    } catch (e) {}
+  }
+
+  function saveOpenTabs() {
+    try {
+      sessionStorage.setItem(
+        tabsStorageKey(),
+        JSON.stringify((state.openTabs || []).slice(0, 12)),
+      );
+    } catch (e) {}
+  }
+
+  function ensureTab(path) {
+    if (!path) return;
+    const tabs = state.openTabs || [];
+    const i = tabs.indexOf(path);
+    if (i >= 0) tabs.splice(i, 1);
+    tabs.unshift(path);
+    state.openTabs = tabs.slice(0, 12);
+    saveOpenTabs();
+  }
+
+  function closeTab(path) {
+    state.openTabs = (state.openTabs || []).filter(function (p) {
+      return p !== path;
+    });
+    saveOpenTabs();
+    if (state.selectedPath === path) {
+      state.selectedPath = state.openTabs[0] || null;
+      if (state.selectedPath) openFile(state.selectedPath);
+      else {
+        const viewer = $("file-viewer");
+        const meta = $("file-viewer-path");
+        if (viewer) viewer.textContent = "";
+        if (meta) meta.textContent = "";
+        renderFileTabs();
+      }
+    } else {
+      renderFileTabs();
+    }
+  }
+
+  function basename(path) {
+    const s = String(path || "");
+    const i = s.lastIndexOf("/");
+    return i >= 0 ? s.slice(i + 1) : s;
+  }
+
+  function syncActiveFileChip(path) {
+    if (!window.ChatreComposer || !window.ChatreComposer.addAttachment) return;
+    if (!path) return;
+    if (typeof window.ChatreComposer.removeAttachment === "function") {
+      try {
+        const chips =
+          (window.ChatreComposer.state &&
+            window.ChatreComposer.state.attachments) ||
+          [];
+        chips
+          .filter(function (a) {
+            return a && String(a.id || "").indexOf("active-file:") === 0;
+          })
+          .forEach(function (a) {
+            window.ChatreComposer.removeAttachment(a.id);
+          });
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    window.ChatreComposer.addAttachment({
+      kind: "file",
+      label: basename(path),
+      path: path,
+      id: "active-file:" + path,
+    });
+  }
+
+  function detectLocalRunConfigs() {
+    const slug = state.activeProject;
+    if (!slug) return [];
+    const pkgPath = "/home/user/projects/" + slug + "/package.json";
+    const f = state.files[pkgPath];
+    const configs = [];
+    if (f && f.content) {
+      try {
+        const j = JSON.parse(f.content);
+        const scripts = (j && j.scripts) || {};
+        if (scripts.test) {
+          configs.push({ id: "test", label: "Test", cmd: "npm test", kind: "test" });
+        }
+        if (scripts.lint) {
+          configs.push({ id: "lint", label: "Lint", cmd: "npm run lint", kind: "lint" });
+        }
+      } catch (e) {}
+    }
+    configs.push({
+      id: "diagnose",
+      label: "Diagnose",
+      cmd: null,
+      kind: "diagnose",
+      tool: "repo_diagnostics",
+    });
+    return configs;
+  }
+
+  function seedAgentMessage(msg) {
+    const input =
+      $("chat-input") ||
+      $("user-input") ||
+      document.querySelector("textarea#chat-input");
+    if (input) {
+      input.value = msg;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+    if (window.ChatreChat && typeof window.ChatreChat.sendMessage === "function") {
+      window.ChatreChat.sendMessage(msg);
+    } else if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+      window.ChatreUI.composeAndSend(msg);
+    } else if (
+      window.ChatreCore &&
+      typeof window.ChatreCore.sendUserMessage === "function"
+    ) {
+      window.ChatreCore.sendUserMessage(msg);
+    }
+  }
+
+  async function runConfig(cfg) {
+    if (!cfg) return;
+    if (cfg.kind === "diagnose" || cfg.tool === "repo_diagnostics") {
+      seedAgentMessage(
+        "Run repo_diagnostics on the active project, then summarize Problems.",
+      );
+      return;
+    }
+    const cwd = state.activeProject
+      ? "/home/user/projects/" + state.activeProject
+      : null;
+    const wsId = remoteState().workspaceId || state.workspaceId;
+    if (remote() && remote().enabled() && remote().exec && wsId && cfg.cmd) {
+      try {
+        await remote().exec(cfg.cmd, wsId, cwd, { mode: "workspace", timeoutMs: 180000 });
+        await refreshRepoStatus();
+        await refreshDiagnostics();
+        const tree = $("file-tree");
+        if (tree) renderFileTree(tree, state.files);
+        return;
+      } catch (e) {}
+    }
+    seedAgentMessage(
+      "In the active project, run `" +
+        cfg.cmd +
+        "` via run_tests or execute_command (cwd project root), then report results.",
+    );
+  }
+
+  async function refreshDiagnostics(wsIdOpt) {
+    const r = remote();
+    if (!r || !r.enabled() || typeof r.getDiagnostics !== "function") return null;
+    const wsId =
+      wsIdOpt || remoteState().workspaceId || state.workspaceId || null;
+    if (!wsId) return null;
+    try {
+      const data = await r.getDiagnostics(wsId);
+      state.lastDiagnostics = (data && data.lastDiagnostics) || null;
+      state.problems =
+        (data && Array.isArray(data.problems) && data.problems) ||
+        (state.lastDiagnostics && state.lastDiagnostics.problems) ||
+        [];
+      state.problemCount = state.problems.length;
+      if (data && data.testsOk != null) state.testsOk = !!data.testsOk;
+      if (data && data.lastTest) state.lastTest = data.lastTest;
+      if (data && Array.isArray(data.runConfigs)) state.runConfigs = data.runConfigs;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyProblemsEvent(ev) {
+    if (!ev) return;
+    state.problems = Array.isArray(ev.problems) ? ev.problems : [];
+    state.problemCount = state.problems.length;
+    if (ev.lastDiagnostics) state.lastDiagnostics = ev.lastDiagnostics;
+    if (ev.testsOk != null) state.testsOk = !!ev.testsOk;
+    if (ev.lastTest) state.lastTest = ev.lastTest;
+    if (Array.isArray(ev.runConfigs)) state.runConfigs = ev.runConfigs;
+    const tree = $("file-tree");
+    if (tree) renderFileTree(tree, state.files);
+  }
+
+  function renderFileTabs() {
+    const host = $("ide-file-tabs");
+    const toolbar = $("ide-viewer-toolbar");
+    if (!host) return;
+    const tabs = state.openTabs || [];
+    if (!tabs.length) {
+      host.hidden = true;
+      host.innerHTML = "";
+      if (toolbar) toolbar.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    if (toolbar) toolbar.hidden = !state.selectedPath;
+    host.innerHTML = "";
+    tabs.forEach(function (path) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "ide-file-tab" + (state.selectedPath === path ? " active" : "");
+      btn.title = path;
+      btn.innerHTML =
+        '<span class="ide-file-tab-name">' +
+        escapeHtml(basename(path)) +
+        '</span><span class="ide-file-tab-close" data-close="1" title="Close">×</span>';
+      btn.addEventListener("click", function (e) {
+        if (e.target && e.target.getAttribute("data-close")) {
+          e.stopPropagation();
+          closeTab(path);
+          return;
+        }
+        openFile(path);
+      });
+      host.appendChild(btn);
+    });
+    if (toolbar && !toolbar._bound) {
+      toolbar._bound = true;
+      toolbar.addEventListener("click", function (e) {
+        const el = e.target;
+        if (!el || !el.getAttribute) return;
+        const mode = el.getAttribute("data-mode");
+        if (!mode) return;
+        state.viewerMode = mode;
+        Array.prototype.forEach.call(
+          toolbar.querySelectorAll(".ide-view-mode"),
+          function (b) {
+            b.classList.toggle("active", b.getAttribute("data-mode") === mode);
+          },
+        );
+        if (state.selectedPath) openFile(state.selectedPath);
+      });
+    }
+  }
+
+  function renderProblemsPanel(root) {
+    const problems = state.problems || [];
+    const wrap = document.createElement("div");
+    wrap.className = "ide-problems";
+    wrap.innerHTML =
+      '<div class="ide-problems-head"><span>Problems</span>' +
+      '<button type="button" class="ide-repo-refresh ide-problems-refresh" title="Refresh diagnostics">↻</button></div>';
+    if (!problems.length) {
+      const empty = document.createElement("p");
+      empty.className = "panel-empty";
+      empty.style.fontSize = "0.72rem";
+      empty.textContent = "No problems recorded — run Diagnose.";
+      wrap.appendChild(empty);
+    } else {
+      problems.slice(0, 40).forEach(function (pr) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className =
+          "ide-problem-row " +
+          (pr.severity === "warning" ? "warning" : "error");
+        const loc =
+          (pr.file ? basename(pr.file) : "?") +
+          ":" +
+          (pr.line || 1);
+        row.textContent =
+          loc + " · " + String(pr.message || "").slice(0, 120);
+        row.title = (pr.file || "") + " — " + (pr.message || "");
+        row.addEventListener("click", function () {
+          if (pr.file) openFile(pr.file);
+        });
+        wrap.appendChild(row);
+      });
+    }
+    const refresh = wrap.querySelector(".ide-problems-refresh");
+    if (refresh) {
+      refresh.addEventListener("click", async function () {
+        await refreshDiagnostics();
+        const tree = $("file-tree");
+        if (tree) renderFileTree(tree, state.files);
+      });
+    }
+    root.appendChild(wrap);
+  }
+
+  function renderDiffHtml(unified) {
+    const lines = String(unified || "").split("\n");
+    return lines
+      .map(function (line) {
+        let cls = "";
+        if (line.charAt(0) === "+" && line.indexOf("+++") !== 0) cls = "ide-diff-add";
+        else if (line.charAt(0) === "-" && line.indexOf("---") !== 0)
+          cls = "ide-diff-del";
+        else if (line.indexOf("@@") === 0 || line.indexOf("diff") === 0)
+          cls = "ide-diff-meta";
+        return (
+          '<div class="' +
+          cls +
+          '">' +
+          escapeHtml(line) +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+function seedCloneChat(url) {
     const u = String(url || "").trim();
     if (!u) return;
     const msg =
@@ -546,7 +886,14 @@
       testLabel = "tests ✗";
       testClass = "fail";
     }
+    const pc = state.problemCount || (state.problems && state.problems.length) || 0;
+    const probLabel = pc ? pc + " problems" : "0 problems";
+    const probClass = pc ? "warn" : "ok";
     const hasRepo = !!(state.repo && state.repo.mode === "git");
+    const configs =
+      (Array.isArray(state.runConfigs) && state.runConfigs.length
+        ? state.runConfigs
+        : detectLocalRunConfigs()) || [];
     bar.innerHTML =
       '<div class="ide-repo-row">' +
       '<span class="ide-repo-branch" title="Branch">' +
@@ -561,18 +908,40 @@
       '">' +
       escapeHtml(testLabel) +
       "</span>" +
+      '<span class="ide-repo-problems ' +
+      probClass +
+      '">' +
+      escapeHtml(probLabel) +
+      "</span>" +
       '<button type="button" class="ide-repo-refresh" title="Refresh status">↻</button>' +
       "</div>" +
+      '<div class="ide-run-strip"></div>' +
       (hasRepo
         ? ""
         : '<div class="ide-repo-clone">' +
           '<input type="url" class="ide-repo-url" placeholder="https://github.com/org/repo" />' +
           '<button type="button" class="ide-repo-clone-btn">Clone</button>' +
           "</div>");
+    const strip = bar.querySelector(".ide-run-strip");
+    if (strip) {
+      configs.forEach(function (cfg) {
+        if (cfg.kind === "dev") return;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ide-run-btn";
+        b.textContent = cfg.label || cfg.id;
+        b.title = cfg.cmd || cfg.tool || cfg.label;
+        b.addEventListener("click", function () {
+          runConfig(cfg);
+        });
+        strip.appendChild(b);
+      });
+    }
     const refreshBtn = bar.querySelector(".ide-repo-refresh");
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async function () {
         await refreshRepoStatus();
+        await refreshDiagnostics();
         const tree = $("file-tree");
         if (tree) renderFileTree(tree, state.files);
       });
@@ -593,7 +962,7 @@
     root.appendChild(bar);
   }
 
-  function renderFileTree(root, files) {
+function renderFileTree(root, files) {
     root.innerHTML = "";
     const map = files || {};
     const detected =
@@ -633,6 +1002,7 @@
     });
     root.appendChild(head);
     renderRepoBar(root);
+    renderProblemsPanel(root);
 
     if (slugs.length) {
       const projSec = document.createElement("div");
@@ -885,13 +1255,15 @@
 
   async function openFile(path) {
     state.selectedPath = path;
+    ensureTab(path);
+    renderFileTabs();
+    syncActiveFileChip(path);
     const viewer = $("file-viewer");
     const meta = $("file-viewer-path");
     if (!viewer) return;
     let f = state.files[path];
     if (meta) meta.textContent = path;
 
-    // If SSE omitted large content, fetch authoritative bytes from workspace API
     if (
       (!f || f.contentOmitted || f.content == null) &&
       remote() &&
@@ -906,10 +1278,37 @@
             f = data.file;
             state.files[path] = Object.assign({}, state.files[path] || {}, f);
           }
-        } catch (e) {
-          /* keep local */
-        }
+        } catch (e) {}
       }
+    }
+
+    if (state.viewerMode === "diff") {
+      viewer.className = "file-viewer ide-diff-view";
+      viewer.textContent = "Loading diff…";
+      const wsId = remoteState().workspaceId || state.workspaceId;
+      try {
+        let unified = "";
+        if (remote() && remote().getDiff && wsId) {
+          const data = await remote().getDiff(wsId, path);
+          unified =
+            data.unified ||
+            makeUnifiedDiff(data.previous || "", data.current || "", path);
+        } else {
+          const previous =
+            (f && f.previousContent != null && f.previousContent) ||
+            (state.fileSnapshots && state.fileSnapshots[path]) ||
+            "";
+          const current = f && f.content != null ? String(f.content) : "";
+          unified = makeUnifiedDiff(previous, current, path);
+        }
+        viewer.innerHTML = renderDiffHtml(unified || "(empty diff)");
+      } catch (e) {
+        viewer.textContent = "Diff failed: " + (e.message || e);
+      }
+      if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
+        window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
+      }
+      return;
     }
 
     const isPdf =
@@ -939,7 +1338,6 @@
       if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
         window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
       }
-      await refreshFiles();
       return;
     }
 
@@ -954,7 +1352,6 @@
     if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
       window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
     }
-    await refreshFiles();
   }
 
   function askAboutFile(path) {
@@ -1685,6 +2082,8 @@
     refreshThreads,
     refreshFiles,
     refreshRepoStatus,
+    refreshDiagnostics,
+    applyProblemsEvent,
     openFilesPanel,
     setActiveProject,
     updateUsageMeter,

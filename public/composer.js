@@ -1559,6 +1559,7 @@
     paintApproveChip: paintApproveChip,
     paintChips: paintChips,
     addAttachment: addAttachment,
+    removeAttachment: removeAttachment,
     wantsAgentFromMode: wantsAgentFromMode,
     wantsImageFromMode: wantsImageFromMode,
     openPalette: openPalette,
