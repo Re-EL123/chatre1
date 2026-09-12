@@ -264,9 +264,12 @@
     if ($("byok-test")) {
       $("byok-test").addEventListener("click", function () {
         var provider = $("byok-provider") && $("byok-provider").value;
+        var typed = $("byok-key") && $("byok-key").value.trim();
         if (!window.ChatreRemote || !window.ChatreRemote.testByok) return;
+        var el = $("byok-status");
+        if (el) el.textContent = "Testing " + provider + "…";
         window.ChatreRemote
-          .testByok(provider)
+          .testByok(provider, typed || undefined)
           .then(function (r) {
             if (window.ChatreKit) {
               window.ChatreKit.toast(
@@ -276,7 +279,6 @@
                 r && r.ok ? "success" : "error",
               );
             }
-            var el = $("byok-status");
             if (el) {
               el.textContent =
                 r && r.ok
@@ -288,6 +290,7 @@
             if (window.ChatreKit) {
               window.ChatreKit.toast(e.message || String(e), "error");
             }
+            if (el) el.textContent = "Test failed: " + (e.message || String(e));
           });
       });
     }

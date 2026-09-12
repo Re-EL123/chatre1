@@ -185,11 +185,32 @@
     );
   }
 
-  async function testByok(provider) {
-    return request("/api/me?action=byok&op=test", {
+  async function testByok(provider, apiKeyValue) {
+    const base = apiBase();
+    if (!base) throw new Error("CHATRE_API_BASE not set");
+    const h = await authHeaders();
+    const body = { provider: provider };
+    if (apiKeyValue) body.apiKey = apiKeyValue;
+    const res = await fetch(base + "/api/me?action=byok&op=test", {
       method: "POST",
-      body: JSON.stringify({ provider: provider }),
+      headers: h,
+      body: JSON.stringify(body),
     });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    // Return structured result for both success and expected provider failures.
+    if (data && typeof data === "object" && ("ok" in data || data.error)) {
+      if (!("ok" in data)) data.ok = res.ok;
+      return data;
+    }
+    if (!res.ok) {
+      throw new Error((data && data.error) || "API " + res.status);
+    }
+    return data;
   }
 
   async function memoryGet(key) {
