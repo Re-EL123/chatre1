@@ -9,6 +9,7 @@
     threads: [],
     files: {},
     workspaceId: null,
+    revision: 0,
     selectedPath: null,
     activeProject: null,
     projects: {},
@@ -427,6 +428,10 @@
           remoteState().workspaceId = data.workspace.id;
         }
         state.files = data.files || {};
+        if (data.revision != null) state.revision = data.revision;
+        else if (data.workspace && data.workspace.revision != null) {
+          state.revision = data.workspace.revision;
+        }
         if (data.workspace) {
           state.activeProject = data.workspace.activeProject || null;
           state.projects = data.workspace.projects || {};
@@ -758,8 +763,29 @@
     const viewer = $("file-viewer");
     const meta = $("file-viewer-path");
     if (!viewer) return;
-    const f = state.files[path];
+    let f = state.files[path];
     if (meta) meta.textContent = path;
+
+    // If SSE omitted large content, fetch authoritative bytes from workspace API
+    if (
+      (!f || f.contentOmitted || f.content == null) &&
+      remote() &&
+      remote().enabled() &&
+      remote().getFile
+    ) {
+      const wsId = remoteState().workspaceId || state.workspaceId;
+      if (wsId) {
+        try {
+          const data = await remote().getFile(wsId, path);
+          if (data && data.file) {
+            f = data.file;
+            state.files[path] = Object.assign({}, state.files[path] || {}, f);
+          }
+        } catch (e) {
+          /* keep local */
+        }
+      }
+    }
 
     const isPdf =
       /\.pdf$/i.test(path) || (f && f.mime === "application/pdf");
@@ -923,13 +949,28 @@
       if (p === root || p.indexOf(root + "/") === 0) out[p] = contentOrEntry;
     };
 
+    // Signed-in: ZIP from a single server snapshot revision only (no merge).
+    const wsId = remoteState().workspaceId || state.workspaceId;
+    if (remote() && remote().enabled() && wsId && remote().exportWorkspace) {
+      const data = await remote().exportWorkspace(wsId);
+      const files = (data && data.files) || {};
+      Object.keys(files).forEach(function (p) {
+        take(p, files[p]);
+      });
+      return {
+        root: root,
+        files: out,
+        revision: data.revision != null ? data.revision : null,
+        source: "server",
+      };
+    }
+
     Object.keys(state.files || {}).forEach(function (p) {
       const f = state.files[p];
       if (!f || f.type === "dir") return;
       take(p, f);
     });
 
-    // Local Worker FS may have fresher content
     const localFs = (window.ChatreCore && window.ChatreCore.fs) || null;
     if (localFs) {
       Object.keys(localFs).forEach(function (p) {
@@ -939,20 +980,7 @@
       });
     }
 
-    const wsId = remoteState().workspaceId || state.workspaceId;
-    if (remote() && remote().enabled() && wsId && remote().exportWorkspace) {
-      try {
-        const data = await remote().exportWorkspace(wsId);
-        const files = (data && data.files) || {};
-        Object.keys(files).forEach(function (p) {
-          take(p, files[p]);
-        });
-      } catch (e) {
-        /* keep local map */
-      }
-    }
-
-    return { root: root, files: out };
+    return { root: root, files: out, revision: state.revision || null, source: "local" };
   }
 
   async function exportDirectoryZip(dirPath, opts) {
@@ -961,7 +989,18 @@
       alert("JSZip not loaded");
       return;
     }
-    const collected = await collectExportFiles(dirPath);
+    let collected;
+    try {
+      collected = await collectExportFiles(dirPath);
+    } catch (e) {
+      const msg = "Export failed: " + (e && e.message ? e.message : String(e));
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast(msg, "error");
+      } else {
+        alert(msg);
+      }
+      return;
+    }
     const paths = Object.keys(collected.files).sort();
     if (!paths.length) {
       const msg =
@@ -998,10 +1037,13 @@
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     const stamp = new Date().toISOString().slice(0, 10);
+    const revSuffix =
+      collected.revision != null ? "-r" + collected.revision : "";
     a.download =
       (o.zipName ||
         folderName.replace(/[^\w.\-]+/g, "_") ||
         "export") +
+      revSuffix +
       "-" +
       stamp +
       ".zip";
@@ -1013,7 +1055,8 @@
         "Exported " +
           paths.length +
           " file(s) from " +
-          (o.label || folderName),
+          (o.label || folderName) +
+          (collected.revision != null ? " @ r" + collected.revision : ""),
         "success",
       );
     }
@@ -1165,6 +1208,59 @@
         if (previous != null) state.files[path].previousContent = previous;
         state.files[path].content = next;
       }
+    }
+  }
+
+  /**
+   * Apply SSE file_event into the single client FS cache (explorer source of truth).
+   */
+  function applyFileEvent(ev) {
+    if (!ev || ev.type !== "file_event") return;
+    if (ev.revision != null) state.revision = ev.revision;
+    const op = ev.op || "";
+    if (op === "delete" && ev.path) {
+      delete state.files[ev.path];
+      const prefix = String(ev.path).endsWith("/")
+        ? String(ev.path)
+        : String(ev.path) + "/";
+      Object.keys(state.files || {}).forEach(function (p) {
+        if (p.indexOf(prefix) === 0) delete state.files[p];
+      });
+      const tree = $("file-tree");
+      if (tree) renderFileTree(tree, state.files);
+      return;
+    }
+    if (op === "put" && ev.file && ev.file.path) {
+      const f = ev.file;
+      const prev = state.files[f.path];
+      if (f.contentOmitted && prev && prev.content != null) {
+        state.files[f.path] = Object.assign({}, prev, f, {
+          content: prev.content,
+        });
+      } else {
+        state.files[f.path] = Object.assign({}, prev || {}, f, {
+          path: f.path,
+          type: f.type || "file",
+        });
+      }
+      if (window.ChatreProjects) {
+        state.projects = window.ChatreProjects.detectProjects(state.files);
+      }
+      const tree = $("file-tree");
+      if (tree) renderFileTree(tree, state.files);
+      return;
+    }
+    if (op === "sync") {
+      (ev.deleted || []).forEach(function (p) {
+        delete state.files[p];
+      });
+      // Full refresh for large syncs when changed set is big / content omitted
+      if (!ev.changed || ev.changed.length > 20) {
+        refreshFiles();
+        return;
+      }
+      const tree = $("file-tree");
+      if (tree) renderFileTree(tree, state.files);
     }
   }
 
@@ -1467,6 +1563,7 @@
     setActiveProject,
     updateUsageMeter,
     rememberWrite,
+    applyFileEvent,
     setResumeAvailable,
     askAboutFile,
     togglePanel,

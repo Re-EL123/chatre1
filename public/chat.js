@@ -1790,6 +1790,13 @@
                   running: true,
                 });
               }
+            } else if (ev.type === "file_event") {
+              if (
+                window.ChatrePanels &&
+                window.ChatrePanels.applyFileEvent
+              ) {
+                window.ChatrePanels.applyFileEvent(ev);
+              }
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
@@ -1808,7 +1815,16 @@
               if (window.ChatreComposerFlow) {
                 window.ChatreComposerFlow.noteToolResult(ev.tool, ev.result);
               }
-              if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+              // Prefer SSE file_event for FS; full refresh only for shell/sync tools
+              const shellish = /^(execute_command|run_python|run_javascript|run_node)$/.test(
+                ev.tool || "",
+              );
+              if (
+                window.ChatrePanels &&
+                (shellish || !(ev.result && ev.result.revision != null))
+              ) {
+                window.ChatrePanels.refreshFiles();
+              }
               if (
                 (ev.tool === "execute_command" ||
                   (ev.result && ev.result.tool === "execute_command")) &&
@@ -3524,13 +3540,28 @@
                 });
               }
               toolCards[ev.id || ev.tool] = showTool(ev);
+            } else if (ev.type === "file_event") {
+              if (
+                window.ChatrePanels &&
+                window.ChatrePanels.applyFileEvent
+              ) {
+                window.ChatrePanels.applyFileEvent(ev);
+              }
             } else if (ev.type === "tool_result") {
               const card = toolCards[ev.id || ev.tool];
               if (card) updateTool(card, ev.result);
               if (window.ChatreComposerFlow) {
                 window.ChatreComposerFlow.noteToolResult(ev.tool, ev.result);
               }
-              if (window.ChatrePanels) window.ChatrePanels.refreshFiles();
+              const shellish = /^(execute_command|run_python|run_javascript|run_node)$/.test(
+                ev.tool || "",
+              );
+              if (
+                window.ChatrePanels &&
+                (shellish || !(ev.result && ev.result.revision != null))
+              ) {
+                window.ChatrePanels.refreshFiles();
+              }
               if (window.ChatrePreview) {
                 window.ChatrePreview.handleAgentEvent(ev);
               }
