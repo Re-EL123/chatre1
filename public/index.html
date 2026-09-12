@@ -1270,12 +1270,121 @@
       }
 
       #file-tree {
-        flex: 0 1 38%;
-        min-height: 4rem;
-        max-height: 42%;
+        flex: 0 1 42%;
+        min-height: 6rem;
+        max-height: 48%;
         overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.78rem;
+      }
+      .ide-explorer-head {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0.25rem 0.35rem 0.45rem;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 0.35rem;
+      }
+      .ide-explorer-title {
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-light);
+      }
+      .ide-active-project {
+        font-size: 0.74rem;
+        color: #9ad8f0;
+      }
+      .ide-section {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        padding: 0.25rem 0.2rem 0.45rem;
+      }
+      .ide-section-label {
+        width: 100%;
+        font-size: 0.66rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-light);
+      }
+      .ide-project-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        border: 1px solid rgba(76, 184, 232, 0.28);
+        background: rgba(16, 28, 42, 0.7);
+        color: #c8eaf8;
+        border-radius: 6px;
+        padding: 0.2rem 0.45rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      .ide-project-chip.active {
+        border-color: rgba(76, 184, 232, 0.7);
+        background: rgba(40, 80, 110, 0.55);
+      }
+      .ide-badge {
+        font-size: 0.62rem;
+        padding: 0.05rem 0.3rem;
+        border-radius: 4px;
+        background: rgba(76, 184, 232, 0.18);
+        color: #9ad8f0;
+      }
+      .ide-count {
+        opacity: 0.65;
+        font-size: 0.66rem;
+      }
+      .ide-tree {
+        padding: 0.15rem 0;
+      }
+      .ide-folder-toggle,
+      .ide-file .file-open {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        padding: 0.18rem 0.3rem;
+        padding-left: calc(0.3rem + var(--ide-depth, 0) * 0.75rem);
+        border-radius: 4px;
+      }
+      .ide-folder-toggle:hover,
+      .ide-file .file-open:hover,
+      .ide-file:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .ide-folder-toggle.is-active-project {
+        color: #9ad8f0;
+        font-weight: 600;
+      }
+      .ide-chevron {
+        width: 0.7rem;
+        opacity: 0.7;
+        flex: 0 0 auto;
+      }
+      .ide-file {
+        display: grid;
+        grid-template-columns: 1fr auto auto auto;
+        align-items: center;
+        gap: 0.15rem;
+      }
+      .ide-file .file-ask,
+      .ide-file .file-diff,
+      .ide-file .file-dl {
+        opacity: 0.55;
+      }
+      .ide-file:hover .file-ask,
+      .ide-file:hover .file-diff,
+      .ide-file:hover .file-dl {
+        opacity: 1;
       }
 
       #browser-pane {
@@ -3722,7 +3831,7 @@
       </div>
 
       <aside class="side-panel" id="files-panel" aria-label="Files">
-        <h2>Workspace</h2>
+        <h2>Projects</h2>
         <div class="panel-actions">
           <button type="button" class="btn" id="files-refresh">Refresh</button>
           <button type="button" class="btn" id="files-export-zip">Export ZIP</button>
@@ -3735,7 +3844,7 @@
           <input type="file" id="file-drop-input" multiple hidden />
         </div>
         <div id="file-upload-progress" hidden></div>
-        <div id="file-tree"></div>
+        <div id="file-tree" class="ide-explorer"></div>
         <div id="file-viewer-path"></div>
         <div id="file-viewer" class="file-viewer"></div>
       </aside>
@@ -4001,6 +4110,7 @@
     <script src="/plan-ui.js"></script>
     <script src="/ui-adv.js"></script>
     <script src="/motion.js"></script>
+    <script src="/projects.js"></script>
     <script src="/ux.js"></script>
     <script src="/composer-flow.js"></script>
     <script src="/composer.js"></script>

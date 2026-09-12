@@ -10,6 +10,9 @@
     files: {},
     workspaceId: null,
     selectedPath: null,
+    activeProject: null,
+    projects: {},
+    expanded: {},
     fileSnapshots: {},
     usage: null,
     canResume: false,
@@ -424,6 +427,23 @@
           remoteState().workspaceId = data.workspace.id;
         }
         state.files = data.files || {};
+        if (data.workspace) {
+          state.activeProject = data.workspace.activeProject || null;
+          state.projects = data.workspace.projects || {};
+        }
+        if (window.ChatreProjects) {
+          state.projects = Object.assign(
+            {},
+            window.ChatreProjects.detectProjects(state.files),
+            state.projects || {},
+          );
+          if (
+            !state.activeProject &&
+            Object.keys(state.projects).length === 1
+          ) {
+            state.activeProject = Object.keys(state.projects)[0];
+          }
+        }
         renderFileTree(tree, state.files);
       } catch (e) {
         tree.innerHTML =
@@ -444,51 +464,207 @@
 
   function renderFileTree(root, files) {
     root.innerHTML = "";
-    const paths = Object.keys(files || {})
-      .filter((p) => files[p] && files[p].type === "file")
-      .sort();
-    if (!paths.length) {
-      root.innerHTML = '<p class="panel-empty">No files in workspace.</p>';
-      return;
+    const map = files || {};
+    const projects =
+      (window.ChatreProjects && window.ChatreProjects.detectProjects(map)) ||
+      {};
+    Object.assign(projects, state.projects || {});
+    state.projects = projects;
+    const slugs = Object.keys(projects).sort();
+
+    const head = document.createElement("div");
+    head.className = "ide-explorer-head";
+    head.innerHTML =
+      '<div class="ide-explorer-title">Explorer</div>' +
+      '<div class="ide-active-project">' +
+      (state.activeProject
+        ? 'Active: <strong>' + escapeHtml(state.activeProject) + "</strong>"
+        : "No active project") +
+      "</div>";
+    root.appendChild(head);
+
+    if (slugs.length) {
+      const projSec = document.createElement("div");
+      projSec.className = "ide-section";
+      projSec.innerHTML = '<div class="ide-section-label">Projects</div>';
+      slugs.forEach(function (slug) {
+        const p = projects[slug];
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className =
+          "ide-project-chip" +
+          (state.activeProject === slug ? " active" : "");
+        row.innerHTML =
+          (window.ChatreKit
+            ? window.ChatreKit.iconHtml("folder-git-2", 13) + " "
+            : "") +
+          escapeHtml(slug) +
+          (p.hasAgentsMd
+            ? ' <span class="ide-badge">AGENTS</span>'
+            : "") +
+          (p.fileCount
+            ? ' <span class="ide-count">' + p.fileCount + "</span>"
+            : "");
+        row.title = "Set active project " + (p.root || slug);
+        row.addEventListener("click", function () {
+          setActiveProject(slug);
+        });
+        projSec.appendChild(row);
+      });
+      root.appendChild(projSec);
     }
-    paths.forEach((p) => {
-      const row = document.createElement("div");
-      row.className =
-        "file-item" + (state.selectedPath === p ? " active" : "");
-      row.setAttribute("data-path", p);
-      row.innerHTML =
-        '<button type="button" class="file-open">' +
-        (window.ChatreKit ? window.ChatreKit.iconHtml("file", 13) + " " : "") +
-        escapeHtml(p) +
-        "</button>" +
-        '<button type="button" class="file-ask" data-tip="Explain in chat" title="Explain in chat">' +
-        (window.ChatreKit
-          ? window.ChatreKit.iconHtml("message-circle-question", 14)
-          : "?") +
-        "</button>" +
-        '<button type="button" class="file-diff" data-tip="Show diff" title="Diff">' +
-        (window.ChatreKit
-          ? window.ChatreKit.iconHtml("git-compare", 14)
-          : "Δ") +
-        "</button>" +
-        '<button type="button" class="file-dl" data-tip="Download" title="Download">' +
-        (window.ChatreKit
-          ? window.ChatreKit.iconHtml("download", 14)
-          : "↓") +
-        "</button>";
-      row.querySelector(".file-open").addEventListener("click", () => openFile(p));
-      row.querySelector(".file-ask").addEventListener("click", () => askAboutFile(p));
-      row.querySelector(".file-diff").addEventListener("click", () => showDiff(p));
-      row.querySelector(".file-dl").addEventListener("click", () => downloadFile(p));
-      root.appendChild(row);
-    });
+
+    const treeHost = document.createElement("div");
+    treeHost.className = "ide-tree";
+    const treeRoot =
+      window.ChatreProjects && window.ChatreProjects.buildTree
+        ? window.ChatreProjects.buildTree(map, "/home/user")
+        : null;
+
+    if (!treeRoot || !treeRoot.children || !treeRoot.children.length) {
+      const empty = document.createElement("p");
+      empty.className = "panel-empty";
+      empty.textContent =
+        "No files yet — ask the agent to create a project under /home/user/projects.";
+      treeHost.appendChild(empty);
+    } else {
+      renderTreeNode(treeHost, treeRoot, 0);
+    }
+    root.appendChild(treeHost);
+
     if (window.ChatreKit) {
       window.ChatreKit.refreshIcons(root);
       window.ChatreKit.bindTips(root);
     }
     if (window.ChatreMotion) {
-      window.ChatreMotion.staggerChildren(root, "file", 28);
+      window.ChatreMotion.staggerChildren(treeHost, "file", 18);
     }
+  }
+
+  function renderTreeNode(host, node, depth) {
+    if (!node) return;
+    if (node.type === "file") {
+      appendFileRow(host, node.path, node.name, depth);
+      return;
+    }
+    // Skip rendering the absolute root label; show children
+    if (node.path === "/home/user" || node.path === "/") {
+      (node.children || []).forEach(function (child) {
+        renderTreeNode(host, child, depth);
+      });
+      return;
+    }
+
+    const key = node.path;
+    const open =
+      state.expanded[key] !== false &&
+      (state.expanded[key] === true ||
+        depth < 2 ||
+        (state.activeProject &&
+          key.indexOf("/home/user/projects/" + state.activeProject) === 0));
+
+    const folder = document.createElement("div");
+    folder.className = "ide-folder" + (open ? " open" : "");
+    folder.style.setProperty("--ide-depth", String(depth));
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "ide-folder-toggle";
+    toggle.innerHTML =
+      '<span class="ide-chevron">' +
+      (open ? "▾" : "▸") +
+      "</span> " +
+      (window.ChatreKit
+        ? window.ChatreKit.iconHtml(open ? "folder-open" : "folder", 13) + " "
+        : "") +
+      '<span class="ide-name">' +
+      escapeHtml(node.name) +
+      "</span>";
+    if (/^\/home\/user\/projects\/[^/]+$/.test(node.path)) {
+      const slug = node.name;
+      if (state.activeProject === slug) toggle.classList.add("is-active-project");
+      toggle.addEventListener("dblclick", function (e) {
+        e.preventDefault();
+        setActiveProject(slug);
+      });
+    }
+    toggle.addEventListener("click", function () {
+      state.expanded[key] = !open;
+      renderFileTree($("file-tree"), state.files);
+    });
+    folder.appendChild(toggle);
+
+    if (open) {
+      const kids = document.createElement("div");
+      kids.className = "ide-folder-children";
+      (node.children || []).forEach(function (child) {
+        renderTreeNode(kids, child, depth + 1);
+      });
+      folder.appendChild(kids);
+    }
+    host.appendChild(folder);
+  }
+
+  function appendFileRow(host, path, name, depth) {
+    const row = document.createElement("div");
+    row.className =
+      "file-item ide-file" + (state.selectedPath === path ? " active" : "");
+    row.setAttribute("data-path", path);
+    row.style.setProperty("--ide-depth", String(depth));
+    const isAgents = /\/AGENTS\.md$/i.test(path);
+    row.innerHTML =
+      '<button type="button" class="file-open">' +
+      (window.ChatreKit
+        ? window.ChatreKit.iconHtml(isAgents ? "bot" : "file", 13) + " "
+        : "") +
+      escapeHtml(name || path) +
+      (isAgents ? ' <span class="ide-badge">md</span>' : "") +
+      "</button>" +
+      '<button type="button" class="file-ask" data-tip="Explain in chat" title="Explain in chat">' +
+      (window.ChatreKit
+        ? window.ChatreKit.iconHtml("message-circle-question", 14)
+        : "?") +
+      "</button>" +
+      '<button type="button" class="file-diff" data-tip="Show diff" title="Diff">' +
+      (window.ChatreKit
+        ? window.ChatreKit.iconHtml("git-compare", 14)
+        : "Δ") +
+      "</button>" +
+      '<button type="button" class="file-dl" data-tip="Download" title="Download">' +
+      (window.ChatreKit
+        ? window.ChatreKit.iconHtml("download", 14)
+        : "↓") +
+      "</button>";
+    row.querySelector(".file-open").addEventListener("click", function () {
+      openFile(path);
+    });
+    row.querySelector(".file-ask").addEventListener("click", function () {
+      askAboutFile(path);
+    });
+    row.querySelector(".file-diff").addEventListener("click", function () {
+      showDiff(path);
+    });
+    row.querySelector(".file-dl").addEventListener("click", function () {
+      downloadFile(path);
+    });
+    host.appendChild(row);
+  }
+
+  async function setActiveProject(slug) {
+    state.activeProject = slug;
+    state.expanded["/home/user/projects/" + slug] = true;
+    const wsId = remoteState().workspaceId || state.workspaceId;
+    if (wsId && remote() && remote().setActiveProject) {
+      try {
+        await remote().setActiveProject(wsId, slug);
+      } catch (e) {
+        /* local fallback ok */
+      }
+    }
+    if (window.ChatreKit && window.ChatreKit.toast) {
+      window.ChatreKit.toast("Active project: " + slug, "success");
+    }
+    renderFileTree($("file-tree"), state.files);
   }
 
   function downloadFile(path) {
@@ -997,6 +1173,7 @@
     refreshThreads,
     refreshFiles,
     openFilesPanel,
+    setActiveProject,
     updateUsageMeter,
     rememberWrite,
     setResumeAvailable,

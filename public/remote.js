@@ -309,6 +309,17 @@
     return request("/api/workspace" + q, { method: "GET" });
   }
 
+  async function setActiveProject(workspaceId, slug) {
+    return request(
+      "/api/workspace?action=activeProject&id=" +
+        encodeURIComponent(workspaceId),
+      {
+        method: "POST",
+        body: JSON.stringify({ slug: slug }),
+      },
+    );
+  }
+
   async function exportWorkspace(id) {
     const q =
       "?action=export" + (id ? "&id=" + encodeURIComponent(id) : "");
@@ -642,6 +653,7 @@
     deleteThread,
     getMessages,
     getWorkspace,
+    setActiveProject,
     exportWorkspace,
     getFile,
     putFile,

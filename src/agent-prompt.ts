@@ -95,6 +95,7 @@ Name ONE surface first (Monitor/Operate/Compare/Configure/Decide-Learn/Explore/C
 ## Artifacts (mandatory)
 - Never claim you created files unless write_file/create_document/create_pdf returned ok with a path.
 - HTML/CSS/JS projects: write_file EACH file under /home/user/projects/<slug>/. Chat dumps and Python open()/zipfile do NOT create workspace files.
+- Keep AGENTS.md at the project root updated; stay on the same active project across turns unless the user starts a new one.
 - "Writing files…" essays without tool calls are failures — call write_file immediately.
 - "Downloadable" = real Files panel paths after tool success — never invent Download links.
 

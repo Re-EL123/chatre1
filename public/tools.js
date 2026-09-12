@@ -1444,12 +1444,37 @@
     const existed = !!fs()[target];
     fs()[target] = { type: "file", content: String(content || "") };
     if (common && common.onWrite) common.onWrite(target, String(content || ""));
+
+    let project = null;
+    const m = String(target).match(/^\/home\/user\/projects\/([^/]+)/);
+    if (m && window.ChatreProjects) {
+      const slug = m[1];
+      const agentsPath = "/home/user/projects/" + slug + "/AGENTS.md";
+      ensureDir("/home/user/projects/" + slug);
+      if (!fs()[agentsPath] || fs()[agentsPath].type !== "file") {
+        const body = window.ChatreProjects.agentsTemplate(slug, "");
+        fs()[agentsPath] = { type: "file", content: body };
+        const projDir = fs()["/home/user/projects/" + slug];
+        if (projDir && projDir.children && projDir.children.indexOf("AGENTS.md") < 0) {
+          projDir.children.push("AGENTS.md");
+        }
+        if (common && common.onWrite) common.onWrite(agentsPath, body);
+        project = { slug: slug, agentsCreated: true, agentsMd: agentsPath };
+      } else {
+        project = { slug: slug, agentsCreated: false, agentsMd: agentsPath };
+      }
+      if (window.ChatrePanels && window.ChatrePanels.state) {
+        window.ChatrePanels.state.activeProject = slug;
+      }
+    }
+
     return {
       ok: true,
       tool: "write_file",
       path: target,
       bytes: String(content || "").length,
       text: (existed ? "Overwrote" : "Created") + " " + target,
+      project: project || undefined,
     };
   }
 
@@ -2724,9 +2749,33 @@
     core().git = git;
 
     switch (op) {
-      case "init":
+      case "init": {
         git.initialized = true;
-        return { ok: true, tool: "git_init", text: "Initialized empty git repository at /" };
+        let slug = "repo";
+        if (window.ChatrePanels && window.ChatrePanels.state && window.ChatrePanels.state.activeProject) {
+          slug = window.ChatrePanels.state.activeProject;
+        }
+        const root = "/home/user/projects/" + slug;
+        ensureDir(root);
+        const agentsPath = root + "/AGENTS.md";
+        if (!fs()[agentsPath] && window.ChatreProjects) {
+          const body = window.ChatreProjects.agentsTemplate(slug, "Git repository");
+          fs()[agentsPath] = { type: "file", content: body };
+          if (fs()[root] && fs()[root].children && fs()[root].children.indexOf("AGENTS.md") < 0) {
+            fs()[root].children.push("AGENTS.md");
+          }
+        }
+        if (window.ChatrePanels && window.ChatrePanels.state) {
+          window.ChatrePanels.state.activeProject = slug;
+        }
+        return {
+          ok: true,
+          tool: "git_init",
+          text: "Initialized git repository at " + root,
+          path: root,
+          project: { slug: slug, root: root, agentsMd: agentsPath },
+        };
+      }
       case "add": {
         git.initialized = true;
         const raw = params.path || ".";
