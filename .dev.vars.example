@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local `wrangler dev` (gitignored).
+# Web API keys are public client keys — restrict by Firebase Authorized domains.
+
+# FIREBASE_API_KEY=AIza...
+# FIREBASE_APP_ID=1:...:web:...
+# FIREBASE_AUTH_DOMAIN=re-el-eed0d.firebaseapp.com
+# FIREBASE_PROJECT_ID=re-el-eed0d
+# CHATRE_SECRET=
+# BRAVE_API_KEY=

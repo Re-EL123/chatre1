@@ -23,7 +23,8 @@
 
   /**
    * Firebase web app config for Auth (email/password + Google).
-   * Fill these from Firebase Console → Project settings → Your apps.
+   * apiKey is required. Prefer Worker env FIREBASE_API_KEY, or paste once
+   * on the auth setup screen (saved to localStorage).
    * Project default: re-el-eed0d
    */
   if (!window.CHATRE_FIREBASE) {

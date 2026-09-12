@@ -100,7 +100,7 @@ function statusOf(error: unknown): number | undefined {
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, x-chatre-key",
 };
@@ -223,6 +223,31 @@ export default {
 
     if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request);
+    }
+
+    if (url.pathname === "/api/firebase-config") {
+      if (request.method === "OPTIONS") return optionsResponse();
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+      // Web API keys are designed to ship in clients; restrict by Authorized domains in Firebase.
+      const apiKey = String(env.FIREBASE_API_KEY || "").trim();
+      if (!apiKey) {
+        return jsonResponse({ configured: false }, 200);
+      }
+      return jsonResponse(
+        {
+          configured: true,
+          apiKey,
+          authDomain:
+            String(env.FIREBASE_AUTH_DOMAIN || "").trim() ||
+            "re-el-eed0d.firebaseapp.com",
+          projectId:
+            String(env.FIREBASE_PROJECT_ID || "").trim() || "re-el-eed0d",
+          appId: String(env.FIREBASE_APP_ID || "").trim() || "",
+        },
+        200,
+      );
     }
 
     if (url.pathname === "/api/chat") {

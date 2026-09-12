@@ -16,6 +16,11 @@ export interface Env {
   CHATRE_SECRET?: string;
   /** Optional Brave Search API key for stronger search_web. */
   BRAVE_API_KEY?: string;
+  /** Public Firebase web app config (safe to expose in the browser). */
+  FIREBASE_API_KEY?: string;
+  FIREBASE_AUTH_DOMAIN?: string;
+  FIREBASE_PROJECT_ID?: string;
+  FIREBASE_APP_ID?: string;
 }
 
 export interface ChatMessage {

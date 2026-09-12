@@ -48,16 +48,19 @@ npm start                    # http://localhost:8080
 
 ### Frontend Auth (Firebase)
 
-1. Firebase Console → Authentication → enable **Email/Password** and **Google**.
-2. Project settings → Your apps → copy web `apiKey` and `appId` into `public/config.js` (`CHATRE_FIREBASE`) or:
+1. Firebase Console → Authentication → enable **Email/Password** and **Google** (Phone is optional / needs Blaze).
+2. Project settings → Your apps → copy the web **apiKey** (and optional **appId**).
+3. Open Chatre — the auth screen asks for the apiKey once (saved in `localStorage`), **or** set Worker secrets:
 
-```js
-localStorage.setItem("chatre_firebase_api_key", "YOUR_WEB_API_KEY");
-localStorage.setItem("chatre_firebase_app_id", "YOUR_APP_ID");
-location.reload();
+```bash
+npx wrangler secret put FIREBASE_API_KEY
+# optional:
+npx wrangler secret put FIREBASE_APP_ID
 ```
 
-Sign in from **Settings**. Service token remains under Settings → Service key (advanced) for companion/self-host.
+4. Authentication → Settings → **Authorized domains** — add your Worker host (and `localhost` for local dev).
+
+Sign-in / create-account is a full-screen gate. Settings → Account opens it again. Service token remains under Settings → Service key (advanced).
 
 ```js
 localStorage.setItem("chatre_api_base", "http://localhost:8080");

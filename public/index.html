@@ -2066,9 +2066,215 @@
         #usage-meter { max-width: 120px; }
       }
 
-      /* legacy mode control removed from chrome */
-      .mode-control,
-      .legacy-mode-btns { display: none !important; }
+      /* ── Auth gate ─────────────────────────────────────────────── */
+      body.auth-gate-open {
+        overflow: hidden;
+      }
+      body.auth-gate-open > :not(#auth-gate):not(script) {
+        /* keep spectrum + scripts; dim rest via overlay */
+      }
+      .auth-gate {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: none;
+        align-items: stretch;
+        justify-content: center;
+        padding: 1.25rem;
+        overflow: auto;
+      }
+      .auth-gate.open,
+      .auth-gate:not([hidden]) {
+        display: flex;
+      }
+      .auth-gate[hidden] {
+        display: none !important;
+      }
+      .auth-gate-bg {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 90% 60% at 50% -10%, rgba(76, 184, 232, 0.18), transparent 55%),
+          radial-gradient(ellipse 70% 50% at 100% 100%, rgba(232, 93, 76, 0.12), transparent 50%),
+          #07070c;
+      }
+      .auth-gate-bg::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 4px;
+        background: var(--accent);
+        background-size: 400% 400%;
+        animation: slide 8s ease infinite;
+      }
+      .auth-card {
+        position: relative;
+        z-index: 1;
+        width: min(420px, 100%);
+        margin: auto;
+        padding: 1.75rem 1.5rem 1.35rem;
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        background: rgba(12, 12, 18, 0.92);
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(12px);
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+      }
+      .auth-brand {
+        font-size: 1.85rem;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin: 0;
+      }
+      .auth-brand svg { color: #4cb8e8; }
+      #auth-gate-sub {
+        margin: 0;
+        color: var(--text-light);
+        font-size: 0.92rem;
+        line-height: 1.45;
+      }
+      .auth-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.25rem;
+        padding: 0.2rem;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: #0a0a10;
+      }
+      .auth-tabs button {
+        border: 0;
+        background: transparent;
+        color: var(--text-light);
+        font: inherit;
+        font-weight: 600;
+        padding: 0.55rem 0.75rem;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .auth-tabs button.active {
+        background: rgba(76, 184, 232, 0.16);
+        color: var(--text-color);
+      }
+      .auth-gate label {
+        display: block;
+        font-size: 0.78rem;
+        color: var(--text-light);
+        margin: 0 0 0.25rem;
+      }
+      .auth-gate input[type="email"],
+      .auth-gate input[type="password"],
+      .auth-gate input[type="text"] {
+        width: 100%;
+        background: #0a0a10;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        font: inherit;
+        margin-bottom: 0.65rem;
+      }
+      .auth-gate input:focus {
+        outline: 1px solid rgba(76, 184, 232, 0.55);
+        border-color: rgba(76, 184, 232, 0.45);
+      }
+      .auth-gate-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+      .auth-gate .btn-primary {
+        background: linear-gradient(135deg, #4cb8e8, #3a8fc4);
+        color: #061018;
+        border: 0;
+        font-weight: 700;
+        justify-content: center;
+        min-height: 42px;
+      }
+      .auth-gate .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      .auth-gate .btn-google {
+        justify-content: center;
+        min-height: 42px;
+        background: #12121c;
+      }
+      .auth-gate-links {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        font-size: 0.82rem;
+      }
+      .auth-gate-links a,
+      .auth-gate-links button.linkish {
+        background: none;
+        border: 0;
+        color: #4cb8e8;
+        cursor: pointer;
+        font: inherit;
+        padding: 0;
+        text-decoration: none;
+      }
+      .auth-gate-links a:hover,
+      .auth-gate-links button.linkish:hover {
+        text-decoration: underline;
+      }
+      #auth-gate-error {
+        min-height: 1.2em;
+        margin: 0;
+        color: #ffb4c0;
+        font-size: 0.82rem;
+      }
+      .auth-gate-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        color: var(--text-light);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .auth-gate-divider::before,
+      .auth-gate-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--border-color);
+      }
+      .auth-setup-help {
+        margin: 0 0 0.75rem;
+        font-size: 0.8rem;
+        color: var(--text-light);
+        line-height: 1.45;
+      }
+      .auth-setup-help code {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.75rem;
+        color: #cfe6f8;
+      }
+      .auth-gate.is-busy .auth-card {
+        opacity: 0.85;
+        pointer-events: none;
+      }
+      .auth-local {
+        justify-content: center;
+        color: var(--text-light);
+        background: transparent;
+        border-style: dashed;
+      }
+      #settings-auth-section .auth-settings-signed-out .btn {
+        width: 100%;
+        justify-content: center;
+      }
       .run-center-main { flex: 1; min-width: 160px; }
       .run-center-goal {
         font-weight: 600;
@@ -2532,6 +2738,81 @@
   </head>
   <body>
     <div class="spectrum-strip"></div>
+
+    <div id="auth-gate" class="auth-gate" hidden>
+      <div class="auth-gate-bg" aria-hidden="true"></div>
+      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-brand-title">
+        <h1 class="auth-brand" id="auth-brand-title">
+          <i data-lucide="zap" style="width:1.05em;height:1.05em" aria-hidden="true"></i>
+          Chatre
+        </h1>
+        <p id="auth-gate-sub">Sign in to sync threads, workspaces, and BYOK keys.</p>
+
+        <div id="auth-gate-setup" hidden>
+          <p class="auth-setup-help">
+            Firebase providers are enabled, but this app still needs the <strong>web apiKey</strong>
+            from <code>Project settings → Your apps</code> (starts with <code>AIza…</code>).
+            Also add this site under Authentication → Settings → Authorized domains.
+          </p>
+          <label for="auth-setup-apikey">Web API key</label>
+          <input id="auth-setup-apikey" type="text" autocomplete="off" spellcheck="false" placeholder="AIza…" />
+          <label for="auth-setup-appid">App ID <span style="font-weight:400">(optional)</span></label>
+          <input id="auth-setup-appid" type="text" autocomplete="off" spellcheck="false" placeholder="1:…:web:…" />
+          <div class="auth-gate-actions">
+            <button type="button" class="btn btn-primary" id="auth-gate-setup-save">Save &amp; continue</button>
+          </div>
+        </div>
+
+        <div id="auth-gate-tabs" class="auth-tabs" role="tablist" aria-label="Account">
+          <button type="button" data-auth-tab="signin" class="active" role="tab" aria-selected="true">Sign in</button>
+          <button type="button" data-auth-tab="signup" role="tab" aria-selected="false">Create account</button>
+        </div>
+
+        <div id="auth-gate-forms">
+          <form id="auth-form-signin" autocomplete="on">
+            <label for="auth-signin-email">Email</label>
+            <input id="auth-signin-email" type="email" autocomplete="username" required />
+            <label for="auth-signin-password">Password</label>
+            <input id="auth-signin-password" type="password" autocomplete="current-password" required />
+            <div class="auth-gate-links">
+              <button type="button" class="linkish" id="auth-gate-forgot">Forgot password?</button>
+              <button type="button" class="linkish" id="auth-gate-reopen-setup">Firebase setup</button>
+            </div>
+          </form>
+
+          <form id="auth-form-signup" hidden autocomplete="on">
+            <label for="auth-signup-email">Email</label>
+            <input id="auth-signup-email" type="email" autocomplete="username" required />
+            <label for="auth-signup-password">Password</label>
+            <input id="auth-signup-password" type="password" autocomplete="new-password" required minlength="6" />
+            <label for="auth-signup-password2">Confirm password</label>
+            <input id="auth-signup-password2" type="password" autocomplete="new-password" required minlength="6" />
+          </form>
+
+          <form id="auth-form-reset" hidden autocomplete="on">
+            <label for="auth-reset-email">Email</label>
+            <input id="auth-reset-email" type="email" autocomplete="username" required />
+            <div class="auth-gate-links">
+              <button type="button" class="linkish" id="auth-gate-back-signin">Back to sign in</button>
+            </div>
+          </form>
+
+          <p id="auth-gate-error" role="alert"></p>
+
+          <div class="auth-gate-actions">
+            <button type="button" class="btn btn-primary" id="auth-gate-submit">Sign in</button>
+            <div class="auth-gate-divider">or</div>
+            <button type="button" class="btn btn-google" id="auth-gate-google">
+              <i data-lucide="chrome" style="width:15px;height:15px" aria-hidden="true"></i>
+              Continue with Google
+            </button>
+            <button type="button" class="btn auth-local" id="auth-gate-continue-local">
+              Continue without account
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
     <header>
       <h1><i data-lucide="zap" style="width:1.1em;height:1.1em;vertical-align:-0.12em" aria-hidden="true"></i> Chatre</h1>
       <p class="header-tagline">Re-EL AI ChatBot (Maerd Portal)</p>
@@ -2803,14 +3084,11 @@
         </div>
         <div class="settings-section" id="settings-auth-section">
           <h3>Account</h3>
-          <div id="auth-signed-out">
-            <input id="auth-email" type="email" placeholder="Email" autocomplete="username" />
-            <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" />
-            <div class="onboard-actions" style="margin-top:0.4rem">
-              <button type="button" class="btn" id="auth-signin">Sign in</button>
-              <button type="button" class="btn" id="auth-signup">Sign up</button>
-              <button type="button" class="btn" id="auth-google">Google</button>
-            </div>
+          <div id="auth-signed-out" class="auth-settings-signed-out">
+            <p style="margin:0 0 0.5rem;font-size:0.85rem;color:var(--text-light)">
+              Sign in to sync threads, workspaces, and BYOK keys across devices.
+            </p>
+            <button type="button" class="btn" id="auth-open-gate">Sign in / Create account</button>
             <p id="auth-error" style="color:#ffb4c0;font-size:0.8rem;margin:0.35rem 0 0"></p>
           </div>
           <div id="auth-signed-in" hidden>
@@ -2945,6 +3223,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <script src="/config.js"></script>
     <script src="/auth.js"></script>
+    <script src="/auth-screen.js"></script>
     <script src="/skills.js"></script>
     <script src="/intent.js"></script>
     <script src="/allowlists.js"></script>

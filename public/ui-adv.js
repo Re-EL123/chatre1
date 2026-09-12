@@ -128,7 +128,9 @@
     }
     if (api && /Unauthorized|Offline|bad|Sign in/i.test(api.className + api.textContent)) {
       setStatusChip("api", "warn", "Sign in to continue", function () {
-        if (window.ChatreUX && window.ChatreUX.openSettings) {
+        if (window.ChatreUX && window.ChatreUX.openAuthGate) {
+          window.ChatreUX.openAuthGate({ tab: "signin" });
+        } else if (window.ChatreUX && window.ChatreUX.openSettings) {
           window.ChatreUX.openSettings();
         } else {
           const inp = $("api-key-input");
@@ -458,7 +460,7 @@
       "<h2>Chatre</h2>" +
       "<p>Sign in, optionally add your own provider keys, then try a task. Chatre models stay the default.</p>" +
       '<ol class="empty-steps">' +
-      "<li>Sign in from Settings (email or Google)</li>" +
+      "<li>Sign in (email or Google) to sync workspaces</li>" +
       "<li>Optional: add OpenRouter / Anthropic / OpenAI / Google keys under BYOK</li>" +
       "<li>Optional: run <code>npm run companion:start</code> for desktop tools</li>" +
       "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
@@ -480,10 +482,12 @@
     const keyBtn = el("button", "btn");
     keyBtn.type = "button";
     keyBtn.innerHTML = window.ChatreKit
-      ? window.ChatreKit.labelWithIcon("user", "Open settings", 14)
-      : "Open settings";
+      ? window.ChatreKit.labelWithIcon("user", "Sign in", 14)
+      : "Sign in";
     keyBtn.addEventListener("click", function () {
-      if (window.ChatreUX && window.ChatreUX.openSettings) {
+      if (window.ChatreUX && window.ChatreUX.openAuthGate) {
+        window.ChatreUX.openAuthGate({ tab: "signin" });
+      } else if (window.ChatreUX && window.ChatreUX.openSettings) {
         window.ChatreUX.openSettings();
       }
     });

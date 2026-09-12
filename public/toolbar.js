@@ -13,6 +13,12 @@
   }
 
   function openSettingsFocus(sel) {
+    if (sel === "#auth-email" || sel === "#auth-signin-email") {
+      if (window.ChatreAuthGate && window.ChatreAuthGate.open) {
+        window.ChatreAuthGate.open({ tab: "signin" });
+        return;
+      }
+    }
     if (window.ChatreUX && window.ChatreUX.openSettings) {
       window.ChatreUX.openSettings();
     }
@@ -181,7 +187,11 @@
     if (signInBtn) {
       signInBtn.addEventListener("click", function () {
         closeAccount();
-        openSettingsFocus("#auth-email");
+        if (window.ChatreAuthGate && window.ChatreAuthGate.open) {
+          window.ChatreAuthGate.open({ tab: "signin" });
+        } else {
+          openSettingsFocus("#auth-signin-email");
+        }
       });
     }
     var signOutBtn = $("account-sign-out");

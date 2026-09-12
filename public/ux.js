@@ -139,56 +139,32 @@
     if (window.ChatreToolbar && window.ChatreToolbar.paintModelNote) {
       window.ChatreToolbar.paintModelNote();
     }
+    if (window.ChatreAuthGate && window.ChatreAuthGate.paint) {
+      window.ChatreAuthGate.paint();
+    }
+  }
+
+  function openAuthGate(opts) {
+    if (window.ChatreAuthGate && window.ChatreAuthGate.open) {
+      closeSettings();
+      window.ChatreAuthGate.open(opts || {});
+      return;
+    }
+    openSettings();
   }
 
   function initAuthUi() {
-    function run(fn) {
-      return function () {
-        setAuthError("");
-        Promise.resolve()
-          .then(fn)
-          .then(function () {
-            paintAuthUi();
-            if (window.ChatreKit) window.ChatreKit.toast("Signed in", "success");
-          })
-          .catch(function (e) {
-            setAuthError((e && e.message) || String(e));
-          });
-      };
-    }
-    var email = function () {
-      return ($("auth-email") && $("auth-email").value.trim()) || "";
-    };
-    var pass = function () {
-      return ($("auth-password") && $("auth-password").value) || "";
-    };
-    if ($("auth-signin")) {
-      $("auth-signin").addEventListener(
-        "click",
-        run(function () {
-          return window.ChatreAuth.signIn(email(), pass());
-        }),
-      );
-    }
-    if ($("auth-signup")) {
-      $("auth-signup").addEventListener(
-        "click",
-        run(function () {
-          return window.ChatreAuth.signUp(email(), pass());
-        }),
-      );
-    }
-    if ($("auth-google")) {
-      $("auth-google").addEventListener(
-        "click",
-        run(function () {
-          return window.ChatreAuth.signInGoogle();
-        }),
-      );
+    if ($("auth-open-gate")) {
+      $("auth-open-gate").addEventListener("click", function () {
+        openAuthGate({ tab: "signin" });
+      });
     }
     if ($("auth-signout")) {
       $("auth-signout").addEventListener("click", function () {
-        window.ChatreAuth.signOut().then(paintAuthUi);
+        window.ChatreAuth.signOut().then(function () {
+          paintAuthUi();
+          openAuthGate({ tab: "signin" });
+        });
       });
     }
     if (window.ChatreAuth) window.ChatreAuth.onChange(paintAuthUi);
@@ -534,9 +510,7 @@
         step = Math.max(1, step - 1);
         paint();
       } else if (act === "focus-key") {
-        openSettings();
-        var email = $("auth-email");
-        if (email) email.focus();
+        openAuthGate({ tab: "signin" });
       } else if (act === "copy-companion") {
         var cmd =
           "CHATRE_API_BASE=https://chatre-api.vercel.app CHATRE_API_TOKEN=YOUR_TOKEN npm run companion:start";
@@ -691,6 +665,7 @@
     pinShellResult: pinShellResult,
     openSettings: openSettings,
     closeSettings: closeSettings,
+    openAuthGate: openAuthGate,
     applyDensity: applyDensity,
     showOnboarding: showOnboarding,
     composerFlags: composerFlags,
