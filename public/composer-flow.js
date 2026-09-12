@@ -107,6 +107,9 @@
     host.innerHTML = bits.join("");
     host.hidden = !bits.length;
     if (run && bits.length) run.hidden = false;
+    if (window.ChatreMotion && bits.length) {
+      window.ChatreMotion.staggerChildren(host, "pill", 35);
+    }
 
     // Keep legacy phase/tool spans in sync when present
     if ($("composer-busy-phase") && phase) {
@@ -291,6 +294,9 @@
     if (window.ChatreKit && window.ChatreKit.refreshIcons) {
       window.ChatreKit.refreshIcons(host);
     }
+    if (window.ChatreMotion) {
+      window.ChatreMotion.staggerChildren(host, "pill", 45);
+    }
   }
 
   function onMicroClick(e) {
@@ -382,6 +388,9 @@
     }
     updateStatusStack({});
     paintMicroActions();
+    if (window.ChatreMotion && phase) {
+      window.ChatreMotion.onPhaseChange(phase);
+    }
   }
 
   function init() {

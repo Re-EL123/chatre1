@@ -1004,6 +1004,11 @@
         if (tool) {
           window.ChatreComposerFlow.updateStatusStack({ tool: tool });
         }
+        if (window.ChatreMotion) {
+          window.ChatreMotion.onPhaseChange(phase);
+          var runEl = $("composer-run");
+          if (runEl) window.ChatreMotion.pulse(runEl);
+        }
       } else {
         window.ChatreComposerFlow.markRunning(false);
         window.ChatreComposerFlow.paintMicroActions();

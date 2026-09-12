@@ -435,6 +435,10 @@
   function startThinking(label) {
     typingIndicator.innerHTML = '<span class="spinner"></span>' + escapeHtml(label || "Chatre is thinking…");
     typingIndicator.classList.add("visible");
+    if (window.ChatreMotion) {
+      window.ChatreMotion.animateIn(typingIndicator, "in");
+      window.ChatreMotion.onPhaseChange(label || "Thinking…");
+    }
     let dots = "";
     clearInterval(thinkingTimer);
     thinkingTimer = setInterval(() => {
@@ -1360,6 +1364,7 @@
         '<div class="tool-call-result"></div>';
       agentBody.appendChild(card);
       scrollToBottom();
+      if (window.ChatreMotion) window.ChatreMotion.markToolRunning(card);
       return card;
     };
 
@@ -1400,6 +1405,7 @@
         status.className = "tool-status error";
         resultDiv.className = "tool-call-result error";
         resultDiv.textContent = result.error || "failed";
+        if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, false);
       } else {
         status.textContent = "done";
         status.className = "tool-status done";
@@ -1410,6 +1416,10 @@
           typeof outText === "string" && outText.length > 500
             ? outText.slice(0, 500) + "\n…(truncated)"
             : outText;
+        if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, true);
+      }
+      if (result && result.path && window.ChatreMotion) {
+        window.ChatreMotion.flashPath(result.path);
       }
       scrollToBottom();
     };
@@ -3142,6 +3152,7 @@
           '<div class="tool-call-result"></div>';
         agentBody.appendChild(card);
         scrollToBottom();
+        if (window.ChatreMotion) window.ChatreMotion.markToolRunning(card);
         return card;
       };
       const updateTool = (card, result) => {
@@ -3155,6 +3166,7 @@
           status.className = "tool-status error";
           resultDiv.className = "tool-call-result error";
           resultDiv.textContent = result.error || "failed";
+          if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, false);
         } else {
           status.textContent = "done";
           status.className = "tool-status done";
@@ -3166,6 +3178,10 @@
             typeof outText === "string" && outText.length > 500
               ? outText.slice(0, 500) + "\n…(truncated)"
               : outText;
+          if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, true);
+        }
+        if (result && result.path && window.ChatreMotion) {
+          window.ChatreMotion.flashPath(result.path);
         }
         scrollToBottom();
       };

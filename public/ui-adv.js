@@ -221,6 +221,7 @@
 
     function setPhase(kind, title) {
       add(kind, title, "", { open: false });
+      if (window.ChatreMotion) window.ChatreMotion.onPhaseChange(title || kind);
     }
 
     return { root: root, add: add, setPhase: setPhase, steps: steps };
@@ -255,6 +256,7 @@
       detail.classList.toggle("open");
       detail.classList.toggle("collapsed");
     });
+    if (window.ChatreMotion) window.ChatreMotion.markToolRunning(detail);
     const slot = timeline
       ? timeline.add("tool", call.tool, detail, { open: false }).body
       : null;
@@ -291,6 +293,7 @@
       resultDiv.textContent = result.error || "failed";
       card.classList.add("open");
       card.classList.remove("collapsed");
+      if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, false);
     } else {
       status.textContent = "done";
       status.className = "tool-status done";
@@ -302,6 +305,10 @@
         typeof outText === "string" && outText.length > 400
           ? outText.slice(0, 400) + "\n…(truncated)"
           : outText;
+      if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, true);
+    }
+    if (result && result.path && window.ChatreMotion) {
+      window.ChatreMotion.flashPath(result.path);
     }
     if (result && (result.screenshot_ui || result.screenshot_preview)) {
       const dataUrl =

@@ -307,6 +307,9 @@
           });
         list.appendChild(wrap);
       });
+      if (window.ChatreMotion) {
+        window.ChatreMotion.staggerChildren(list, "file", 22);
+      }
       if (window.ChatreKit) {
         window.ChatreKit.refreshIcons(list);
         window.ChatreKit.bindTips(list);
@@ -452,6 +455,7 @@
       const row = document.createElement("div");
       row.className =
         "file-item" + (state.selectedPath === p ? " active" : "");
+      row.setAttribute("data-path", p);
       row.innerHTML =
         '<button type="button" class="file-open">' +
         (window.ChatreKit ? window.ChatreKit.iconHtml("file", 13) + " " : "") +
@@ -481,6 +485,9 @@
     if (window.ChatreKit) {
       window.ChatreKit.refreshIcons(root);
       window.ChatreKit.bindTips(root);
+    }
+    if (window.ChatreMotion) {
+      window.ChatreMotion.staggerChildren(root, "file", 28);
     }
   }
 
