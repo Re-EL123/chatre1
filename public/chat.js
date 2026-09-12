@@ -570,6 +570,7 @@
     const lines = combined.split("\n");
     const nextCarry = lines.pop() || "";
     let text = "";
+    let error = null;
 
     for (let line of lines) {
       line = line.trim();
@@ -580,6 +581,11 @@
       if (!line || line === "[DONE]") continue;
       try {
         const json = JSON.parse(line);
+        if (typeof json.error === "string" && json.error) {
+          error = json.error;
+        } else if (json.error && typeof json.error.message === "string") {
+          error = json.error.message;
+        }
         if (typeof json.response === "string") text += json.response;
         else if (typeof json.text === "string") text += json.text;
         else if (typeof json.token === "string") text += json.token;
@@ -588,7 +594,7 @@
       }
     }
 
-    return { text, carry: nextCarry };
+    return { text, carry: nextCarry, error };
   }
 
   function updateSlashSuggestions(val) {
@@ -874,6 +880,7 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let carry = "";
+      let streamError = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -881,6 +888,7 @@
         const chunk = decoder.decode(value, { stream: true });
         const parsed = extractStreamTokens(chunk, carry);
         carry = parsed.carry;
+        if (parsed.error) streamError = parsed.error;
         if (parsed.text) {
           responseText += parsed.text;
           updateAssistantMessage(assistantEl, responseText, true);
@@ -894,12 +902,18 @@
             responseText = maybe.response;
           } else {
             const parsed = extractStreamTokens(carry + "\n", "");
+            if (parsed.error) streamError = parsed.error;
             if (parsed.text) responseText += parsed.text;
           }
         } catch {
           const parsed = extractStreamTokens(carry + "\n", "");
+          if (parsed.error) streamError = parsed.error;
           if (parsed.text) responseText += parsed.text;
         }
+      }
+
+      if (streamError && !responseText) {
+        throw new Error(streamError);
       }
 
       updateAssistantMessage(assistantEl, responseText || "…", false);
@@ -911,7 +925,13 @@
       }
 
       if (!responseText) {
-        updateAssistantMessage(assistantEl, "No response from the model.", false);
+        updateAssistantMessage(
+          assistantEl,
+          streamError
+            ? "Sorry — " + formatChatError(streamError)
+            : "No response from the model. If you are on Gemini 3.x, try again — empty replies usually mean thinking used the output budget.",
+          false,
+        );
       } else {
         chatHistory.push({ role: "assistant", content: responseText });
         trimHistory();
