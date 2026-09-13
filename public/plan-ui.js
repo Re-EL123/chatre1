@@ -229,11 +229,11 @@
         : "") +
       '<div class="plan-field">' +
       '<label class="plan-label">Goal</label>' +
-      '<textarea class="plan-goal" rows="2" placeholder="Concrete goal…"></textarea>' +
+      '<textarea class="plan-goal-input" rows="2" placeholder="Concrete goal…"></textarea>' +
       "</div>" +
       '<div class="plan-field">' +
       '<label class="plan-label">Done when</label>' +
-      '<textarea class="plan-done" rows="2" placeholder="Observable completion…"></textarea>' +
+      '<textarea class="plan-done-input" rows="2" placeholder="Observable completion…"></textarea>' +
       "</div>" +
       '<div class="plan-field">' +
       '<label class="plan-label">Understanding</label>' +
@@ -264,10 +264,17 @@
       '<button type="button" class="btn plan-continue">Approve & continue</button>' +
       "</div>";
 
+    function fieldValue(sel) {
+      const el = wrap.querySelector(sel);
+      if (!el) return "";
+      return String(el.value != null ? el.value : "").trim();
+    }
+
     function fill(next) {
-      wrap.querySelector(".plan-goal").value = next.goal || "";
-      wrap.querySelector(".plan-done").value =
-        next.done_when || next.doneWhen || "";
+      const goalInput = wrap.querySelector(".plan-goal-input");
+      const doneInput = wrap.querySelector(".plan-done-input");
+      if (goalInput) goalInput.value = next.goal || "";
+      if (doneInput) doneInput.value = next.done_when || next.doneWhen || "";
       wrap.querySelector(".plan-understanding").value = next.understanding || "";
       wrap.querySelector(".plan-brief").value = next.executor_brief || "";
       wrap.querySelector(".plan-files").value = filesFromBriefing(next).join("\n");
@@ -282,7 +289,9 @@
           '<span class="plan-type">' +
           escapeHtml(type) +
           "</span>" +
-          (goal ? '<span class="plan-goal">' + escapeHtml(goal) + "</span>" : "");
+          (goal
+            ? '<span class="plan-goal-text">' + escapeHtml(goal) + "</span>"
+            : "");
       }
     }
     fill(b);
@@ -414,32 +423,20 @@
       }
       try {
         let steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
-        let files = (wrap.querySelector(".plan-files") &&
-          wrap.querySelector(".plan-files").value
-            .split("\n")
-            .map(function (s) {
-              return s.trim();
-            })
-            .filter(Boolean)) ||
-          [];
-        let criteria = (wrap.querySelector(".plan-criteria") &&
-          wrap.querySelector(".plan-criteria").value
-            .split("\n")
-            .map(function (s) {
-              return s.trim();
-            })
-            .filter(Boolean)) ||
-          [];
-        let goal = (
-          (wrap.querySelector(".plan-goal") &&
-            wrap.querySelector(".plan-goal").value.trim()) ||
-          ""
-        );
-        let doneWhen = (
-          (wrap.querySelector(".plan-done") &&
-            wrap.querySelector(".plan-done").value.trim()) ||
-          ""
-        );
+        let files = fieldValue(".plan-files")
+          .split("\n")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(Boolean);
+        let criteria = fieldValue(".plan-criteria")
+          .split("\n")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(Boolean);
+        let goal = fieldValue(".plan-goal-input");
+        let doneWhen = fieldValue(".plan-done-input");
         if (!goal) goal = String(b.goal || "Complete the user request").trim();
         if (!doneWhen && criteria.length) doneWhen = criteria[0];
         if (!doneWhen) doneWhen = "Deliverables exist and match the goal";
@@ -455,9 +452,8 @@
             String(b.task_type || "") === "document"
               ? ["/home/user/documents/"]
               : ["/home/user/projects/" + slug + "/"];
-          if (wrap.querySelector(".plan-files")) {
-            wrap.querySelector(".plan-files").value = files.join("\n");
-          }
+          const filesEl = wrap.querySelector(".plan-files");
+          if (filesEl) filesEl.value = files.join("\n");
         }
         if (steps.length < 2) {
           while (steps.length < 2) {
@@ -474,14 +470,8 @@
         const next = Object.assign({}, b, {
           goal: goal,
           done_when: doneWhen,
-          understanding:
-            (wrap.querySelector(".plan-understanding") &&
-              wrap.querySelector(".plan-understanding").value) ||
-            "",
-          executor_brief:
-            (wrap.querySelector(".plan-brief") &&
-              wrap.querySelector(".plan-brief").value) ||
-            "",
+          understanding: fieldValue(".plan-understanding"),
+          executor_brief: fieldValue(".plan-brief"),
           plan_steps: steps,
           approach: steps.map(function (s) {
             return s.text;

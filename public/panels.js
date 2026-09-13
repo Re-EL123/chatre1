@@ -66,35 +66,44 @@
     const base = (
       window.CHATRE_COMPANION_URL || "http://127.0.0.1:7843"
     ).replace(/\/$/, "");
+    // HTTPS pages cannot reach http://127.0.0.1 (mixed content) — skip local
+    // probe and rely on the API bridge status instead.
+    const canProbeLocal =
+      /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(base) &&
+      (location.protocol === "http:" ||
+        /^https:\/\//i.test(base));
     try {
-      const res = await fetch(base + "/health", { method: "GET" });
-      const data = await res.json().catch(function () {
-        return null;
-      });
-      if (res.ok && data && data.ok) {
-        setCompanionStatus(
-          "ok",
-          data.bridged ? "Desktop · bridged" : "Desktop on",
-        );
+      if (canProbeLocal) {
+        const res = await fetch(base + "/health", { method: "GET" });
+        const data = await res.json().catch(function () {
+          return null;
+        });
+        if (res.ok && data && data.ok) {
+          setCompanionStatus(
+            "ok",
+            data.bridged ? "Desktop · bridged" : "Desktop on",
+          );
+          return;
+        }
+        setCompanionStatus("bad", "Desktop error");
         return;
       }
-      setCompanionStatus("bad", "Desktop error");
     } catch {
-      // Also check API bridge status when remote is configured
-      try {
-        const r = remote();
-        if (r && r.enabled() && r.apiKey && r.apiKey()) {
-          const st = await r.companionStatus();
-          if (st && st.online) {
-            setCompanionStatus("ok", "Desktop · bridge");
-            return;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-      setCompanionStatus("off", "Desktop off");
+      /* fall through to bridge */
     }
+    try {
+      const r = remote();
+      if (r && r.enabled() && r.hasAuth && r.hasAuth()) {
+        const st = await r.companionStatus();
+        if (st && st.online) {
+          setCompanionStatus("ok", "Desktop · bridge");
+          return;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    setCompanionStatus("bad", "Desktop off");
   }
 
   async function refreshAuthStatus() {

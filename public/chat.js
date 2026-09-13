@@ -1499,6 +1499,7 @@
 
   async function runAgentTask(message, opts) {
     opts = opts || {};
+    let skipChips = false;
     const planModeRun =
       !!(opts.planMode) ||
       !!(
