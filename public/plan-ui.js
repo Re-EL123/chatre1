@@ -1,5 +1,6 @@
 /**
  * Plan approval card + confirmation chips for Chatre agent UX.
+ * PLAN.md is the source of truth shown alongside the editable briefing.
  */
 (function () {
   "use strict";
@@ -12,42 +13,78 @@
       .replace(/"/g, "&quot;");
   }
 
+  function stepsFromBriefing(src) {
+    const raw = [];
+    if (Array.isArray(src.approach) && src.approach.length) {
+      src.approach.forEach(function (s) {
+        raw.push(typeof s === "string" ? s : s.text || s.content || "");
+      });
+    } else if (Array.isArray(src.todos) && src.todos.length) {
+      src.todos.forEach(function (t) {
+        raw.push(
+          typeof t === "string" ? t : (t && (t.content || t.text)) || "",
+        );
+      });
+    } else if (Array.isArray(src.plan_steps) && src.plan_steps.length) {
+      src.plan_steps.forEach(function (s) {
+        raw.push(typeof s === "string" ? s : s.text || s.content || "");
+      });
+    } else if (src.executor_brief) {
+      String(src.executor_brief)
+        .split(/\n+/)
+        .map(function (l) {
+          return l.replace(/^[-*\d.)\s]+/, "").trim();
+        })
+        .filter(Boolean)
+        .slice(0, 12)
+        .forEach(function (l) {
+          raw.push(l);
+        });
+    }
+    return raw.filter(Boolean);
+  }
+
+  function filesFromBriefing(src) {
+    if (Array.isArray(src.files) && src.files.length) {
+      return src.files
+        .map(function (f) {
+          return typeof f === "string" ? f : (f && (f.path || f.name)) || "";
+        })
+        .filter(Boolean);
+    }
+    if (Array.isArray(src.file_list)) return src.file_list.filter(Boolean);
+    return [];
+  }
+
+  function validatePlanBriefing(next) {
+    const errors = [];
+    const goal = String(next.goal || "").trim();
+    const done = String(next.done_when || next.doneWhen || "").trim();
+    const steps = stepsFromBriefing(next);
+    const files = filesFromBriefing(next);
+    const acceptance = Array.isArray(next.success_criteria)
+      ? next.success_criteria.filter(Boolean)
+      : [];
+    if (goal.length < 4) errors.push("Goal must be a concrete sentence");
+    if (done.length < 4) errors.push("Done when must be observable");
+    if (steps.length < 2) errors.push("Checklist needs at least 2 steps");
+    if (files.length < 1) errors.push("List at least one file path to create or edit");
+    if (acceptance.length < 1) {
+      errors.push("Success criteria need at least one measurable check");
+    }
+    return errors;
+  }
+
   /**
    * Render editable plan from analyst briefing. Calls onContinue(briefing).
+   * opts: { planMarkdown, planPath, planErrors, planComplete }
    */
-  function renderPlanCard(briefing, onContinue, onCancel) {
+  function renderPlanCard(briefing, onContinue, onCancel, opts) {
     const b = Object.assign({}, briefing || {});
-    // Prefer approach/todos for checklist (analyst + templates use those).
-    function stepsFromBriefing(src) {
-      const raw = [];
-      if (Array.isArray(src.approach) && src.approach.length) {
-        src.approach.forEach(function (s) {
-          raw.push(typeof s === "string" ? s : s.text || s.content || "");
-        });
-      } else if (Array.isArray(src.todos) && src.todos.length) {
-        src.todos.forEach(function (t) {
-          raw.push(
-            typeof t === "string" ? t : (t && (t.content || t.text)) || "",
-          );
-        });
-      } else if (Array.isArray(src.plan_steps) && src.plan_steps.length) {
-        src.plan_steps.forEach(function (s) {
-          raw.push(typeof s === "string" ? s : s.text || s.content || "");
-        });
-      } else if (src.executor_brief) {
-        String(src.executor_brief)
-          .split(/\n+/)
-          .map(function (l) {
-            return l.replace(/^[-*\d.)\s]+/, "").trim();
-          })
-          .filter(Boolean)
-          .slice(0, 12)
-          .forEach(function (l) {
-            raw.push(l);
-          });
-      }
-      return raw.filter(Boolean);
-    }
+    const o = opts || {};
+    if (b.planMarkdown && !o.planMarkdown) o.planMarkdown = b.planMarkdown;
+    if (b.planPath && !o.planPath) o.planPath = b.planPath;
+    if (b.planErrors && !o.planErrors) o.planErrors = b.planErrors;
 
     function isSparse(src) {
       const hasText = !!(
@@ -98,6 +135,11 @@
                 : seeded.tools_priority,
             executor_brief: b.executor_brief || seeded.executor_brief,
             max_steps: b.max_steps || seeded.max_steps,
+            files:
+              b.files && b.files.length
+                ? b.files
+                : seeded.files || seeded.file_list || [],
+            done_when: b.done_when || seeded.done_when || "",
             template_id: tid,
           });
         }
@@ -115,6 +157,15 @@
           "Do the work with tools",
           "Verify and summarize",
         ];
+      }
+      if (!filesFromBriefing(b).length && String(b.task_type || "") === "build") {
+        b.files = ["/home/user/projects/" + (b.project_slug || "app") + "/"];
+      }
+      if (!String(b.done_when || "").trim() && b.success_criteria && b.success_criteria[0]) {
+        b.done_when = b.success_criteria[0];
+      }
+      if (!(b.success_criteria && b.success_criteria.length)) {
+        b.success_criteria = ["Deliverables exist and match the goal"];
       }
     }
 
@@ -141,11 +192,33 @@
       })
       .join("");
 
+    const errList = Array.isArray(o.planErrors) ? o.planErrors : [];
+    const errHtml = errList.length
+      ? '<div class="plan-errors" role="alert"><strong>Plan incomplete:</strong><ul>' +
+        errList
+          .map(function (e) {
+            return "<li>" + escapeHtml(e) + "</li>";
+          })
+          .join("") +
+        "</ul></div>"
+      : "";
+
     wrap.innerHTML =
       '<header class="plan-card-head">' +
       '<div class="plan-card-title">Review plan</div>' +
       '<p class="plan-meta"></p>' +
       "</header>" +
+      errHtml +
+      (o.planPath
+        ? '<p class="plan-path">PLAN.md · <code>' +
+          escapeHtml(o.planPath) +
+          "</code></p>"
+        : "") +
+      (o.planMarkdown
+        ? '<details class="plan-md-details" open>' +
+          "<summary>PLAN.md preview</summary>" +
+          '<pre class="plan-md-preview"></pre></details>'
+        : "") +
       (tplOptions
         ? '<div class="plan-field">' +
           '<label class="plan-label">Template</label>' +
@@ -154,6 +227,14 @@
           tplOptions +
           "</select></div>"
         : "") +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Goal</label>' +
+      '<textarea class="plan-goal" rows="2" placeholder="Concrete goal…"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Done when</label>' +
+      '<textarea class="plan-done" rows="2" placeholder="Observable completion…"></textarea>' +
+      "</div>" +
       '<div class="plan-field">' +
       '<label class="plan-label">Understanding</label>' +
       '<textarea class="plan-understanding" rows="2" placeholder="What the agent understood…"></textarea>' +
@@ -170,17 +251,26 @@
       '<ul class="plan-checklist"></ul>' +
       "</div>" +
       '<div class="plan-field">' +
+      '<label class="plan-label">Files (one path per line)</label>' +
+      '<textarea class="plan-files" rows="3" placeholder="/home/user/projects/app/index.html"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
       '<label class="plan-label">Success criteria</label>' +
       '<textarea class="plan-criteria" rows="2" placeholder="One criterion per line"></textarea>' +
       "</div>" +
+      '<p class="plan-validate-msg" hidden></p>' +
       '<div class="plan-actions">' +
       '<button type="button" class="btn plan-cancel">Cancel</button>' +
       '<button type="button" class="btn plan-continue">Approve & continue</button>' +
       "</div>";
 
     function fill(next) {
+      wrap.querySelector(".plan-goal").value = next.goal || "";
+      wrap.querySelector(".plan-done").value =
+        next.done_when || next.doneWhen || "";
       wrap.querySelector(".plan-understanding").value = next.understanding || "";
       wrap.querySelector(".plan-brief").value = next.executor_brief || "";
+      wrap.querySelector(".plan-files").value = filesFromBriefing(next).join("\n");
       wrap.querySelector(".plan-criteria").value = (
         next.success_criteria || []
       ).join("\n");
@@ -196,6 +286,11 @@
       }
     }
     fill(b);
+
+    const mdPre = wrap.querySelector(".plan-md-preview");
+    if (mdPre && o.planMarkdown) {
+      mdPre.textContent = String(o.planMarkdown);
+    }
 
     const list = wrap.querySelector(".plan-checklist");
     function addCheckItem(text, done) {
@@ -248,9 +343,24 @@
 
     wrap.markStepProgress = function (hint) {
       const items = Array.from(list.querySelectorAll(".plan-check-item"));
-      const open = items.find(function (li) {
-        return !li.querySelector('input[type="checkbox"]').checked;
-      });
+      const hintLower = String(hint || "").toLowerCase();
+      let matched = null;
+      if (hintLower) {
+        matched = items.find(function (li) {
+          const box = li.querySelector('input[type="checkbox"]');
+          if (box.checked) return false;
+          const text = (li.querySelector("textarea").value || "").toLowerCase();
+          return (
+            text.indexOf(hintLower) >= 0 ||
+            hintLower.indexOf(text.slice(0, 12)) >= 0
+          );
+        });
+      }
+      const open =
+        matched ||
+        items.find(function (li) {
+          return !li.querySelector('input[type="checkbox"]').checked;
+        });
       if (open) {
         open.querySelector('input[type="checkbox"]').checked = true;
         open.classList.add("done");
@@ -285,13 +395,30 @@
 
     wrap.querySelector(".plan-continue").addEventListener("click", function () {
       const steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
+      const files = wrap
+        .querySelector(".plan-files")
+        .value.split("\n")
+        .map(function (s) {
+          return s.trim();
+        })
+        .filter(Boolean);
+      const criteria = wrap
+        .querySelector(".plan-criteria")
+        .value.split("\n")
+        .map(function (s) {
+          return s.trim();
+        })
+        .filter(Boolean);
       const next = Object.assign({}, b, {
+        goal: wrap.querySelector(".plan-goal").value.trim(),
+        done_when: wrap.querySelector(".plan-done").value.trim(),
         understanding: wrap.querySelector(".plan-understanding").value,
         executor_brief: wrap.querySelector(".plan-brief").value,
         plan_steps: steps,
         approach: steps.map(function (s) {
           return s.text;
         }),
+        files: files,
         todos: steps.map(function (s, i) {
           return {
             id: "t" + (i + 1),
@@ -299,13 +426,8 @@
             status: s.done ? "done" : "pending",
           };
         }),
-        success_criteria: wrap
-          .querySelector(".plan-criteria")
-          .value.split("\n")
-          .map(function (s) {
-            return s.trim();
-          })
-          .filter(Boolean),
+        success_criteria: criteria,
+        acceptance_tests: criteria,
       });
       if (steps.length) {
         next.executor_brief =
@@ -317,6 +439,15 @@
             })
             .join("\n");
       }
+      const errors = validatePlanBriefing(next);
+      const msg = wrap.querySelector(".plan-validate-msg");
+      if (errors.length) {
+        msg.hidden = false;
+        msg.textContent = errors.join(" · ");
+        msg.className = "plan-validate-msg plan-validate-err";
+        return;
+      }
+      msg.hidden = true;
       if (typeof onContinue === "function") onContinue(next);
     });
     wrap.querySelector(".plan-cancel").addEventListener("click", function () {
@@ -371,5 +502,7 @@
     renderPlanCard: renderPlanCard,
     renderConfirmations: renderConfirmations,
     stripConfirmationTags: stripConfirmationTags,
+    validatePlanBriefing: validatePlanBriefing,
+    stepsFromBriefing: stepsFromBriefing,
   };
 })();

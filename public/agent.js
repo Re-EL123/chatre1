@@ -352,32 +352,6 @@
 
       callbacks.onAnalysis && callbacks.onAnalysis(briefing);
 
-      const isLightLocal =
-        briefing.task_type === 'chat' ||
-        (briefing.task_type === 'question' &&
-          (!briefing.todos || !briefing.todos.length));
-      if (
-        !isLightLocal &&
-        options &&
-        options.skipPlanApproval !== true &&
-        !(
-          window.ChatreAutonomy &&
-          window.ChatreAutonomy.shouldSkipPlanApproval &&
-          window.ChatreAutonomy.shouldSkipPlanApproval(briefing.task_type)
-        ) &&
-        typeof callbacks.onAwaitPlan === "function"
-      ) {
-        const edited = await callbacks.onAwaitPlan(briefing);
-        if (edited === null || edited === false) {
-          this.running = false;
-          return { response: '', cancelled: true, planCancelled: true };
-        }
-        if (edited && typeof edited === 'object') {
-          briefing = edited;
-        }
-      }
-
-
       if (briefing.needs_clarification && briefing.clarification_question) {
         const q = briefing.clarification_question;
         callbacks.onStepText && callbacks.onStepText(q, true);
@@ -396,6 +370,31 @@
           cancelled: false,
           clarification: true,
         };
+      }
+
+      const isLightLocal =
+        briefing.task_type === "chat" ||
+        (briefing.task_type === "question" &&
+          (!briefing.todos || !briefing.todos.length));
+      if (
+        !isLightLocal &&
+        options &&
+        options.skipPlanApproval !== true &&
+        !(
+          window.ChatreAutonomy &&
+          window.ChatreAutonomy.shouldSkipPlanApproval &&
+          window.ChatreAutonomy.shouldSkipPlanApproval(briefing.task_type)
+        ) &&
+        typeof callbacks.onAwaitPlan === "function"
+      ) {
+        const edited = await callbacks.onAwaitPlan(briefing);
+        if (edited === null || edited === false) {
+          this.running = false;
+          return { response: "", cancelled: true, planCancelled: true };
+        }
+        if (edited && typeof edited === "object") {
+          briefing = edited;
+        }
       }
 
       // Heuristic intent still scopes which tools are allowed.

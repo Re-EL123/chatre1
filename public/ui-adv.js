@@ -544,12 +544,23 @@
   }
 
   // ── Plan drawer ─────────────────────────────────────────────────────
-  function openPlanDrawer(briefing, onContinue, onCancel) {
+  function openPlanDrawer(briefing, onContinue, onCancel, opts) {
     const drawer = $("plan-drawer");
     const body = $("plan-drawer-body");
+    const planOpts = opts || {
+      planMarkdown: briefing && briefing.planMarkdown,
+      planPath: briefing && briefing.planPath,
+      planErrors: briefing && briefing.planErrors,
+      planComplete: briefing && briefing.planComplete,
+    };
     if (!drawer || !body || !window.ChatrePlanUI) {
       if (window.ChatrePlanUI) {
-        return window.ChatrePlanUI.renderPlanCard(briefing, onContinue, onCancel);
+        return window.ChatrePlanUI.renderPlanCard(
+          briefing,
+          onContinue,
+          onCancel,
+          planOpts,
+        );
       }
       return null;
     }
@@ -566,6 +577,7 @@
         drawer.setAttribute("aria-hidden", "true");
         onCancel && onCancel();
       },
+      planOpts,
     );
     body.appendChild(card);
     drawer.classList.add("open");

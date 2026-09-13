@@ -445,15 +445,76 @@
   }
 
   function shouldSkipPlanApproval() {
+    // Autopilot only — Plan mode and Assist share the same Approve surface.
     const auto =
       window.ChatreAutonomy &&
       window.ChatreAutonomy.get &&
       window.ChatreAutonomy.get() === "autopilot";
-    const planMode =
-      window.ChatreComposerFlow &&
-      window.ChatreComposerFlow.isPlanMode &&
-      window.ChatreComposerFlow.isPlanMode();
-    return !!(auto || planMode);
+    return !!auto;
+  }
+
+  function planOptsFromEvent(ev) {
+    return {
+      planMarkdown: ev.planMarkdown || (ev.briefing && ev.briefing.planMarkdown),
+      planPath: ev.planPath || (ev.briefing && ev.briefing.planPath),
+      planErrors: ev.planErrors || (ev.briefing && ev.briefing.planErrors) || [],
+      planComplete: ev.planComplete,
+    };
+  }
+
+  function showAwaitingPlan(ev, resumeFn) {
+    const briefing = ev.briefing || {};
+    const opts = planOptsFromEvent(ev);
+    window.__pendingPlan = {
+      threadId: (window.__chatreRemote || {}).threadId,
+      briefing: briefing,
+      planPath: opts.planPath,
+      planMarkdown: opts.planMarkdown,
+    };
+    if (ev.reason) {
+      showStep(ev.reason, true);
+    }
+    if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
+      window.ChatreUIAdv.openPlanDrawer(
+        briefing,
+        async (edited) => {
+          window.__pendingPlan = { briefing: edited };
+          if (window.ChatrePanels) {
+            window.ChatrePanels.setResumeAvailable(false);
+          }
+          if (typeof resumeFn === "function") await resumeFn();
+          else if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+            await window.ChatreUI.resumeAgent();
+          }
+        },
+        () => {
+          window.__pendingPlan = null;
+        },
+        opts,
+      );
+    } else if (window.ChatrePlanUI && chatMessages) {
+      const card = window.ChatrePlanUI.renderPlanCard(
+        briefing,
+        async (edited) => {
+          card.remove();
+          window.__pendingPlan = { briefing: edited };
+          if (window.ChatrePanels) {
+            window.ChatrePanels.setResumeAvailable(false);
+          }
+          if (typeof resumeFn === "function") await resumeFn();
+          else if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+            await window.ChatreUI.resumeAgent();
+          }
+        },
+        () => {
+          window.__pendingPlan = null;
+          card.remove();
+        },
+        opts,
+      );
+      chatMessages.appendChild(card);
+      scrollToBottom();
+    }
   }
 
   function startThinking(label) {
@@ -1772,10 +1833,6 @@
               );
             } else if (ev.type === "awaiting_plan") {
               stopThinking();
-              window.__pendingPlan = {
-                threadId: (window.__chatreRemote || {}).threadId,
-                briefing: ev.briefing,
-              };
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
               }
@@ -1786,43 +1843,7 @@
                 });
                 window.ChatreComposerFlow.paintMicroActions();
               }
-              if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
-                window.ChatreUIAdv.openPlanDrawer(
-                  ev.briefing,
-                  async (edited) => {
-                    window.__pendingPlan = { briefing: edited };
-                    if (window.ChatrePanels) {
-                      window.ChatrePanels.setResumeAvailable(false);
-                    }
-                    if (window.ChatreUI && window.ChatreUI.resumeAgent) {
-                      await window.ChatreUI.resumeAgent();
-                    }
-                  },
-                  () => {
-                    window.__pendingPlan = null;
-                  },
-                );
-              } else if (window.ChatrePlanUI && chatMessages) {
-                const card = window.ChatrePlanUI.renderPlanCard(
-                  ev.briefing,
-                  async (edited) => {
-                    card.remove();
-                    window.__pendingPlan = { briefing: edited };
-                    if (window.ChatrePanels) {
-                      window.ChatrePanels.setResumeAvailable(false);
-                    }
-                    if (window.ChatreUI && window.ChatreUI.resumeAgent) {
-                      await window.ChatreUI.resumeAgent();
-                    }
-                  },
-                  () => {
-                    window.__pendingPlan = null;
-                    card.remove();
-                  },
-                );
-                chatMessages.appendChild(card);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-              }
+              showAwaitingPlan(ev);
             } else if (ev.type === "team") {
               const label =
                 ev.event === "specialist_minted"
@@ -1927,6 +1948,9 @@
               }
               const card = showTool(ev);
               toolCards[ev.id || ev.tool] = card;
+              if (window.__activePlanChecklist && window.__activePlanChecklist.markStepProgress) {
+                window.__activePlanChecklist.markStepProgress(ev.tool || "");
+              }
               if (window.ChatreComposerFlow) {
                 window.ChatreComposerFlow.updateStatusStack({
                   phase: "Running tool",
@@ -2258,14 +2282,16 @@
                 false,
               );
             },
-            onAwaitPlan: (briefing) => {
+            onAwaitPlan: (briefing, meta) => {
               return new Promise((resolve) => {
                 stopThinking();
+                const opts = planOptsFromEvent(meta || briefing || {});
                 if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
                   window.ChatreUIAdv.openPlanDrawer(
                     briefing,
                     (edited) => resolve(edited),
                     () => resolve(null),
+                    opts,
                   );
                   return;
                 }
@@ -3604,10 +3630,6 @@
               );
             } else if (ev.type === "awaiting_plan") {
               stopThinking();
-              window.__pendingPlan = {
-                threadId: remoteState.threadId,
-                briefing: ev.briefing,
-              };
               if (window.ChatrePanels) {
                 window.ChatrePanels.setResumeAvailable(true, "awaiting_plan");
               }
@@ -3618,39 +3640,9 @@
                 });
                 window.ChatreComposerFlow.paintMicroActions();
               }
-              if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
-                window.ChatreUIAdv.openPlanDrawer(
-                  ev.briefing,
-                  async (edited) => {
-                    window.__pendingPlan = { briefing: edited };
-                    if (window.ChatrePanels) {
-                      window.ChatrePanels.setResumeAvailable(false);
-                    }
-                    await window.ChatreUI.resumeAgent();
-                  },
-                  () => {
-                    window.__pendingPlan = null;
-                  },
-                );
-              } else if (window.ChatrePlanUI && chatMessages) {
-                const card = window.ChatrePlanUI.renderPlanCard(
-                  ev.briefing,
-                  async (edited) => {
-                    card.remove();
-                    window.__pendingPlan = { briefing: edited };
-                    if (window.ChatrePanels) {
-                      window.ChatrePanels.setResumeAvailable(false);
-                    }
-                    await window.ChatreUI.resumeAgent();
-                  },
-                  () => {
-                    window.__pendingPlan = null;
-                    card.remove();
-                  },
-                );
-                chatMessages.appendChild(card);
-                scrollToBottom();
-              }
+              showAwaitingPlan(ev, function () {
+                return window.ChatreUI.resumeAgent();
+              });
             } else if (ev.type === "resume") {
               startThinking("Resumed at step " + ev.step + "/" + ev.max);
             } else if (ev.type === "thinking") {

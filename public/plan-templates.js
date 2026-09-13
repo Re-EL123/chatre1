@@ -64,6 +64,8 @@
       task_type: "build",
       understanding: "User wants a small software artifact built and verified.",
       goal: "Implement, verify, and report paths",
+      done_when: "Requested files exist and checks pass",
+      files: ["/home/user/projects/app/"],
       success_criteria: [
         "Explore workspace first",
         "Implement requested files",
@@ -94,6 +96,8 @@
       task_type: "document",
       understanding: "User wants a downloadable document or PDF.",
       goal: "Produce a real file under /home/user/documents",
+      done_when: "Document file exists under /home/user/documents",
+      files: ["/home/user/documents/"],
       success_criteria: [
         "create_document or create_pdf succeeds",
         "File path reported to the user",
@@ -131,6 +135,8 @@
       understanding: t.understanding,
       goal: goal || t.goal,
       task_type: t.task_type,
+      done_when: t.done_when || "",
+      files: (t.files || []).slice(),
       success_criteria: (t.success_criteria || []).slice(),
       approach: (t.approach || []).slice(),
       tools_priority: (t.tools_priority || []).slice(),
