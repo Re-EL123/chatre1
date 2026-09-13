@@ -4190,6 +4190,8 @@
         <div id="ide-viewer-toolbar" class="ide-viewer-toolbar" hidden>
           <button type="button" class="ide-view-mode active" data-mode="source">Source</button>
           <button type="button" class="ide-view-mode" data-mode="diff">Diff</button>
+          <button type="button" class="ide-view-mode" id="ide-context-index" title="Rebuild workspace context index">Index</button>
+          <button type="button" class="ide-view-mode" id="ide-context-complete" title="Inline complete at selection / file end">Complete</button>
         </div>
         <div id="file-viewer-path"></div>
         <div id="file-viewer" class="file-viewer"></div>
@@ -4508,6 +4510,7 @@
     <script src="/toolbar.js"></script>
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
+    <script src="/ide-context.js"></script>
     <script src="/panels.js"></script>
     <script src="/chat.js" defer></script>
   </body>

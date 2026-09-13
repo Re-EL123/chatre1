@@ -423,6 +423,57 @@
     );
   }
 
+  async function indexWorkspace(workspaceId) {
+    return request(
+      "/api/workspace?action=index&id=" + encodeURIComponent(workspaceId),
+      { method: "GET" },
+    );
+  }
+
+  async function getContextPack(workspaceId, body) {
+    return request(
+      "/api/workspace?action=context&id=" + encodeURIComponent(workspaceId),
+      { method: "POST", body: JSON.stringify(body || {}) },
+    );
+  }
+
+  async function chatComplete(opts) {
+    const o = opts || {};
+    const modelEl = document.getElementById("model-select");
+    const body = {
+      mode: "complete",
+      model: o.model || (modelEl && modelEl.value) || "",
+      prefix: o.prefix || "",
+      suffix: o.suffix || "",
+      language: o.language || "",
+      workspaceId: o.workspaceId || "",
+      activeFile: o.activeFile || "",
+      openFiles: o.openFiles || [],
+      selection: o.selection || "",
+      cursor: o.cursor || null,
+      max_tokens: o.maxTokens || 128,
+      stream: false,
+    };
+    return request("/api/chat", { method: "POST", body: JSON.stringify(body) });
+  }
+
+  async function chatEdit(opts) {
+    const o = opts || {};
+    const modelEl = document.getElementById("model-select");
+    const body = {
+      mode: "edit",
+      model: o.model || (modelEl && modelEl.value) || "",
+      instruction: o.instruction || o.message || "",
+      workspaceId: o.workspaceId || "",
+      activeFile: o.activeFile || "",
+      openFiles: o.openFiles || [],
+      selection: o.selection || "",
+      max_tokens: o.maxTokens || 2048,
+      stream: false,
+    };
+    return request("/api/chat", { method: "POST", body: JSON.stringify(body) });
+  }
+
   async function getDiff(workspaceId, filePath) {
     return request(
       "/api/workspace?action=diff&id=" +
@@ -804,6 +855,10 @@
     getFile,
     putFile,
     getDiff,
+    indexWorkspace,
+    getContextPack,
+    chatComplete,
+    chatEdit,
     exec,
     execStream,
     runAgentStream,
