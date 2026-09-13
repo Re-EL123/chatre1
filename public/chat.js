@@ -37,7 +37,7 @@
       opts.forEach((o) => {
         const v = o.value || "";
         const lab = o.textContent || v;
-        if (/^(openrouter|aihubmix|zai|anthropic|openai|google|byok):/i.test(v) || /byok/i.test(lab)) {
+        if (/^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google|byok):/i.test(v) || /byok/i.test(lab)) {
           byok.push("- `" + v + "` — " + lab);
         } else {
           chatre.push("- `" + v + "` — " + lab);
@@ -160,7 +160,7 @@
   }
 
   function isByokModel(model) {
-    return /^(openrouter|aihubmix|zai|anthropic|openai|google):/i.test(String(model || ""));
+    return /^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google):/i.test(String(model || ""));
   }
 
   function formatChatError(errMsg) {
