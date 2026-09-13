@@ -203,6 +203,23 @@
         }
       }
 
+      // Imperative build asks must stay build-typed even if the analyst LLM said "question".
+      if (
+        looksAgentic(userText) &&
+        ["chat", "question"].indexOf(String(briefing.task_type || "").toLowerCase()) !==
+          -1
+      ) {
+        briefing.task_type = "build";
+        if (!briefing.tools_priority || !briefing.tools_priority.length) {
+          briefing.tools_priority = [
+            "write_file",
+            "create_directory",
+            "list_directory",
+            "view_tree",
+          ];
+        }
+      }
+
       // Starter-chip template seed (Research / Build / Fill form).
       if (window.__pendingTemplateBriefing) {
         const seeded = window.__pendingTemplateBriefing;
@@ -394,11 +411,19 @@
         );
       }
 
+      const agenticAsk =
+        typeof looksAgentic === "function"
+          ? looksAgentic(userText)
+          : window.ChatreAgent &&
+            typeof window.ChatreAgent.looksAgentic === "function"
+            ? window.ChatreAgent.looksAgentic(userText)
+            : false;
       const forcePlan =
         (options && options.forcePlan !== false) &&
-        ["build", "debug", "document", "git", "run", "mixed"].indexOf(
-          briefing.task_type,
-        ) !== -1;
+        (agenticAsk ||
+          ["build", "debug", "document", "git", "run", "mixed"].indexOf(
+            briefing.task_type,
+          ) !== -1);
 
       const role =
         window.ChatreSubagents && window.ChatreSubagents.subagentPrompt
@@ -1308,7 +1333,8 @@
     const t = String(text).toLowerCase();
     const patterns = [
       /^(?:please\s+)?(?:build|create|make|develop|implement|write|code|scaffold|set\s+up|plan|refactor|fix|debug|test)\b/,
-      /(?:build|create|make|develop|implement|write|code|scaffold)\b.{0,80}\b(?:app|application|project|website|web\s*app|program|tool|script|api|server|database|function|class|component|document|readme)\b/,
+      /(?:build|create|make|develop|implement|write|code|scaffold)\b.{0,100}\b(?:app|application|project|website|web\s*app|program|tool|script|api|server|database|function|class|component|document|readme|calculator|widget|todo|counter|clock|quiz|form|ui)\b/,
+      /\b(?:calculator|todo\s*app|to-?do list)\b/,
       /\b(?:git\s+commit|commit and push|push\s+to\s+remote|create\s+a\s+repo|git\s+init|git\s+push)\b/,
       /\b(?:create|write|generate)\b.{0,40}\b(?:document|markdown|readme|file|folder|directory)\b/,
       /^(?:please\s+)?(?:write|generate)\s+(?:a\s+)?(?:python|javascript|js|html|css|sql|go|rust|java|typescript|ts)\b/,

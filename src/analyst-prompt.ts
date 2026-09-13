@@ -10,6 +10,7 @@ Rules:
 - Do not give the final user-facing answer. Produce an execution brief only.
 - Tailor everything to THIS request. Do not use a generic template that would fit any task.
 - If the request is a simple greeting or pure chat with no work, set task_type to "chat" and keep the brief minimal (executor should answer directly, no tools).
+- Imperative asks like "build a calculator", "make a todo app", or "create a landing page" are task_type "build" with tools_priority including write_file — never "question" or chat-only HTML dumps.
 - If key details are missing and you cannot infer them, set needs_clarification to true and ask ONE short question in clarification_question.
 
 Output ONLY a single JSON object (no markdown fences, no prose outside JSON) with this shape:

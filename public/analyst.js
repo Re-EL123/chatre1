@@ -12,6 +12,7 @@
     "- Do not give the final user-facing answer. Produce an execution brief only.\n" +
     "- Tailor everything to THIS request. Do not use a generic template that would fit any task.\n" +
     '- If the request is a simple greeting or pure chat with no work, set task_type to "chat" and keep the brief minimal.\n' +
+    '- Imperative asks like "build a calculator" or "make a todo app" are task_type "build" with write_file — never chat-only HTML dumps.\n' +
     "- If key details are missing and you cannot infer them, set needs_clarification to true and ask ONE short question in clarification_question.\n\n" +
     "Output ONLY a single JSON object (no markdown fences, no prose outside JSON) with this shape:\n" +
     "{\n" +
@@ -93,10 +94,13 @@
     ) {
       taskType = "document";
     } else if (
-      /\b(html|css|javascript|\.js\b|canvas|bubble.?shooter|game in html|website|web app|landing page|react|vue|svelte)\b/.test(
+      /\b(html|css|javascript|\.js\b|canvas|bubble.?shooter|game in html|website|web app|landing page|react|vue|svelte|frontend|vanilla)\b/.test(
         msg,
       ) ||
-      /\b(create|make|build|design|scaffold)\b.{0,60}\b(game|app|website|page|project)\b/.test(
+      /\b(create|make|build|design|scaffold|implement|write)\b.{0,100}\b(game|app|website|page|project|calculator|widget|todo|todos|counter|clock|quiz|form|dashboard|ui)\b/.test(
+        msg,
+      ) ||
+      /\b(calculator|todo\s*app|to-?do list|counter app|stopwatch|timer app|quiz app)\b/.test(
         msg,
       ) ||
       /\b(implement|refactor|fix|debug|add|write)\b.{0,40}\b(auth|api|endpoint|module|component|function|class|test|bug)\b/.test(
