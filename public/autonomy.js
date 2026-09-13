@@ -108,16 +108,16 @@
       raw.indexOf(":") < 0;
     if (!isChatre) return raw;
     var flags = byokFlags || {};
-    if (flags.openrouter) return "openrouter:openai/gpt-4o-mini";
+    if (flags.openrouter) return "openrouter:openrouter/free";
     if (flags.aihubmix) return "aihubmix:gpt-4o-mini";
     if (flags.zai) return "zai:glm-5.3-flash";
-    if (flags.groq) return "groq:llama-3.3-70b-versatile";
+    if (flags.groq) return "groq:openai/gpt-oss-20b";
     if (flags.deepseek) return "deepseek:deepseek-chat";
     if (flags.mistral) return "mistral:mistral-small-latest";
     if (flags.xai) return "xai:grok-3-mini";
     if (flags.openai) return "openai:gpt-4o-mini";
     if (flags.anthropic) return "anthropic:claude-3-5-haiku-latest";
-    if (flags.google) return "google:gemini-3.6-flash";
+    if (flags.google) return "google:gemini-2.5-flash";
     return raw;
   }
 
