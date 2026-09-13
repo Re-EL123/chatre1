@@ -394,24 +394,51 @@
     }
 
     wrap.querySelector(".plan-continue").addEventListener("click", function () {
-      const steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
-      const files = wrap
+      let steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
+      let files = wrap
         .querySelector(".plan-files")
         .value.split("\n")
         .map(function (s) {
           return s.trim();
         })
         .filter(Boolean);
-      const criteria = wrap
+      let criteria = wrap
         .querySelector(".plan-criteria")
         .value.split("\n")
         .map(function (s) {
           return s.trim();
         })
         .filter(Boolean);
+      let goal = wrap.querySelector(".plan-goal").value.trim();
+      let doneWhen = wrap.querySelector(".plan-done").value.trim();
+      if (!goal) goal = String(b.goal || "Complete the user request").trim();
+      if (!doneWhen && criteria.length) doneWhen = criteria[0];
+      if (!doneWhen) doneWhen = "Deliverables exist and match the goal";
+      if (!criteria.length) criteria = [doneWhen];
+      if (!files.length) {
+        const slug = String(b.project_slug || b.task_type || "app")
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 32) || "app";
+        files =
+          String(b.task_type || "") === "document"
+            ? ["/home/user/documents/"]
+            : ["/home/user/projects/" + slug + "/"];
+        wrap.querySelector(".plan-files").value = files.join("\n");
+      }
+      if (steps.length < 2) {
+        while (steps.length < 2) {
+          steps.push({
+            text: steps.length === 0 ? "Implement the work" : "Verify and summarize",
+            done: false,
+          });
+          addCheckItem(steps[steps.length - 1].text, false);
+        }
+      }
       const next = Object.assign({}, b, {
-        goal: wrap.querySelector(".plan-goal").value.trim(),
-        done_when: wrap.querySelector(".plan-done").value.trim(),
+        goal: goal,
+        done_when: doneWhen,
         understanding: wrap.querySelector(".plan-understanding").value,
         executor_brief: wrap.querySelector(".plan-brief").value,
         plan_steps: steps,
@@ -448,7 +475,22 @@
         return;
       }
       msg.hidden = true;
-      if (typeof onContinue === "function") onContinue(next);
+      const btn = wrap.querySelector(".plan-continue");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Starting…";
+      }
+      try {
+        if (typeof onContinue === "function") onContinue(next);
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Approve & continue";
+        }
+        msg.hidden = false;
+        msg.textContent = (err && err.message) || "Could not continue";
+        msg.className = "plan-validate-msg plan-validate-err";
+      }
     });
     wrap.querySelector(".plan-cancel").addEventListener("click", function () {
       if (typeof onCancel === "function") onCancel();

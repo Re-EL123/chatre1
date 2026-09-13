@@ -3349,7 +3349,14 @@
       }
     },
     resumeAgent: async function () {
-      if (isProcessing) return;
+      const approvingPending = !!(
+        window.__pendingPlan && window.__pendingPlan.briefing
+      );
+      // Plan approve must not silently no-op if the prior stream just paused.
+      if (isProcessing && !approvingPending) return;
+      if (isProcessing && approvingPending) {
+        setBusy(false);
+      }
       if (window.__localResumeMessages && window.__localResumeMessages.length) {
         return runAgentTask(null, {
           resumeMessages: window.__localResumeMessages,
@@ -3361,9 +3368,13 @@
         addMessage("assistant", "No thread to resume.");
         return;
       }
-      if (isProcessing) return;
+      if (isProcessing && !approvingPending) return;
       setBusy(true, "agent");
-      startThinking("Resuming agent from checkpoint");
+      startThinking(
+        approvingPending
+          ? "Continuing approved plan"
+          : "Resuming agent from checkpoint",
+      );
       if (window.ChatreUX) {
         window.ChatreUX.startRun("Resumed task");
       }
