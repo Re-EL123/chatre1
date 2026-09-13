@@ -89,7 +89,8 @@
     if (t === "chat") return true;
     if (level === "autopilot") return true;
     if (level === "assist") {
-      return ["question", "document", "research", "browser"].indexOf(t) >= 0;
+      // Match API shouldAwaitPlan — pause for document/research/build work.
+      return ["question", "browser", "chat"].indexOf(t) >= 0;
     }
     return false;
   }
