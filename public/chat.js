@@ -406,7 +406,7 @@
     scrollToBottom();
   }
 
-  function setBusy(busy, mode) {
+  function setBusy(busy, mode, opts) {
     isProcessing = busy;
     sendButton.disabled = false;
     userInput.disabled = false;
@@ -439,7 +439,14 @@
       }
       window.ChatreComposer.setBusyUi(busy, busyMeta);
     }
-    if (!busy && window.ChatreComposer && window.ChatreComposer.flushQueue) {
+    // Plan approve must clear busy without flushing a queued send (that
+    // races and makes Approve & continue look like a no-op).
+    if (
+      !busy &&
+      !(opts && opts.skipFlush) &&
+      window.ChatreComposer &&
+      window.ChatreComposer.flushQueue
+    ) {
       window.ChatreComposer.flushQueue();
     }
   }
@@ -465,28 +472,43 @@
   function showAwaitingPlan(ev, resumeFn) {
     const briefing = ev.briefing || {};
     const opts = planOptsFromEvent(ev);
+    const remote = window.__chatreRemote || {};
     window.__pendingPlan = {
-      threadId: (window.__chatreRemote || {}).threadId,
+      threadId: remote.threadId || null,
+      workspaceId: remote.workspaceId || null,
       briefing: briefing,
       planPath: opts.planPath,
       planMarkdown: opts.planMarkdown,
     };
     if (ev.reason) {
-      showStep(ev.reason, true);
+      addMessage("assistant", String(ev.reason));
+    }
+    async function approveAndContinue(edited) {
+      const prev = window.__pendingPlan || {};
+      window.__pendingPlan = {
+        threadId: prev.threadId || (window.__chatreRemote || {}).threadId,
+        workspaceId:
+          prev.workspaceId || (window.__chatreRemote || {}).workspaceId,
+        briefing: edited,
+        planPath: prev.planPath,
+        planMarkdown: prev.planMarkdown,
+        approve: true,
+      };
+      if (window.ChatrePanels) {
+        window.ChatrePanels.setResumeAvailable(false);
+      }
+      if (typeof resumeFn === "function") {
+        await resumeFn();
+      } else if (window.ChatreUI && window.ChatreUI.resumeAgent) {
+        await window.ChatreUI.resumeAgent();
+      } else {
+        throw new Error("Resume is not available — refresh and try again.");
+      }
     }
     if (window.ChatreUIAdv && window.ChatreUIAdv.openPlanDrawer) {
       window.ChatreUIAdv.openPlanDrawer(
         briefing,
-        async (edited) => {
-          window.__pendingPlan = { briefing: edited };
-          if (window.ChatrePanels) {
-            window.ChatrePanels.setResumeAvailable(false);
-          }
-          if (typeof resumeFn === "function") await resumeFn();
-          else if (window.ChatreUI && window.ChatreUI.resumeAgent) {
-            await window.ChatreUI.resumeAgent();
-          }
-        },
+        approveAndContinue,
         () => {
           window.__pendingPlan = null;
         },
@@ -497,14 +519,7 @@
         briefing,
         async (edited) => {
           card.remove();
-          window.__pendingPlan = { briefing: edited };
-          if (window.ChatrePanels) {
-            window.ChatrePanels.setResumeAvailable(false);
-          }
-          if (typeof resumeFn === "function") await resumeFn();
-          else if (window.ChatreUI && window.ChatreUI.resumeAgent) {
-            await window.ChatreUI.resumeAgent();
-          }
+          await approveAndContinue(edited);
         },
         () => {
           window.__pendingPlan = null;
@@ -3349,27 +3364,44 @@
       }
     },
     resumeAgent: async function () {
-      const approvingPending = !!(
-        window.__pendingPlan && window.__pendingPlan.briefing
-      );
+      const pendingSnap = window.__pendingPlan || null;
+      const approvingPending = !!(pendingSnap && pendingSnap.briefing);
       // Plan approve must not silently no-op if the prior stream just paused.
-      if (isProcessing && !approvingPending) return;
+      if (isProcessing && !approvingPending) {
+        addMessage(
+          "assistant",
+          "Still working — wait for the current run to pause, then Approve again.",
+        );
+        return;
+      }
       if (isProcessing && approvingPending) {
-        setBusy(false);
+        setBusy(false, null, { skipFlush: true });
       }
       if (window.__localResumeMessages && window.__localResumeMessages.length) {
         return runAgentTask(null, {
           resumeMessages: window.__localResumeMessages,
         });
       }
-      if (!window.ChatreRemote || !window.ChatreRemote.enabled()) return;
-      const remoteState = window.__chatreRemote || {};
+      if (!window.ChatreRemote || !window.ChatreRemote.enabled()) {
+        addMessage(
+          "assistant",
+          "Remote API is not configured — cannot continue the plan.",
+        );
+        return;
+      }
+      const remoteState = Object.assign({}, window.__chatreRemote || {});
+      if (!remoteState.threadId && pendingSnap && pendingSnap.threadId) {
+        remoteState.threadId = pendingSnap.threadId;
+        remoteState.workspaceId =
+          pendingSnap.workspaceId || remoteState.workspaceId || null;
+        window.__chatreRemote = remoteState;
+      }
       if (!remoteState.threadId) {
-        addMessage("assistant", "No thread to resume.");
+        addMessage("assistant", "No thread to resume — start a new agent run.");
         return;
       }
       if (isProcessing && !approvingPending) return;
-      setBusy(true, "agent");
+      setBusy(true, "agent", { skipFlush: true });
       startThinking(
         approvingPending
           ? "Continuing approved plan"
@@ -3494,7 +3526,7 @@
       let tokenEl = null;
 
       try {
-        const pendingPlan = window.__pendingPlan;
+        const pendingPlan = pendingSnap || window.__pendingPlan;
         const approvingPlan = !!(pendingPlan && pendingPlan.briefing);
         if (approvingPlan) {
           window.__pendingPlan = null;

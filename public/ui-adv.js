@@ -570,7 +570,7 @@
       function (edited) {
         drawer.classList.remove("open");
         drawer.setAttribute("aria-hidden", "true");
-        onContinue && onContinue(edited);
+        return onContinue && onContinue(edited);
       },
       function () {
         drawer.classList.remove("open");
@@ -582,6 +582,12 @@
     body.appendChild(card);
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
+    if (window.ChatreMotion && window.ChatreMotion.animateIn) {
+      window.ChatreMotion.animateIn(
+        $("plan-drawer-panel") || drawer,
+        "panel",
+      );
+    }
     return card;
   }
 

@@ -393,106 +393,158 @@
       });
     }
 
-    wrap.querySelector(".plan-continue").addEventListener("click", function () {
-      let steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
-      let files = wrap
-        .querySelector(".plan-files")
-        .value.split("\n")
-        .map(function (s) {
-          return s.trim();
-        })
-        .filter(Boolean);
-      let criteria = wrap
-        .querySelector(".plan-criteria")
-        .value.split("\n")
-        .map(function (s) {
-          return s.trim();
-        })
-        .filter(Boolean);
-      let goal = wrap.querySelector(".plan-goal").value.trim();
-      let doneWhen = wrap.querySelector(".plan-done").value.trim();
-      if (!goal) goal = String(b.goal || "Complete the user request").trim();
-      if (!doneWhen && criteria.length) doneWhen = criteria[0];
-      if (!doneWhen) doneWhen = "Deliverables exist and match the goal";
-      if (!criteria.length) criteria = [doneWhen];
-      if (!files.length) {
-        const slug = String(b.project_slug || b.task_type || "app")
-          .toLowerCase()
-          .replace(/[^a-z0-9_-]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .slice(0, 32) || "app";
-        files =
-          String(b.task_type || "") === "document"
-            ? ["/home/user/documents/"]
-            : ["/home/user/projects/" + slug + "/"];
-        wrap.querySelector(".plan-files").value = files.join("\n");
+    wrap.querySelector(".plan-continue").addEventListener("click", function (ev) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      if (window.ChatreMotion && window.ChatreMotion.tap) {
+        window.ChatreMotion.tap(wrap.querySelector(".plan-continue"));
       }
-      if (steps.length < 2) {
-        while (steps.length < 2) {
-          steps.push({
-            text: steps.length === 0 ? "Implement the work" : "Verify and summarize",
-            done: false,
-          });
-          addCheckItem(steps[steps.length - 1].text, false);
-        }
-      }
-      const next = Object.assign({}, b, {
-        goal: goal,
-        done_when: doneWhen,
-        understanding: wrap.querySelector(".plan-understanding").value,
-        executor_brief: wrap.querySelector(".plan-brief").value,
-        plan_steps: steps,
-        approach: steps.map(function (s) {
-          return s.text;
-        }),
-        files: files,
-        todos: steps.map(function (s, i) {
-          return {
-            id: "t" + (i + 1),
-            content: s.text,
-            status: s.done ? "done" : "pending",
-          };
-        }),
-        success_criteria: criteria,
-        acceptance_tests: criteria,
-      });
-      if (steps.length) {
-        next.executor_brief =
-          (next.executor_brief ? next.executor_brief + "\n\n" : "") +
-          "Checklist:\n" +
-          steps
-            .map(function (s, i) {
-              return (s.done ? "[x] " : "[ ] ") + (i + 1) + ". " + s.text;
-            })
-            .join("\n");
-      }
-      const errors = validatePlanBriefing(next);
-      const msg = wrap.querySelector(".plan-validate-msg");
-      if (errors.length) {
-        msg.hidden = false;
-        msg.textContent = errors.join(" · ");
-        msg.className = "plan-validate-msg plan-validate-err";
-        return;
-      }
-      msg.hidden = true;
       const btn = wrap.querySelector(".plan-continue");
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = "Starting…";
-      }
-      try {
-        if (typeof onContinue === "function") onContinue(next);
-      } catch (err) {
+      const msg = wrap.querySelector(".plan-validate-msg");
+      function fail(text) {
         if (btn) {
           btn.disabled = false;
           btn.textContent = "Approve & continue";
         }
-        msg.hidden = false;
-        msg.textContent = (err && err.message) || "Could not continue";
-        msg.className = "plan-validate-msg plan-validate-err";
+        if (msg) {
+          msg.hidden = false;
+          msg.textContent = text || "Could not continue";
+          msg.className = "plan-validate-msg plan-validate-err";
+        }
+      }
+      try {
+        let steps = wrap.__collectSteps ? wrap.__collectSteps() : [];
+        let files = (wrap.querySelector(".plan-files") &&
+          wrap.querySelector(".plan-files").value
+            .split("\n")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean)) ||
+          [];
+        let criteria = (wrap.querySelector(".plan-criteria") &&
+          wrap.querySelector(".plan-criteria").value
+            .split("\n")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean)) ||
+          [];
+        let goal = (
+          (wrap.querySelector(".plan-goal") &&
+            wrap.querySelector(".plan-goal").value.trim()) ||
+          ""
+        );
+        let doneWhen = (
+          (wrap.querySelector(".plan-done") &&
+            wrap.querySelector(".plan-done").value.trim()) ||
+          ""
+        );
+        if (!goal) goal = String(b.goal || "Complete the user request").trim();
+        if (!doneWhen && criteria.length) doneWhen = criteria[0];
+        if (!doneWhen) doneWhen = "Deliverables exist and match the goal";
+        if (!criteria.length) criteria = [doneWhen];
+        if (!files.length) {
+          const slug =
+            String(b.project_slug || b.task_type || "app")
+              .toLowerCase()
+              .replace(/[^a-z0-9_-]+/g, "-")
+              .replace(/^-+|-+$/g, "")
+              .slice(0, 32) || "app";
+          files =
+            String(b.task_type || "") === "document"
+              ? ["/home/user/documents/"]
+              : ["/home/user/projects/" + slug + "/"];
+          if (wrap.querySelector(".plan-files")) {
+            wrap.querySelector(".plan-files").value = files.join("\n");
+          }
+        }
+        if (steps.length < 2) {
+          while (steps.length < 2) {
+            steps.push({
+              text:
+                steps.length === 0
+                  ? "Implement the work"
+                  : "Verify and summarize",
+              done: false,
+            });
+            addCheckItem(steps[steps.length - 1].text, false);
+          }
+        }
+        const next = Object.assign({}, b, {
+          goal: goal,
+          done_when: doneWhen,
+          understanding:
+            (wrap.querySelector(".plan-understanding") &&
+              wrap.querySelector(".plan-understanding").value) ||
+            "",
+          executor_brief:
+            (wrap.querySelector(".plan-brief") &&
+              wrap.querySelector(".plan-brief").value) ||
+            "",
+          plan_steps: steps,
+          approach: steps.map(function (s) {
+            return s.text;
+          }),
+          files: files,
+          todos: steps.map(function (s, i) {
+            return {
+              id: "t" + (i + 1),
+              content: s.text,
+              status: s.done ? "done" : "pending",
+            };
+          }),
+          success_criteria: criteria,
+          acceptance_tests: criteria,
+        });
+        if (steps.length) {
+          next.executor_brief =
+            (next.executor_brief ? next.executor_brief + "\n\n" : "") +
+            "Checklist:\n" +
+            steps
+              .map(function (s, i) {
+                return (s.done ? "[x] " : "[ ] ") + (i + 1) + ". " + s.text;
+              })
+              .join("\n");
+        }
+        const errors = validatePlanBriefing(next);
+        if (errors.length) {
+          fail(errors.join(" · "));
+          return;
+        }
+        if (msg) msg.hidden = true;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Starting…";
+          btn.classList.add("is-loading");
+        }
+        Promise.resolve()
+          .then(function () {
+            if (typeof onContinue !== "function") {
+              throw new Error("No continue handler attached");
+            }
+            return onContinue(next);
+          })
+          .then(function () {
+            if (btn) {
+              btn.textContent = "Approved";
+              btn.classList.remove("is-loading");
+              btn.classList.add("is-done");
+            }
+          })
+          .catch(function (err) {
+            fail((err && err.message) || "Could not continue");
+            if (btn) btn.classList.remove("is-loading");
+          });
+      } catch (err) {
+        fail((err && err.message) || "Could not continue");
       }
     });
-    wrap.querySelector(".plan-cancel").addEventListener("click", function () {
+    wrap.querySelector(".plan-cancel").addEventListener("click", function (ev) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      if (window.ChatreMotion && window.ChatreMotion.tap) {
+        window.ChatreMotion.tap(wrap.querySelector(".plan-cancel"));
+      }
       if (typeof onCancel === "function") onCancel();
       wrap.remove();
     });

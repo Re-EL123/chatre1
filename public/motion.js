@@ -77,6 +77,36 @@
     el.classList.add("ch-motion-pulse");
   }
 
+  function tap(el) {
+    if (!el || reduced) return el;
+    el.classList.remove("ch-btn-tap");
+    void el.offsetWidth;
+    el.classList.add("ch-btn-tap");
+    window.setTimeout(function () {
+      el.classList.remove("ch-btn-tap");
+    }, 280);
+    return el;
+  }
+
+  function bindButtonTaps(root) {
+    var host = root || document;
+    if (host.__chatreTapBound) return;
+    host.__chatreTapBound = true;
+    host.addEventListener(
+      "pointerdown",
+      function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest(
+          "button, .btn, .starter-chip, .status-chip, .micro-action, .plan-continue, .plan-cancel, #send-button",
+        );
+        if (!btn || btn.disabled) return;
+        tap(btn);
+      },
+      true,
+    );
+  }
+
   function flashPath(path) {
     if (!path || reduced) return;
     var rows = document.querySelectorAll(".file-item[data-path]");
@@ -134,6 +164,7 @@
 
   function init() {
     observeChat();
+    bindButtonTaps(document);
     document.documentElement.classList.toggle("ch-reduced-motion", !!reduced);
   }
 
@@ -145,6 +176,7 @@
     markToolDone: markToolDone,
     staggerChildren: staggerChildren,
     pulse: pulse,
+    tap: tap,
     flashPath: flashPath,
     onMessageAdded: onMessageAdded,
     onPhaseChange: onPhaseChange,

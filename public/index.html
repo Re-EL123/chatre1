@@ -435,6 +435,32 @@
         font-weight: 600;
         font-size: 0.95rem;
         font-family: inherit;
+        transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+        will-change: transform;
+      }
+      .btn:active:not(:disabled),
+      button:active:not(:disabled),
+      .starter-chip:active,
+      .status-chip:active,
+      .micro-action:active {
+        transform: scale(0.96);
+        filter: brightness(1.08);
+      }
+      .ch-btn-tap {
+        animation: ch-btn-tap 0.28s ease;
+      }
+      @keyframes ch-btn-tap {
+        0% { transform: scale(1); }
+        40% { transform: scale(0.94); filter: brightness(1.12); }
+        100% { transform: scale(1); }
+      }
+      .plan-continue.is-loading,
+      .btn.is-loading {
+        opacity: 0.85;
+        cursor: progress;
+      }
+      .plan-continue.is-done {
+        background: rgba(76, 175, 122, 0.32) !important;
       }
 
       #send-button {
