@@ -3857,8 +3857,9 @@
 
         <div id="auth-gate-setup" hidden>
           <p class="auth-setup-help">
-            Firebase providers are enabled, but this app still needs the <strong>web apiKey</strong>
-            from <code>Project settings → Your apps</code> (starts with <code>AIza…</code>).
+            <strong>Admin / localhost only.</strong> End users never paste keys —
+            the Worker serves Firebase config from Cloudflare env
+            (<code>FIREBASE_API_KEY</code>, <code>FIREBASE_APP_ID</code>).
             Also add this site under Authentication → Settings → Authorized domains.
           </p>
           <label for="auth-setup-apikey">Web API key</label>
@@ -3867,6 +3868,15 @@
           <input id="auth-setup-appid" type="text" autocomplete="off" spellcheck="false" placeholder="1:…:web:…" />
           <div class="auth-gate-actions">
             <button type="button" class="btn btn-primary" id="auth-gate-setup-save">Save &amp; continue</button>
+          </div>
+        </div>
+
+        <div id="auth-gate-unavailable" hidden>
+          <p id="auth-gate-unavailable-msg" class="auth-setup-help">
+            Sign-in isn’t configured on this deployment yet.
+          </p>
+          <div class="auth-gate-actions">
+            <button type="button" class="btn" id="auth-gate-continue-local-unavail">Continue without account</button>
           </div>
         </div>
 

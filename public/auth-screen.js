@@ -50,13 +50,32 @@
     });
   }
 
+  function allowManualFirebaseSetup() {
+    try {
+      var q = new URLSearchParams(window.location.search || "");
+      if (q.get("firebase_setup") === "1" || q.get("setup") === "1") return true;
+      var host = window.location.hostname || "";
+      if (host === "localhost" || host === "127.0.0.1") return true;
+    } catch (e) {
+      /* ignore */
+    }
+    return false;
+  }
+
   function showTab(name) {
     tab = name;
     var configured = window.ChatreAuth && window.ChatreAuth.configured();
-    if (!configured && name !== "setup") name = "setup";
+    var allowSetup = allowManualFirebaseSetup();
+    if (!configured && name === "setup" && !allowSetup) {
+      name = "unavailable";
+    }
+    if (!configured && name !== "setup" && name !== "unavailable") {
+      name = allowSetup ? "setup" : "unavailable";
+    }
     tab = name;
 
     var setup = $("auth-gate-setup");
+    var unavailable = $("auth-gate-unavailable");
     var forms = $("auth-gate-forms");
     var tabs = $("auth-gate-tabs");
     var google = $("auth-gate-google");
@@ -64,9 +83,10 @@
     var sub = $("auth-gate-sub");
 
     if (setup) setup.hidden = name !== "setup";
-    if (forms) forms.hidden = name === "setup";
-    if (tabs) tabs.hidden = name === "setup" || name === "reset";
-    if (google) google.hidden = name === "setup" || name === "reset";
+    if (unavailable) unavailable.hidden = name !== "unavailable";
+    if (forms) forms.hidden = name === "setup" || name === "unavailable";
+    if (tabs) tabs.hidden = name === "setup" || name === "unavailable" || name === "reset";
+    if (google) google.hidden = name === "setup" || name === "unavailable" || name === "reset";
     if (resetLink) resetLink.hidden = name !== "signin";
 
     if (tabs) {
@@ -87,7 +107,9 @@
     if (sub) {
       if (name === "setup") {
         sub.textContent =
-          "Paste your Firebase web apiKey once. Providers can stay enabled in the console.";
+          "Dev/admin only: paste the Firebase web apiKey. End users get this from Cloudflare automatically.";
+      } else if (name === "unavailable") {
+        sub.textContent = "Sign-in isn’t ready on this deployment yet.";
       } else if (name === "signup") {
         sub.textContent = "Create an account to sync threads, workspaces, and BYOK keys.";
       } else if (name === "reset") {
@@ -99,7 +121,7 @@
 
     var submit = $("auth-gate-submit");
     if (submit) {
-      submit.hidden = name === "setup";
+      submit.hidden = name === "setup" || name === "unavailable";
       submit.textContent =
         name === "signup"
           ? "Create account"
@@ -113,6 +135,21 @@
             ? "auth-form-reset"
             : "auth-form-signin";
       submit.setAttribute("form", formId);
+    }
+
+    if (name === "unavailable") {
+      var msg = $("auth-gate-unavailable-msg");
+      var err =
+        (window.ChatreAuth &&
+          window.ChatreAuth.state &&
+          window.ChatreAuth.state.initError) ||
+        "";
+      if (msg) {
+        msg.textContent =
+          err && typeof err === "string" && err !== "missing_config"
+            ? err
+            : "This site loads Firebase from the Worker. Set FIREBASE_API_KEY (and FIREBASE_APP_ID) in the Cloudflare Worker for chatre1, then redeploy. Users should never paste keys.";
+      }
     }
 
     setError("");
@@ -133,10 +170,13 @@
     gate.classList.add("open");
     document.body.classList.add("auth-gate-open");
     var configured = window.ChatreAuth && window.ChatreAuth.configured();
+    var allowSetup = allowManualFirebaseSetup();
     if (opts && opts.tab) showTab(opts.tab);
-    else showTab(configured ? "signin" : "setup");
+    else if (configured) showTab("signin");
+    else if (allowSetup) showTab("setup");
+    else showTab("unavailable");
     var focusId =
-      !configured
+      !configured && allowSetup
         ? "auth-setup-apikey"
         : tab === "signup"
           ? "auth-signup-email"
@@ -158,6 +198,10 @@
 
   function paint() {
     if (!window.ChatreAuth) return;
+    // Wait until Worker firebase-config hydrate finishes — avoids flashing the paste form.
+    if (window.ChatreAuth.state && !window.ChatreAuth.state.bootstrapped) {
+      return;
+    }
     if (window.ChatreAuth.isSignedIn()) {
       closeGate();
       return;
@@ -165,7 +209,7 @@
     if (shouldShowGate()) openGate();
     else closeGate();
 
-    // Reflect config state in setup fields
+    // Reflect config state in setup fields (admin/dev only)
     var c = window.CHATRE_FIREBASE || {};
     if ($("auth-setup-apikey") && !$("auth-setup-apikey").value) {
       $("auth-setup-apikey").value = c.apiKey || "";
@@ -303,6 +347,8 @@
 
     var localBtn = $("auth-gate-continue-local");
     if (localBtn) localBtn.addEventListener("click", continueLocal);
+    var localBtnUnavail = $("auth-gate-continue-local-unavail");
+    if (localBtnUnavail) localBtnUnavail.addEventListener("click", continueLocal);
 
     ["auth-form-signin", "auth-form-signup", "auth-form-reset"].forEach(
       function (id) {
@@ -317,8 +363,10 @@
 
     var reopenSetup = $("auth-gate-reopen-setup");
     if (reopenSetup) {
+      reopenSetup.hidden = !allowManualFirebaseSetup();
       reopenSetup.addEventListener("click", function (e) {
         e.preventDefault();
+        if (!allowManualFirebaseSetup()) return;
         showTab("setup");
       });
     }

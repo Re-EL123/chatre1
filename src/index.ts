@@ -267,20 +267,40 @@ export default {
         return new Response("Method not allowed", { status: 405 });
       }
       // Web API keys are designed to ship in clients; restrict by Authorized domains in Firebase.
-      const apiKey = String(env.FIREBASE_API_KEY || "").trim();
+      // Accept common aliases so dashboard naming mismatches still work.
+      const apiKey = String(
+        env.FIREBASE_API_KEY ||
+          env.FIREBASE_WEB_API_KEY ||
+          env.VITE_FIREBASE_API_KEY ||
+          "",
+      ).trim();
       if (!apiKey) {
-        return jsonResponse({ configured: false }, 200);
+        return jsonResponse(
+          {
+            configured: false,
+            error:
+              "Set Worker env FIREBASE_API_KEY (and optionally FIREBASE_APP_ID, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID), then redeploy.",
+          },
+          200,
+        );
       }
       return jsonResponse(
         {
           configured: true,
           apiKey,
           authDomain:
-            String(env.FIREBASE_AUTH_DOMAIN || "").trim() ||
-            "re-el-eed0d.firebaseapp.com",
+            String(
+              env.FIREBASE_AUTH_DOMAIN ||
+                env.VITE_FIREBASE_AUTH_DOMAIN ||
+                "",
+            ).trim() || "re-el-eed0d.firebaseapp.com",
           projectId:
-            String(env.FIREBASE_PROJECT_ID || "").trim() || "re-el-eed0d",
-          appId: String(env.FIREBASE_APP_ID || "").trim() || "",
+            String(
+              env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || "",
+            ).trim() || "re-el-eed0d",
+          appId: String(
+            env.FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || "",
+          ).trim(),
         },
         200,
       );

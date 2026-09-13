@@ -23,8 +23,9 @@
 
   /**
    * Firebase web app config for Auth (email/password + Google).
-   * apiKey is required. Prefer Worker env FIREBASE_API_KEY, or paste once
-   * on the auth setup screen (saved to localStorage).
+   * apiKey comes from Worker GET /api/firebase-config (Cloudflare env
+   * FIREBASE_API_KEY). Do not ship keys to end users — localStorage is
+   * only a cache / localhost fallback.
    * Project default: re-el-eed0d
    */
   if (!window.CHATRE_FIREBASE) {

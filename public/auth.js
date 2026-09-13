@@ -10,6 +10,10 @@
     profile: null,
     ready: false,
     initError: null,
+    /** true after bootstrap tried /api/firebase-config (success or fail). */
+    bootstrapped: false,
+    /** true when Worker returned configured:true. */
+    serverConfigured: false,
   };
 
   var listeners = [];
@@ -59,10 +63,24 @@
 
   async function hydrateFromServer() {
     try {
-      var res = await fetch("/api/firebase-config", { method: "GET" });
-      if (!res.ok) return null;
+      var res = await fetch("/api/firebase-config", {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        state.serverConfigured = false;
+        return null;
+      }
       var data = await res.json();
+      if (data && data.configured === false) {
+        state.serverConfigured = false;
+        state.initError =
+          (data && data.error) ||
+          "Firebase is not configured on the Worker. Set FIREBASE_API_KEY in Cloudflare and redeploy.";
+        return null;
+      }
       if (data && data.apiKey) {
+        state.serverConfigured = true;
         persistConfig({
           apiKey: data.apiKey,
           authDomain: data.authDomain || cfg().authDomain,
@@ -71,7 +89,9 @@
         });
         return data;
       }
+      state.serverConfigured = false;
     } catch (e) {
+      state.serverConfigured = false;
       /* offline / static host */
     }
     return null;
@@ -225,6 +245,7 @@
   }
 
   async function bootstrap() {
+    state.bootstrapped = false;
     await hydrateFromServer();
     // localStorage already applied in config.js; re-merge in case hydrate filled gaps
     persistConfig({
@@ -240,6 +261,8 @@
         "re-el-eed0d",
     });
     await startFirebase();
+    state.bootstrapped = true;
+    notify();
   }
 
   async function signUp(email, password) {
