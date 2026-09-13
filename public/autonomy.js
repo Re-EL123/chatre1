@@ -110,6 +110,7 @@
     var flags = byokFlags || {};
     if (flags.openrouter) return "openrouter:openai/gpt-4o-mini";
     if (flags.aihubmix) return "aihubmix:gpt-4o-mini";
+    if (flags.zai) return "zai:glm-5.3-flash";
     if (flags.openai) return "openai:gpt-4o-mini";
     if (flags.anthropic) return "anthropic:claude-3-5-haiku-latest";
     if (flags.google) return "google:gemini-3.6-flash";

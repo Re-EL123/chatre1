@@ -520,7 +520,7 @@
           const payloadMessages = preamble.concat(trimAgentMessages(messages));
 
           const modelName = String(model || "");
-          if (/^(openrouter|aihubmix|anthropic|openai|google):/i.test(modelName)) {
+          if (/^(openrouter|aihubmix|zai|anthropic|openai|google):/i.test(modelName)) {
             throw new Error(
               "BYOK model " +
                 modelName +
