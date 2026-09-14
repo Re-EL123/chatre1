@@ -385,6 +385,33 @@
   }
 
   function initByokUi() {
+    var byokPlaceholders = {
+      openrouter: "Paste OpenRouter key (sk-or-v1-…)",
+      aihubmix: "Paste AIHubMix key (sk-…)",
+      zai: "Paste Z.ai API key",
+      groq: "Paste Groq key (gsk_…)",
+      deepseek: "Paste DeepSeek key (sk-…)",
+      mistral: "Paste Mistral API key",
+      xai: "Paste xAI key (xai-…)",
+      anthropic: "Paste Anthropic key (sk-ant-…)",
+      openai: "Paste OpenAI key (sk-…)",
+      google: "Paste Google AI Studio key",
+      cursor: "Paste Cursor API key (crsr_… from cursor.com/dashboard/api)",
+    };
+    if ($("byok-provider")) {
+      $("byok-provider").addEventListener("change", function () {
+        var p = $("byok-provider").value;
+        if ($("byok-key")) {
+          $("byok-key").placeholder =
+            byokPlaceholders[p] || "Paste full provider API key";
+        }
+      });
+      if ($("byok-key") && $("byok-provider").value) {
+        $("byok-key").placeholder =
+          byokPlaceholders[$("byok-provider").value] ||
+          $("byok-key").placeholder;
+      }
+    }
     if ($("byok-save")) {
       $("byok-save").addEventListener("click", function () {
         var provider = $("byok-provider") && $("byok-provider").value;
@@ -400,11 +427,22 @@
             refreshByokStatus();
             refreshModelCatalog();
             if (window.ChatreKit) window.ChatreKit.toast("Key saved", "success");
+            var el = $("byok-status");
+            if (el) {
+              el.textContent =
+                provider === "cursor"
+                  ? "Cursor key saved. Toolbar models refresh — pick a Cursor Composer model (Cloud Agents)."
+                  : "Saved. Test connection, then pick a " +
+                    provider +
+                    " model in the toolbar.";
+            }
           })
           .catch(function (e) {
             if (window.ChatreKit) {
               window.ChatreKit.toast(e.message || String(e), "error");
             }
+            var el = $("byok-status");
+            if (el) el.textContent = "Save failed: " + (e.message || String(e));
           });
       });
     }
@@ -453,6 +491,9 @@
                     (r.sample ? " → " + r.sample : "") +
                     (r.keyPreview ? " [" + r.keyPreview + "]" : "")
                   : "Test failed: " + ((r && r.error) || "unknown");
+            }
+            if (r && r.ok && provider === "cursor") {
+              refreshModelCatalog();
             }
           })
           .catch(function (e) {

@@ -185,7 +185,7 @@
     }
 
     const wrap = document.createElement("div");
-    wrap.className = "plan-card";
+    wrap.className = "plan-card plan-card-thin";
     const templates =
       (window.ChatrePlanTemplates &&
         window.ChatrePlanTemplates.listTemplates &&
@@ -220,7 +220,7 @@
 
     wrap.innerHTML =
       '<header class="plan-card-head">' +
-      '<div class="plan-card-title">Review plan</div>' +
+      '<div class="plan-card-title">Approve plan</div>' +
       '<p class="plan-meta"></p>' +
       "</header>" +
       errHtml +
@@ -229,8 +229,28 @@
           escapeHtml(o.planPath) +
           "</code></p>"
         : "") +
+      '<div class="plan-core-fields">' +
+      '<div class="plan-field plan-intent-contract">' +
+      '<label class="plan-label">Intent</label>' +
+      '<pre class="plan-contract-view"></pre>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Goal</label>' +
+      '<textarea class="plan-goal-input" rows="2" placeholder="Concrete goal…"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Done when</label>' +
+      '<textarea class="plan-done-input" rows="2" placeholder="Observable completion…"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Files (one path per line)</label>' +
+      '<textarea class="plan-files" rows="2" placeholder="/home/user/projects/app/index.html"></textarea>' +
+      "</div>" +
+      "</div>" +
+      '<details class="plan-details-more">' +
+      "<summary>More details</summary>" +
       (o.planMarkdown
-        ? '<details class="plan-md-details" open>' +
+        ? '<details class="plan-md-details">' +
           "<summary>PLAN.md preview</summary>" +
           '<pre class="plan-md-preview"></pre></details>'
         : "") +
@@ -242,11 +262,6 @@
           tplOptions +
           "</select></div>"
         : "") +
-      '<div class="plan-field plan-intent-contract">' +
-      '<label class="plan-label">Intent contract</label>' +
-      '<pre class="plan-contract-view"></pre>' +
-      '<p class="plan-hint">Edit the fields below if this misread you — Approve locks this interpretation in.</p>' +
-      "</div>" +
       '<div class="plan-field plan-assumptions-row">' +
       '<label class="plan-label">Assumptions (one per line)</label>' +
       '<textarea class="plan-assumptions" rows="2" placeholder="What was inferred…"></textarea>' +
@@ -256,21 +271,13 @@
       '<textarea class="plan-unknowns" rows="2" placeholder="Anything still wrong or missing…"></textarea>' +
       "</div>" +
       '<div class="plan-field">' +
-      '<label class="plan-label">Goal</label>' +
-      '<textarea class="plan-goal-input" rows="2" placeholder="Concrete goal…"></textarea>' +
-      "</div>" +
-      '<div class="plan-field">' +
-      '<label class="plan-label">Done when</label>' +
-      '<textarea class="plan-done-input" rows="2" placeholder="Observable completion…"></textarea>' +
-      "</div>" +
-      '<div class="plan-field">' +
       '<label class="plan-label">Understanding</label>' +
       '<textarea class="plan-understanding" rows="2" placeholder="What the agent understood…"></textarea>' +
       "</div>" +
       '<div class="plan-mode-suggest" hidden></div>' +
       '<div class="plan-field">' +
       '<label class="plan-label">Executor brief</label>' +
-      '<textarea class="plan-brief" rows="4" placeholder="How it will execute…"></textarea>' +
+      '<textarea class="plan-brief" rows="3" placeholder="How it will execute…"></textarea>' +
       "</div>" +
       '<div class="plan-field">' +
       '<div class="plan-label-row">' +
@@ -280,13 +287,10 @@
       '<ul class="plan-checklist"></ul>' +
       "</div>" +
       '<div class="plan-field">' +
-      '<label class="plan-label">Files (one path per line)</label>' +
-      '<textarea class="plan-files" rows="3" placeholder="/home/user/projects/app/index.html"></textarea>' +
-      "</div>" +
-      '<div class="plan-field">' +
       '<label class="plan-label">Success criteria</label>' +
       '<textarea class="plan-criteria" rows="2" placeholder="One criterion per line"></textarea>' +
       "</div>" +
+      "</details>" +
       '<p class="plan-validate-msg" hidden></p>' +
       '<div class="plan-actions">' +
       '<button type="button" class="btn plan-cancel">Cancel</button>' +
@@ -359,12 +363,6 @@
             applyBtn.addEventListener("click", function () {
               if (window.ChatreComposer && window.ChatreComposer.setMode) {
                 window.ChatreComposer.setMode(suggestion.suggested_mode);
-              }
-              if (window.ChatreKit && window.ChatreKit.toast) {
-                window.ChatreKit.toast(
-                  "Switched to " + suggestion.suggested_mode + " mode",
-                  "success",
-                );
               }
               modeBox.hidden = true;
             });

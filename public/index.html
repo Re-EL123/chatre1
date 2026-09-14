@@ -3315,6 +3315,152 @@
         color: var(--text-light);
         align-self: center;
       }
+      /* Delivery UX — understanding / clarify / banners */
+      .delivery-ui-host {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        margin: 0 0 0.45rem;
+      }
+      .understanding-strip,
+      .clarify-card,
+      .delivery-banner {
+        position: relative;
+        border-radius: 10px;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid rgba(76, 184, 232, 0.28);
+        background: linear-gradient(135deg, rgba(18, 34, 48, 0.92), rgba(28, 52, 72, 0.75));
+        font-size: 0.82rem;
+        color: var(--text, #e8f1f6);
+      }
+      .understanding-strip-label {
+        display: inline-block;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #4cb8e8;
+        margin-right: 0.4rem;
+      }
+      .understanding-strip-goal {
+        font-weight: 600;
+      }
+      .understanding-strip-meta {
+        margin-top: 0.2rem;
+        color: var(--text-light, #9bb0bf);
+        font-size: 0.75rem;
+      }
+      .understanding-strip-details {
+        margin-top: 0.35rem;
+        font-size: 0.72rem;
+      }
+      .understanding-strip-details pre {
+        white-space: pre-wrap;
+        margin: 0.25rem 0 0;
+        font-size: 0.72rem;
+        opacity: 0.9;
+      }
+      .understanding-strip-dismiss,
+      .delivery-banner-x {
+        position: absolute;
+        top: 0.35rem;
+        right: 0.45rem;
+        border: 0;
+        background: transparent;
+        color: var(--text-light, #9bb0bf);
+        cursor: pointer;
+        font-size: 1rem;
+        line-height: 1;
+      }
+      .clarify-card-head {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #f0c674;
+        margin-bottom: 0.25rem;
+      }
+      .clarify-card-q {
+        margin: 0 0 0.45rem;
+        font-weight: 550;
+      }
+      .clarify-card-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 0.45rem;
+      }
+      .clarify-card-row {
+        display: flex;
+        gap: 0.4rem;
+        align-items: center;
+      }
+      .clarify-card-input {
+        flex: 1;
+        min-width: 0;
+        border-radius: 8px;
+        border: 1px solid rgba(76, 184, 232, 0.35);
+        background: rgba(8, 16, 24, 0.65);
+        color: inherit;
+        padding: 0.4rem 0.55rem;
+        font: inherit;
+      }
+      .delivery-banner {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        padding-right: 1.6rem;
+      }
+      .delivery-banner-warn {
+        border-color: rgba(240, 198, 116, 0.45);
+        background: rgba(48, 36, 12, 0.75);
+      }
+      .delivery-banner-info {
+        border-color: rgba(76, 184, 232, 0.35);
+      }
+      .delivery-banner-text { flex: 1; min-width: 12rem; }
+      .done-proof-actions {
+        margin-top: 0.5rem;
+      }
+      .done-proof-card.ok {
+        border-color: rgba(90, 200, 140, 0.45);
+      }
+      .done-proof-card.fail {
+        border-color: rgba(220, 100, 100, 0.4);
+      }
+      .file-tree-item.delivery-highlight,
+      .file-row.delivery-highlight {
+        outline: 1px solid #4cb8e8;
+        background: rgba(76, 184, 232, 0.12);
+      }
+      #status-strip[data-unified="1"] .status-chip.working {
+        display: none;
+      }
+      .plan-card.plan-card-thin .plan-details-more {
+        margin-top: 0.4rem;
+      }
+      .plan-card.plan-card-thin .plan-core-fields {
+        display: grid;
+        gap: 0.45rem;
+      }
+      .composer-mode-btn.composer-mode-more {
+        opacity: 0.85;
+      }
+      .composer-modes-extra {
+        display: none;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        width: 100%;
+        margin-top: 0.25rem;
+      }
+      .composer-modes-extra.open {
+        display: flex;
+      }
+      .empty-state .empty-starters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.75rem;
+      }
       .composer-run {
         display: flex;
         flex-wrap: wrap;
@@ -4466,7 +4612,8 @@
             xAI: <a href="https://console.x.ai/" target="_blank" rel="noopener">console.x.ai</a>.
             Cursor: API key from
             <a href="https://cursor.com/dashboard/api" target="_blank" rel="noopener">cursor.com/dashboard/api</a>
-            (Cloud Agents / Composer models).
+            (Cloud Agents — no-repo runs for chat/agent steps; not a raw chat-completions API).
+            After save, pick <code>cursor:composer-2.5</code> (or a live model) in the toolbar.
             Test uses the field if filled, otherwise the last saved key.
           </p>
           <p id="byok-status" style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-light)"></p>
@@ -4689,6 +4836,7 @@
     <script src="/analyst.js"></script>
     <script src="/plan-templates.js"></script>
     <script src="/plan-ui.js"></script>
+    <script src="/delivery-ui.js"></script>
     <script src="/ui-adv.js"></script>
     <script src="/motion.js"></script>
     <script src="/projects.js"></script>

@@ -2122,6 +2122,34 @@ function renderFileTree(root, files) {
     refreshFiles();
   }
 
+  function showFilesPanel() {
+    openFilesPanel();
+  }
+
+  function highlightPath(path) {
+    const p = String(path || "");
+    if (!p) return;
+    document
+      .querySelectorAll(".delivery-highlight")
+      .forEach(function (n) {
+        n.classList.remove("delivery-highlight");
+      });
+    const nodes = document.querySelectorAll(
+      "[data-path], .file-tree-item, .file-row, .tree-file",
+    );
+    nodes.forEach(function (n) {
+      const dp = n.getAttribute("data-path") || n.getAttribute("title") || "";
+      if (dp === p || (dp && p.indexOf(dp) === 0) || (dp && dp.indexOf(p) === 0)) {
+        n.classList.add("delivery-highlight");
+        try {
+          n.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    });
+  }
+
   window.ChatrePanels = {
     init,
     refreshAuthStatus,
@@ -2131,6 +2159,8 @@ function renderFileTree(root, files) {
     refreshDiagnostics,
     applyProblemsEvent,
     openFilesPanel,
+    showFilesPanel,
+    highlightPath,
     setActiveProject,
     updateUsageMeter,
     rememberWrite,

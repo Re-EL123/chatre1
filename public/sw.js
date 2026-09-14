@@ -1,5 +1,5 @@
 /* Chatre service worker — installable PWA shell cache */
-const CACHE = "chatre-shell-v1";
+const CACHE = "chatre-shell-v2";
 const PRECACHE = [
   "/",
   "/index.html",
@@ -12,6 +12,10 @@ const PRECACHE = [
   "/ui-libs.js",
   "/chat.js",
   "/composer.js",
+  "/delivery-ui.js",
+  "/plan-ui.js",
+  "/understanding.js",
+  "/ui-adv.js",
   "/remote.js",
   "/panels.js",
   "/agent.js",

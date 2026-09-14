@@ -75,8 +75,11 @@
     },
   ];
 
+  var PRIMARY_MODE_IDS = ["agent", "chat", "plan"];
+
   var state = {
     mode: "agent",
+    modesExtraOpen: false,
     attachments: [], // { kind, id, label, path?, url?, value? }
     queue: [],
     draftTimer: null,
@@ -188,22 +191,47 @@
     }
   }
 
+  function modeBtnHtml(m) {
+    return (
+      '<button type="button" class="composer-mode-btn' +
+      (m.id === state.mode ? " active" : "") +
+      '" data-mode="' +
+      m.id +
+      '" role="tab" aria-selected="' +
+      (m.id === state.mode ? "true" : "false") +
+      '">' +
+      m.label +
+      "</button>"
+    );
+  }
+
   function paintModes() {
     var host = $("composer-modes");
     if (!host) return;
-    host.innerHTML = MODES.map(function (m) {
-      return (
-        '<button type="button" class="composer-mode-btn' +
-        (m.id === state.mode ? " active" : "") +
-        '" data-mode="' +
-        m.id +
-        '" role="tab" aria-selected="' +
-        (m.id === state.mode ? "true" : "false") +
-        '">' +
-        m.label +
-        "</button>"
-      );
-    }).join("");
+    var primary = PRIMARY_MODE_IDS.map(function (id) {
+      return MODES.find(function (m) {
+        return m.id === id;
+      });
+    }).filter(Boolean);
+    var extra = MODES.filter(function (m) {
+      return PRIMARY_MODE_IDS.indexOf(m.id) < 0;
+    });
+    var inExtra = extra.some(function (m) {
+      return m.id === state.mode;
+    });
+    if (inExtra) state.modesExtraOpen = true;
+    host.innerHTML =
+      primary.map(modeBtnHtml).join("") +
+      '<button type="button" class="composer-mode-btn composer-mode-more' +
+      (state.modesExtraOpen ? " active" : "") +
+      '" data-modes-more="1" aria-expanded="' +
+      (state.modesExtraOpen ? "true" : "false") +
+      '">More</button>' +
+      '<div class="composer-modes-extra' +
+      (state.modesExtraOpen ? " open" : "") +
+      '" role="group" aria-label="More modes">' +
+      extra.map(modeBtnHtml).join("") +
+      "</div>";
     if (kit()) kit().refreshIcons(host);
   }
 
@@ -1273,6 +1301,12 @@
     var modes = $("composer-modes");
     if (modes) {
       modes.addEventListener("click", function (e) {
+        var more = e.target.closest("[data-modes-more]");
+        if (more) {
+          state.modesExtraOpen = !state.modesExtraOpen;
+          paintModes();
+          return;
+        }
         var btn = e.target.closest("[data-mode]");
         if (btn) setMode(btn.getAttribute("data-mode"));
       });
@@ -1522,7 +1556,15 @@
     // Refresh chips when model changes
     var model = $("model-select");
     if (model) {
-      model.addEventListener("change", paintChips);
+      model.addEventListener("change", function () {
+        paintChips();
+        if (
+          window.ChatreDeliveryUI &&
+          window.ChatreDeliveryUI.refreshAuthBanner
+        ) {
+          window.ChatreDeliveryUI.refreshAuthBanner();
+        }
+      });
     }
 
     document.addEventListener("keydown", function (e) {
@@ -1555,9 +1597,6 @@
     chip.querySelector(".mode-suggest-apply").addEventListener("click", function () {
       setMode(s.suggested_mode);
       chip.remove();
-      if (kit() && kit().toast) {
-        kit().toast("Switched to " + s.suggested_mode, "success");
-      }
     });
     chip.querySelector(".mode-suggest-dismiss").addEventListener("click", function () {
       chip.remove();

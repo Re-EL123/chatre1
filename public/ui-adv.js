@@ -23,13 +23,39 @@
   // ── Starter chips ───────────────────────────────────────────────────
   function initStarterChips() {
     const row = $("starter-chips");
-    if (!row || !window.ChatrePlanTemplates) return;
+    if (!row) return;
     row.innerHTML = "";
     const starters = [
-      { id: "research", label: "Research", icon: "search", prompt: "Research: " },
-      { id: "fill-form", label: "Fill form", icon: "form-input", prompt: "Fill this form: " },
-      { id: "build", label: "Build", icon: "hammer", prompt: "Build: " },
-      { id: "ask", label: "Ask", icon: "message-circle", prompt: "" },
+      {
+        id: "calc",
+        label: "HTML calculator",
+        icon: "calculator",
+        prompt:
+          "Build a simple calculator as index.html in /home/user/projects/calculator/",
+        mode: "agent",
+      },
+      {
+        id: "pdf",
+        label: "PDF report",
+        icon: "file-text",
+        prompt:
+          "Create a short PDF report summarizing the current workspace and save it under /home/user/projects/",
+        mode: "agent",
+      },
+      {
+        id: "debug",
+        label: "Debug this",
+        icon: "bug",
+        prompt: "Debug the issue in the active file and fix it with proof.",
+        mode: "code",
+      },
+      {
+        id: "explain",
+        label: "Explain code",
+        icon: "message-circle",
+        prompt: "Explain how the active file works, step by step.",
+        mode: "chat",
+      },
     ];
     starters.forEach(function (s) {
       const b = el("button", "starter-chip");
@@ -43,14 +69,9 @@
       b.addEventListener("click", function () {
         const input = $("user-input");
         if (!input) return;
-        if (s.id === "ask") {
-          input.focus();
-          return;
+        if (s.mode && window.ChatreComposer && window.ChatreComposer.setMode) {
+          window.ChatreComposer.setMode(s.mode);
         }
-        const seeded =
-          window.ChatrePlanTemplates.briefingFromTemplate &&
-          window.ChatrePlanTemplates.briefingFromTemplate(s.id, "");
-        if (seeded) window.__pendingTemplateBriefing = seeded;
         input.value = s.prompt;
         input.focus();
         input.dispatchEvent(new Event("input"));
@@ -425,73 +446,65 @@
     });
     const signed =
       window.ChatreAuth && window.ChatreAuth.isSignedIn();
-    const profile =
-      (window.ChatreAuth &&
-        window.ChatreAuth.state &&
-        window.ChatreAuth.state.profile) ||
-      null;
-    const role = (profile && profile.role) || (signed ? "user" : null);
-    const email =
-      (profile && profile.email) ||
-      (window.ChatreAuth &&
-        window.ChatreAuth.currentUser &&
-        window.ChatreAuth.currentUser() &&
-        window.ChatreAuth.currentUser().email) ||
-      "";
-
     const box = el("div", "empty-state enter");
-    if (signed) {
-      box.innerHTML =
-        '<div class="empty-icon">' +
-        (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
-        "</div>" +
-        "<h2>Welcome back" +
-        (email ? ", " + escapeEmpty(String(email).split("@")[0]) : "") +
-        "</h2>" +
-        "<p>You're signed in as a <strong>" +
-        escapeEmpty(role || "user") +
-        "</strong>. Threads and workspaces sync to your account. Chatre models stay the default.</p>" +
-        '<ol class="empty-steps">' +
-        "<li>Pick a mode in the composer (Agent / Browse / Code…)</li>" +
-        "<li>Optional: add your own provider keys under Settings → BYOK</li>" +
-        "<li>Optional: start the desktop companion for local tools</li>" +
-        "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
-        "</ol>" +
-        '<div class="empty-actions"></div>';
-    } else {
-      box.innerHTML =
-        '<div class="empty-icon">' +
-        (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
-        "</div>" +
-        "<h2>Chatre</h2>" +
-        "<p>Sign in to sync threads and workspaces. The admin service key is not for chatting — it is RBAC admin-only (companion / ops).</p>" +
-        '<ol class="empty-steps">' +
-        "<li>Sign in with email or Google</li>" +
-        "<li>Optional: add OpenRouter / Anthropic / OpenAI / Google keys under BYOK</li>" +
-        "<li>Optional: run <code>npm run companion:start</code> for desktop tools</li>" +
-        "<li>Try: <em>Open example.com and tell me the heading</em></li>" +
-        "</ol>" +
-        '<div class="empty-actions"></div>';
-    }
-    const actions = box.querySelector(".empty-actions");
-    const tryBtn = el("button", "btn");
-    tryBtn.type = "button";
-    tryBtn.innerHTML = window.ChatreKit
-      ? window.ChatreKit.labelWithIcon("play", "Try example.com", 14)
-      : "Try example.com";
-    tryBtn.addEventListener("click", function () {
-      if (window.ChatreComposer && window.ChatreComposer.setMode) {
-        window.ChatreComposer.setMode("browse");
-      } else if (window.ChatreUI && window.ChatreUI.setAgentMode) {
-        window.ChatreUI.setAgentMode(true);
-      }
-      if (window.ChatreUI && window.ChatreUI.composeAndSend) {
-        window.ChatreUI.composeAndSend(
-          "Open example.com and tell me the main heading",
-        );
-      }
+    box.innerHTML =
+      '<div class="empty-icon">' +
+      (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
+      "</div>" +
+      "<h2>What do you want built?</h2>" +
+      "<p>" +
+      (signed
+        ? "Describe a deliverable. Chatre clarifies, plans, then ships files you can open."
+        : "Sign in to sync threads and run the cloud agent — or try a local starter below.") +
+      "</p>" +
+      '<div class="empty-starters" aria-label="Starters"></div>' +
+      '<div class="empty-actions"></div>';
+    const startersHost = box.querySelector(".empty-starters");
+    [
+      {
+        label: "HTML calculator",
+        prompt:
+          "Build a simple calculator as index.html in /home/user/projects/calculator/",
+        mode: "agent",
+      },
+      {
+        label: "PDF report",
+        prompt:
+          "Create a short PDF report summarizing the current workspace and save it under /home/user/projects/",
+        mode: "agent",
+      },
+      {
+        label: "Debug this",
+        prompt: "Debug the issue in the active file and fix it with proof.",
+        mode: "code",
+      },
+      {
+        label: "Explain code",
+        prompt: "Explain how the active file works, step by step.",
+        mode: "chat",
+      },
+    ].forEach(function (s) {
+      const chip = el("button", "starter-chip");
+      chip.type = "button";
+      chip.textContent = s.label;
+      chip.addEventListener("click", function () {
+        if (s.mode && window.ChatreComposer && window.ChatreComposer.setMode) {
+          window.ChatreComposer.setMode(s.mode);
+        }
+        if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+          window.ChatreUI.composeAndSend(s.prompt);
+        } else {
+          const input = $("user-input");
+          if (input) {
+            input.value = s.prompt;
+            input.focus();
+            input.dispatchEvent(new Event("input"));
+          }
+        }
+      });
+      startersHost.appendChild(chip);
     });
-    actions.appendChild(tryBtn);
+    const actions = box.querySelector(".empty-actions");
     if (!signed) {
       const keyBtn = el("button", "btn");
       keyBtn.type = "button";

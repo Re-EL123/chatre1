@@ -188,6 +188,29 @@
     return msg;
   }
 
+  function showQuietAgentError(prefix, errMsg) {
+    const formatted = formatChatError(errMsg);
+    showStep((prefix || "Error") + ": " + formatted, true);
+    if (
+      /neurons|quota exhausted|Workers AI free|daily free allocation/i.test(
+        String(errMsg || "") + " " + formatted,
+      ) &&
+      window.ChatreDeliveryUI &&
+      window.ChatreDeliveryUI.showBanner
+    ) {
+      window.ChatreDeliveryUI.showBanner({
+        kind: "warn",
+        text: "Workers AI quota exhausted. Switch to a BYOK model in Settings.",
+        actionLabel: "BYOK",
+        onAction: function () {
+          if (window.ChatreUX && window.ChatreUX.openSettings) {
+            window.ChatreUX.openSettings();
+          }
+        },
+      });
+    }
+  }
+
   function escapeHtml(text) {
     return String(text)
       .replace(/&/g, "&amp;")
@@ -1491,6 +1514,11 @@
         .replace(/</g, "&lt;") +
       "</div>";
     chatMessages.appendChild(card);
+    if (proof && proof.ok) card.classList.add("ok");
+    else if (proof) card.classList.add("fail");
+    if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.enhanceDoneProofCard) {
+      window.ChatreDeliveryUI.enhanceDoneProofCard(card, proof);
+    }
     scrollToBottom();
   }
 
@@ -1873,8 +1901,16 @@
               if (window.ChatreUX) {
                 window.ChatreUX.pauseRun("Waiting for your choice");
               }
-              if (clarifyPayload.options && clarifyPayload.options.length) {
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showClarify) {
+                window.ChatreDeliveryUI.showClarify(
+                  clarifyPayload.question,
+                  clarifyPayload.options,
+                );
+              } else if (clarifyPayload.options && clarifyPayload.options.length) {
                 renderOptionButtons(agentBody, clarifyPayload);
+              }
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
+                window.ChatreDeliveryUI.syncRunStatus("Waiting for your answer");
               }
             } else if (ev.type === "action_trace") {
               const t = ev.trace || {};
@@ -1960,12 +1996,19 @@
               } else {
                 showStep(planText, false);
               }
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showUnderstanding) {
+                window.ChatreDeliveryUI.showUnderstanding(b);
+              }
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
+                window.ChatreDeliveryUI.syncRunStatus("Understood — preparing");
+              }
               if (
-                b.intent_contract &&
-                window.ChatreKit &&
-                window.ChatreKit.toast
+                b.needs_clarification &&
+                b.clarification_question &&
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.showClarify
               ) {
-                /* contract shown fully on plan card; keep timeline light */
+                window.ChatreDeliveryUI.showClarify(b.clarification_question, []);
               }
               const suggestion =
                 b.mode_suggestion ||
@@ -1984,25 +2027,17 @@
                 window.ChatreComposer.showModeSuggestion
               ) {
                 window.ChatreComposer.showModeSuggestion(suggestion);
-              } else if (
-                suggestion &&
-                suggestion.suggested_mode &&
-                !suggestion.mode_matches &&
-                window.ChatreKit &&
-                window.ChatreKit.toast
-              ) {
-                window.ChatreKit.toast(
-                  "Suggested mode: " +
-                    suggestion.suggested_mode +
-                    " — " +
-                    (suggestion.mode_reason || ""),
-                  "info",
-                );
               }
             } else if (ev.type === "understanding") {
               window.__lastUnderstanding = ev.record || null;
               window.__understandingSummary = ev.summary || null;
               const rec = ev.record || {};
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showUnderstanding) {
+                window.ChatreDeliveryUI.showUnderstanding(
+                  (rec && rec.briefing) || null,
+                  rec,
+                );
+              }
               if (rec.clarifyAsked && timeline && timeline.setPhase) {
                 timeline.setPhase(
                   "plan",
@@ -2012,13 +2047,18 @@
                         "need one detail",
                     ).slice(0, 100),
                 );
-              } else if (
-                rec.metrics &&
-                Number(rec.metrics.overClarifyRisk) >= 0.7 &&
-                window.ChatreKit &&
-                window.ChatreKit.toast
+              }
+              if (
+                rec.clarifyAsked &&
+                rec.briefing &&
+                rec.briefing.clarification_question &&
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.showClarify
               ) {
-                /* soft signal only — do not interrupt */
+                window.ChatreDeliveryUI.showClarify(
+                  rec.briefing.clarification_question,
+                  [],
+                );
               }
               if (
                 rec.briefing &&
@@ -2240,7 +2280,7 @@
               }
               openTerminalPanel();
             } else if (ev.type === "error") {
-              showStep("Agent error: " + (ev.error || "unknown"), true);
+              showQuietAgentError("Agent error", ev.error || "unknown");
             } else if (ev.type === "auto_resume") {
               startThinking(
                 "Auto-resuming (" +
@@ -2345,6 +2385,20 @@
                 trimHistory();
               }
               if (ev.response) finalText = ev.response;
+              if (
+                ev.clarification &&
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.showClarify
+              ) {
+                window.ChatreDeliveryUI.showClarify(
+                  ev.response || "Need one detail",
+                  [],
+                );
+                window.__pendingClarification = true;
+                if (window.ChatreDeliveryUI.syncRunStatus) {
+                  window.ChatreDeliveryUI.syncRunStatus("Waiting for your answer");
+                }
+              }
               if (ev.proof) showDoneProof(ev.proof, ev.audit);
               if (window.ChatrePanels) {
                 window.ChatrePanels.refreshThreads();
@@ -2632,7 +2686,7 @@
             },
             onError: (err) => {
               stopThinking();
-              showStep("Agent error: " + (err.message || String(err)), true);
+              showQuietAgentError("Agent error", err.message || String(err));
             },
           },
         });
@@ -2679,7 +2733,7 @@
         showStep("*(agent stopped)*", true);
       } else {
         console.error(e);
-        showStep("Agent failed: " + (e.message || String(e)), true);
+        showQuietAgentError("Agent failed", e.message || String(e));
       }
     } finally {
       stopThinking();
@@ -3815,8 +3869,16 @@
               if (window.ChatreUX) {
                 window.ChatreUX.pauseRun("Waiting for your choice");
               }
-              if (clarifyPayload.options && clarifyPayload.options.length) {
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showClarify) {
+                window.ChatreDeliveryUI.showClarify(
+                  clarifyPayload.question,
+                  clarifyPayload.options,
+                );
+              } else if (clarifyPayload.options && clarifyPayload.options.length) {
                 renderOptionButtons(agentBody, clarifyPayload);
+              }
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
+                window.ChatreDeliveryUI.syncRunStatus("Waiting for your answer");
               }
             } else if (ev.type === "action_trace") {
               const t = ev.trace || {};
@@ -3847,6 +3909,44 @@
                   ((ev.downloads || []).map(function(d){ return "- " + (d.url||""); }).join("\n") || "(unknown)"),
                 false,
               );
+            } else if (ev.type === "analysis") {
+              stopThinking();
+              const b = ev.briefing || {};
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showUnderstanding) {
+                window.ChatreDeliveryUI.showUnderstanding(b);
+              }
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
+                window.ChatreDeliveryUI.syncRunStatus("Understood — preparing");
+              }
+              if (
+                b.needs_clarification &&
+                b.clarification_question &&
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.showClarify
+              ) {
+                window.ChatreDeliveryUI.showClarify(b.clarification_question, []);
+              }
+            } else if (ev.type === "understanding") {
+              window.__lastUnderstanding = ev.record || null;
+              const rec = ev.record || {};
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showUnderstanding) {
+                window.ChatreDeliveryUI.showUnderstanding(
+                  (rec && rec.briefing) || null,
+                  rec,
+                );
+              }
+              if (
+                rec.briefing &&
+                rec.briefing.needs_clarification &&
+                rec.briefing.clarification_question &&
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.showClarify
+              ) {
+                window.ChatreDeliveryUI.showClarify(
+                  rec.briefing.clarification_question,
+                  [],
+                );
+              }
             } else if (ev.type === "awaiting_plan") {
               stopThinking();
               if (window.ChatrePanels) {
@@ -4028,6 +4128,13 @@
                 chatHistory.push({ role: "assistant", content: ev.response });
                 trimHistory();
               }
+              if (ev.clarification && window.ChatreDeliveryUI && window.ChatreDeliveryUI.showClarify) {
+                window.ChatreDeliveryUI.showClarify(ev.response || "Need one detail", []);
+                window.__pendingClarification = true;
+                if (window.ChatreDeliveryUI.syncRunStatus) {
+                  window.ChatreDeliveryUI.syncRunStatus("Waiting for your answer");
+                }
+              }
               if (ev.proof) showDoneProof(ev.proof, ev.audit);
               if (ev.usage && window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
@@ -4040,7 +4147,7 @@
                 window.ChatrePanels.refreshFiles();
               }
             } else if (ev.type === "error") {
-              showStep("Resume error: " + (ev.error || "unknown"), true);
+              showQuietAgentError("Resume error", ev.error || "unknown");
             }
           },
         });
@@ -4048,7 +4155,7 @@
         if (e && e.name === "AbortError") {
           showStep("*(resume stopped)*", true);
         } else {
-          showStep("Resume failed: " + (e.message || String(e)), true);
+          showQuietAgentError("Resume failed", e.message || String(e));
         }
       } finally {
         stopThinking();

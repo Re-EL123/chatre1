@@ -204,6 +204,12 @@
       if (window.ChatreUIAdv && window.ChatreUIAdv.refreshEmptyState) {
         window.ChatreUIAdv.refreshEmptyState();
       }
+      if (
+        window.ChatreDeliveryUI &&
+        window.ChatreDeliveryUI.refreshAuthBanner
+      ) {
+        window.ChatreDeliveryUI.refreshAuthBanner();
+      }
     });
   }
 
