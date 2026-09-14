@@ -110,21 +110,49 @@
    */
   function parseToolCalls(text) {
     const results = [];
-    const blockRe = /```(?:tool|tool_call|agent|json)\s*\n?([\s\S]*?)```/g;
+    const seen = Object.create(null);
+    const raw = String(text || "");
+    const blockRe = /```(?:tool|tool_call|agent|json)\s*\n?([\s\S]*?)```/gi;
     let m;
-    while ((m = blockRe.exec(text)) !== null) {
-      const block = m[1].trim();
-      parseBlock(block, results);
+    while ((m = blockRe.exec(raw)) !== null) {
+      parseBlock(m[1], results, seen);
+    }
+
+    // Salvage trailing unclosed ```tool / ```json fences
+    const openRe = /```(?:tool|tool_call|agent|json)\b/gi;
+    let om;
+    while ((om = openRe.exec(raw)) !== null) {
+      const after = raw.slice(om.index);
+      if (/^```(?:tool|tool_call|agent|json)\s*\n?[\s\S]*?```/i.test(after)) {
+        continue;
+      }
+      const open = /^```(?:tool|tool_call|agent|json)\s*\n?([\s\S]*)$/i.exec(after);
+      if (open) parseBlock(open[1], results, seen);
     }
 
     // Brace-balanced recovery for bare { "tool": ... } objects
-    if (results.length === 0) {
-      extractBalancedToolJson(String(text || ""), results);
-    }
+    extractBalancedToolJson(raw, results, seen);
     return results;
   }
 
-  function extractBalancedToolJson(text, results) {
+  function toolDedupeKey(call) {
+    if (!call || !call.tool) return "";
+    try {
+      return call.tool + "::" + JSON.stringify(call.params || {});
+    } catch {
+      return call.tool + "::";
+    }
+  }
+
+  function pushTool(call, results, seen) {
+    if (!call) return;
+    const key = toolDedupeKey(call);
+    if (key && seen[key]) return;
+    if (key) seen[key] = 1;
+    results.push(call);
+  }
+
+  function extractBalancedToolJson(text, results, seen) {
     const needles = [
       '{"tool"',
       '{ "tool"',
@@ -164,7 +192,7 @@
         }
       }
       if (end > at) {
-        parseBlock(text.slice(at, end + 1), results);
+        parseBlock(text.slice(at, end + 1), results, seen);
         i = end + 1;
       } else {
         i = at + 1;
@@ -172,49 +200,51 @@
     }
   }
 
-  function parseBlock(jsonText, results) {
+  function parseBlock(jsonText, results, seen) {
     try {
-      const parsed = JSON.parse(jsonText);
+      const parsed = JSON.parse(String(jsonText || "").trim());
       if (Array.isArray(parsed)) {
-        parsed.forEach((item) => {
-          const n = normalize(item);
-          if (n) results.push(n);
-        });
+        parsed.forEach((item) => pushTool(normalize(item), results, seen));
       } else if (parsed && parsed.tool_calls) {
-        parsed.tool_calls.forEach((item) => {
-          const n = normalize(item);
-          if (n) results.push(n);
-        });
+        parsed.tool_calls.forEach((item) =>
+          pushTool(normalize(item), results, seen),
+        );
       } else {
-        const n = normalize(parsed);
-        if (n) results.push(n);
+        pushTool(normalize(parsed), results, seen);
       }
     } catch (e) {
-      extractBalancedToolJson(jsonText, results);
+      extractBalancedToolJson(jsonText, results, seen || Object.create(null));
     }
   }
+
+  const KNOWN_TOOL_NAMES = (function () {
+    const set = Object.create(null);
+    TOOL_DEFINITIONS.forEach(function (t) {
+      if (t && t.name) set[t.name] = 1;
+    });
+    return set;
+  })();
 
   function normalize(item) {
     if (!item) return null;
     if (item.type === "function" && !item.function && item.name) {
+      const flat = flattenParams(item);
       return {
         tool: item.name,
-        params:
-          (item.parameters && typeof item.parameters === "object"
-            ? item.parameters
-            : null) ||
-          (item.params && typeof item.params === "object" ? item.params : null) ||
-          {},
+        params: flat.params,
         id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+        parseFailed: !!flat.parseFailed,
       };
     }
     if (item.function && item.function.name) {
       let params = {};
       const raw = item.function.arguments;
+      let parseFailed = false;
       if (typeof raw === "string") {
         try {
           params = JSON.parse(raw || "{}");
         } catch {
+          parseFailed = true;
           params = {};
         }
       } else if (raw && typeof raw === "object") {
@@ -226,54 +256,80 @@
         tool: item.function.name,
         params,
         id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+        parseFailed,
       };
     }
-    if (!item.tool && item.name) {
-      item = {
+    if (item.tool) {
+      const flat = flattenParams(item);
+      return {
+        tool: item.tool,
+        params: flat.params,
+        id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+        parseFailed: !!flat.parseFailed,
+      };
+    }
+    if (item.name) {
+      // Avoid inventing tools from arbitrary JSON ({"name":"Alice",...})
+      if (item.type !== "function" && !KNOWN_TOOL_NAMES[item.name]) {
+        return null;
+      }
+      const flat = flattenParams(item);
+      return {
         tool: item.name,
-        params:
-          item.parameters || item.arguments || item.params || null,
+        params: flat.params,
+        id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+        parseFailed: !!flat.parseFailed,
       };
     }
-    if (!item.tool) return null;
-    let params = item.params;
-    if (!params && item.parameters && typeof item.parameters === "object") {
-      params = item.parameters;
+    return null;
+  }
+
+  function flattenParams(item) {
+    if (!item || typeof item !== "object") {
+      return { params: {}, parseFailed: false };
     }
-    if (!params && item.arguments != null) {
-      params =
-        typeof item.arguments === "string"
-          ? (function () {
-              try {
-                return JSON.parse(item.arguments);
-              } catch {
-                return {};
-              }
-            })()
-          : item.arguments;
+    if (item.params && typeof item.params === "object") {
+      return { params: Object.assign({}, item.params), parseFailed: false };
     }
-    if (!params || typeof params !== "object") {
-      params = {};
-      Object.keys(item).forEach((k) => {
-        if (
-          k !== "tool" &&
-          k !== "id" &&
-          k !== "type" &&
-          k !== "function" &&
-          k !== "params" &&
-          k !== "parameters" &&
-          k !== "arguments" &&
-          k !== "name"
-        ) {
-          params[k] = item[k];
+    if (item.parameters && typeof item.parameters === "object") {
+      return { params: Object.assign({}, item.parameters), parseFailed: false };
+    }
+    if (item.arguments != null) {
+      if (typeof item.arguments === "string") {
+        try {
+          return {
+            params: JSON.parse(item.arguments || "{}"),
+            parseFailed: false,
+          };
+        } catch {
+          return {
+            params: {},
+            parseFailed: true,
+          };
         }
-      });
+      }
+      if (typeof item.arguments === "object") {
+        return {
+          params: Object.assign({}, item.arguments),
+          parseFailed: false,
+        };
+      }
     }
-    return {
-      tool: item.tool,
-      params,
-      id: item.id || "tc_" + Math.random().toString(36).slice(2, 8),
+    const skip = {
+      tool: 1,
+      name: 1,
+      id: 1,
+      type: 1,
+      function: 1,
+      params: 1,
+      parameters: 1,
+      arguments: 1,
     };
+    const out = {};
+    Object.keys(item).forEach(function (k) {
+      if (!skip[k]) out[k] = item[k];
+    });
+    return { params: out, parseFailed: false };
   }
 
   /** Strip tool blocks and internal agent steers from assistant text for clean display. */
@@ -361,6 +417,13 @@
     if (!call || !call.tool) {
       return { ok: false, error: "Invalid tool call: missing tool name." };
     }
+    if (call.parseFailed) {
+      return {
+        ok: false,
+        error: 'Invalid tool call: could not parse arguments JSON for "' + call.tool + '".',
+        hint: "Pass a single JSON object for arguments (brace-balanced, no trailing commas).",
+      };
+    }
     var p = call.params || {};
     var tool = call.tool;
     function fail(error, hint) {
@@ -393,6 +456,11 @@
       case "delete_file":
       case "export_document":
         if (!(p.path || p.file)) return fail(tool + " requires path");
+        break;
+      case "copy_file":
+        if (!(p.src || p.source) || !(p.dest || p.destination)) {
+          return fail("copy_file requires src and dest", "Pass src and dest workspace paths.");
+        }
         break;
       case "plan":
         if (!p.steps) return fail("plan requires steps");
