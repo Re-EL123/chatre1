@@ -177,19 +177,73 @@
       void img.offsetWidth;
       img.classList.add("flash");
     }
+    var displayUrl = String(opts.url || "").trim();
+    var runUrl =
+      String(opts.runUrl || "").trim() ||
+      (window.ChatrePreview && window.ChatrePreview._activeRunUrl) ||
+      "";
+    var isLocal =
+      window.ChatrePreview &&
+      window.ChatrePreview.isLocalPreviewUrl &&
+      window.ChatrePreview.isLocalPreviewUrl(displayUrl);
+
+    function appendUrlLink(host) {
+      if (!displayUrl) return;
+      var a = document.createElement("a");
+      a.className = "browser-pane-link";
+      a.textContent = displayUrl;
+      a.title = isLocal
+        ? "Open runnable live preview"
+        : "Open in browser";
+      if (runUrl) {
+        a.href = runUrl;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+      } else if (isLocal) {
+        a.href = displayUrl;
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          if (window.ChatrePreview && window.ChatrePreview.openExternal) {
+            window.ChatrePreview.openExternal();
+          }
+        });
+      } else {
+        a.href = displayUrl;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+      }
+      host.appendChild(a);
+    }
+
     if (meta) {
-      meta.textContent =
-        (opts.url || "") +
-        (opts.note ? " · " + opts.note : "") +
-        (opts.login ? " · waiting for login" : "");
+      meta.textContent = "";
+      appendUrlLink(meta);
+      if (opts.note) {
+        meta.appendChild(
+          document.createTextNode((displayUrl ? " · " : "") + opts.note),
+        );
+      }
+      if (opts.login) {
+        meta.appendChild(document.createTextNode(" · waiting for login"));
+      }
     }
     var action = $("browser-pane-action");
-    if (action && (opts.note || opts.login)) {
+    if (action && (opts.note || opts.login || displayUrl)) {
       action.hidden = false;
-      action.textContent =
-        (opts.login ? "Login pause · " : "") +
-        (opts.note || "") +
-        (opts.url ? " · " + opts.url : "");
+      action.textContent = "";
+      if (opts.login) {
+        action.appendChild(document.createTextNode("Login pause · "));
+      }
+      if (opts.note) {
+        action.appendChild(document.createTextNode(opts.note));
+      }
+      if (displayUrl) {
+        if (opts.note || opts.login) {
+          action.appendChild(document.createTextNode(" · "));
+        }
+        appendUrlLink(action);
+      }
+      if (empty && !opts.dataUrl) empty.hidden = true;
     }
   }
 

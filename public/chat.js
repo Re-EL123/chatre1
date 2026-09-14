@@ -226,11 +226,69 @@
       return DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
         ADD_TAGS: ["img", "a"],
-        ADD_ATTR: ["target", "rel", "class", "src", "alt", "width", "height", "href", "download"],
+        ADD_ATTR: [
+          "target",
+          "rel",
+          "class",
+          "src",
+          "alt",
+          "width",
+          "height",
+          "href",
+          "download",
+          "data-chatre-preview",
+          "title",
+        ],
         ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|file|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
       });
     }
     return "<p>" + escapeHtml(raw).replace(/\n/g, "<br>") + "</p>";
+  }
+
+  function isLocalPreviewHref(href) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(
+      String(href || ""),
+    );
+  }
+
+  /** Turn localhost preview URLs into runnable links (opens blob preview). */
+  function wirePreviewLinks(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('a[href]').forEach(function (a) {
+      const href = a.getAttribute("href") || "";
+      if (!isLocalPreviewHref(href) && a.getAttribute("data-chatre-preview") !== "1") {
+        return;
+      }
+      a.classList.add("preview-run-link");
+      a.setAttribute("data-chatre-preview", "1");
+      a.setAttribute("title", a.title || "Open runnable live preview");
+      if (!a.target) a.target = "_blank";
+      if (!a.rel) a.rel = "noopener noreferrer";
+    });
+  }
+
+  function openPreviewRunLink(e) {
+    const a =
+      e.target && e.target.closest
+        ? e.target.closest("a.preview-run-link, a[data-chatre-preview='1']")
+        : null;
+    if (!a) return;
+    const href = a.getAttribute("href") || "";
+    if (href.indexOf("blob:") === 0) return; // let browser open blob tab
+    if (
+      isLocalPreviewHref(href) ||
+      a.getAttribute("data-chatre-preview") === "1"
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.ChatrePreview && window.ChatrePreview.openExternal) {
+        window.ChatrePreview.openExternal();
+      }
+    }
+  }
+
+  if (chatMessages) {
+    chatMessages.addEventListener("click", openPreviewRunLink);
   }
 
   function enhanceCodeBlocks(root) {
@@ -1497,7 +1555,11 @@
       " · " +
       (proof.previewOk ? "preview ok" : "preview pending") +
       (proof.localhost
-        ? " · <code>" + String(proof.localhost).replace(/</g, "&lt;") + "</code>"
+        ? ' · <a class="preview-run-link" href="' +
+          String(proof.localhost).replace(/"/g, "&quot;") +
+          '" target="_blank" rel="noopener" data-chatre-preview="1">' +
+          String(proof.localhost).replace(/</g, "&lt;") +
+          "</a>"
         : "") +
       "</div>" +
       (rows ? "<ul class=\"done-proof-tests\">" + rows + "</ul>" : "") +
@@ -1516,6 +1578,7 @@
     chatMessages.appendChild(card);
     if (proof && proof.ok) card.classList.add("ok");
     else if (proof) card.classList.add("fail");
+    wirePreviewLinks(card);
     if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.enhanceDoneProofCard) {
       window.ChatreDeliveryUI.enhanceDoneProofCard(card, proof);
     }
@@ -1653,6 +1716,7 @@
       p.className = "agent-text" + (isFinal ? " agent-final" : "");
       p.innerHTML = renderMarkdown(display);
       enhanceCodeBlocks(p);
+      wirePreviewLinks(p);
       agentBody.appendChild(p);
       confirmNodes.forEach(function (node) {
         agentBody.appendChild(node);
@@ -2210,9 +2274,17 @@
               if (window.ChatrePreview) {
                 window.ChatrePreview.handleAgentEvent(ev);
               }
+              const previewUrl =
+                ev.localhost ||
+                (ev.preview && ev.preview.url) ||
+                (window.ChatrePreview && window.ChatrePreview._activeDisplayUrl) ||
+                "localhost";
               showStep(
-                "Live preview · " +
-                  (ev.localhost || (ev.preview && ev.preview.url) || "localhost") +
+                "Live preview · [" +
+                  previewUrl +
+                  "](" +
+                  previewUrl +
+                  ")" +
                   (ev.ok === false ? " · errors found" : " · debug ok"),
                 false,
               );
@@ -3682,6 +3754,7 @@
         p.className = "agent-text" + (isFinal ? " agent-final" : "");
         p.innerHTML = renderMarkdown(display);
         enhanceCodeBlocks(p);
+        wirePreviewLinks(p);
         agentBody.appendChild(p);
         confirmNodes.forEach(function (node) {
           agentBody.appendChild(node);
@@ -4065,9 +4138,17 @@
               if (window.ChatrePreview) {
                 window.ChatrePreview.handleAgentEvent(ev);
               }
+              const previewUrl =
+                ev.localhost ||
+                (ev.preview && ev.preview.url) ||
+                (window.ChatrePreview && window.ChatrePreview._activeDisplayUrl) ||
+                "localhost";
               showStep(
-                "Live preview · " +
-                  (ev.localhost || (ev.preview && ev.preview.url) || "localhost") +
+                "Live preview · [" +
+                  previewUrl +
+                  "](" +
+                  previewUrl +
+                  ")" +
                   (ev.ok === false ? " · errors found" : " · debug ok"),
                 false,
               );

@@ -1705,6 +1705,19 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .live-preview-url a.live-preview-link,
+      a.browser-pane-link,
+      a.preview-run-link {
+        color: #7dffb3;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
+      .live-preview-url a.live-preview-link:hover,
+      a.browser-pane-link:hover,
+      a.preview-run-link:hover {
+        color: #b6ffd4;
+      }
       .live-preview-actions {
         display: flex;
         gap: 0.35rem;
@@ -2438,6 +2451,11 @@
         font-size: 0.78rem;
         color: var(--text-light);
         margin-top: 0.4rem;
+        word-break: break-all;
+      }
+      #browser-pane-meta a.browser-pane-link,
+      #browser-pane-action a.browser-pane-link {
+        color: #4cb8e8;
         word-break: break-all;
       }
       #plan-drawer {

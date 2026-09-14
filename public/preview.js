@@ -242,12 +242,6 @@
 
     var modal = $("live-preview-modal");
     modal.classList.add("open");
-    var urlEl = $("live-preview-url");
-    if (urlEl) {
-      urlEl.textContent =
-        preview.url ||
-        "http://localhost:" + (preview.port || 4173) + "/" + (preview.entry || "");
-    }
 
     var blobMap = buildBlobMap(preview.files);
     var entry = preview.entry || "index.html";
@@ -262,6 +256,24 @@
     var pageBlob = new Blob([html], { type: "text/html; charset=utf-8" });
     var pageUrl = URL.createObjectURL(pageBlob);
     activeUrls.push(pageUrl);
+    window.ChatrePreview._activeRunUrl = pageUrl;
+    window.ChatrePreview._activeDisplayUrl =
+      preview.url ||
+      "http://localhost:" + (preview.port || 4173) + "/" + (preview.entry || "");
+
+    var urlEl = $("live-preview-url");
+    if (urlEl) {
+      urlEl.textContent = "";
+      var link = document.createElement("a");
+      link.className = "live-preview-link";
+      link.href = pageUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = "Open runnable preview in a new tab";
+      link.textContent = window.ChatrePreview._activeDisplayUrl;
+      urlEl.appendChild(link);
+    }
+
     var frame = $("live-preview-frame");
     if (frame) frame.src = pageUrl;
 
@@ -278,7 +290,8 @@
     }
     if (window.ChatreUIAdv && window.ChatreUIAdv.setBrowserPane) {
       window.ChatreUIAdv.setBrowserPane({
-        url: preview.url,
+        url: window.ChatrePreview._activeDisplayUrl,
+        runUrl: pageUrl,
         note: "Live preview · port " + (preview.port || "?"),
         open: true,
       });
@@ -329,7 +342,35 @@
     if (modal) modal.classList.remove("open");
     var frame = $("live-preview-frame");
     if (frame) frame.src = "about:blank";
+    window.ChatrePreview._activeRunUrl = "";
     revokeAll();
+  }
+
+  /** Open the current blob-served preview in a real browser tab. */
+  function openExternal() {
+    var run =
+      (window.ChatrePreview && window.ChatrePreview._activeRunUrl) || "";
+    if (run) {
+      window.open(run, "_blank", "noopener,noreferrer");
+      return true;
+    }
+    var last = window.ChatrePreview && window.ChatrePreview._last;
+    if (last && last.preview) {
+      open(last, { force: true }).then(function () {
+        var next =
+          (window.ChatrePreview && window.ChatrePreview._activeRunUrl) || "";
+        if (next) window.open(next, "_blank", "noopener,noreferrer");
+      });
+      return true;
+    }
+    toast("No live preview to open yet", "warn");
+    return false;
+  }
+
+  function isLocalPreviewUrl(url) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(
+      String(url || ""),
+    );
   }
 
   function isAgentBusy() {
@@ -404,11 +445,15 @@
     open: open,
     close: close,
     reload: reload,
+    openExternal: openExternal,
+    isLocalPreviewUrl: isLocalPreviewUrl,
     handleAgentEvent: handleAgentEvent,
     askAgentToFix: askAgentToFix,
     getRuntimeErrors: function () {
       return lastRuntimeErrors.slice();
     },
     _last: null,
+    _activeRunUrl: "",
+    _activeDisplayUrl: "",
   };
 })();
