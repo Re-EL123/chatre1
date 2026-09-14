@@ -827,6 +827,28 @@
     if (window.ChatreUnderstanding && window.ChatreUnderstanding.rememberIfCorrection) {
       window.ChatreUnderstanding.rememberIfCorrection(message, threadIdForCorr);
     }
+    if (
+      window.ChatreUnderstanding &&
+      window.ChatreUnderstanding.persistDurableCorrections &&
+      threadIdForCorr !== "local"
+    ) {
+      const corrList =
+        window.ChatreUnderstanding.loadCorrections(threadIdForCorr) || [];
+      const fb =
+        window.ChatreUnderstanding.detectClarifyFeedback &&
+        window.ChatreUnderstanding.detectClarifyFeedback(message);
+      window.ChatreUnderstanding.persistDurableCorrections(
+        threadIdForCorr,
+        corrList,
+      );
+      if (fb && window.ChatreRemote && window.ChatreRemote.updateThread) {
+        window.ChatreRemote
+          .updateThread(threadIdForCorr, {
+            lastClarifyFeedback: fb,
+          })
+          .catch(function () {});
+      }
+    }
 
     // If the agent asked a clarifying question OR showed tappable option
     // buttons / connector cards last turn, the next message is the user's
@@ -1977,6 +1999,41 @@
                   "info",
                 );
               }
+            } else if (ev.type === "understanding") {
+              window.__lastUnderstanding = ev.record || null;
+              window.__understandingSummary = ev.summary || null;
+              const rec = ev.record || {};
+              if (rec.clarifyAsked && timeline && timeline.setPhase) {
+                timeline.setPhase(
+                  "plan",
+                  "Clarify: blocking slot — " +
+                    String(
+                      (rec.briefing && rec.briefing.clarification_question) ||
+                        "need one detail",
+                    ).slice(0, 100),
+                );
+              } else if (
+                rec.metrics &&
+                Number(rec.metrics.overClarifyRisk) >= 0.7 &&
+                window.ChatreKit &&
+                window.ChatreKit.toast
+              ) {
+                /* soft signal only — do not interrupt */
+              }
+              if (
+                rec.briefing &&
+                Array.isArray(rec.briefing.user_corrections) &&
+                rec.briefing.user_corrections.length &&
+                window.ChatreUnderstanding &&
+                window.ChatreUnderstanding.saveCorrection
+              ) {
+                const tid =
+                  (window.__chatreRemote && window.__chatreRemote.threadId) ||
+                  "local";
+                rec.briefing.user_corrections.forEach(function (c) {
+                  window.ChatreUnderstanding.saveCorrection(tid, c);
+                });
+              }
             } else if (ev.type === "todos") {
               showStep(
                 "Todos:\n" +
@@ -2611,8 +2668,11 @@
             window.ChatrePanels.setResumeAvailable(false);
           }
         }
-      } else {
-        showStep("Agent runtime not loaded.", true);
+      } else if (!ranRemote) {
+        showStep(
+          "Agent runtime not loaded. Hard-refresh the page, or sign in to use the cloud agent.",
+          true,
+        );
       }
     } catch (e) {
       if (e && e.name === "AbortError") {

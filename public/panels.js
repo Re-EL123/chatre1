@@ -359,6 +359,23 @@
     if (thr && thr.thread && thr.thread.lastUsage) {
       updateUsageMeter(thr.thread.lastUsage);
     }
+    if (
+      thr &&
+      thr.thread &&
+      Array.isArray(thr.thread.durableCorrections) &&
+      window.ChatreUnderstanding &&
+      window.ChatreUnderstanding.saveCorrection
+    ) {
+      thr.thread.durableCorrections.forEach(function (c) {
+        window.ChatreUnderstanding.saveCorrection(threadId, c);
+      });
+    }
+    if (thr && thr.thread && thr.thread.understandingSummary) {
+      window.__understandingSummary = thr.thread.understandingSummary;
+    }
+    if (thr && thr.thread && thr.thread.lastUnderstanding) {
+      window.__lastUnderstanding = thr.thread.lastUnderstanding;
+    }
     const interrupted =
       thr &&
       thr.thread &&

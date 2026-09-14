@@ -60,7 +60,7 @@ function formatWorkersAiError(raw: string, status: number): string {
     if (status === 429 || j.httpCode === 429 || /neurons|quota|429/i.test(desc)) {
       return (
         "Workers AI free quota exhausted (10k neurons/day). " +
-        "Your selected BYOK model was not used — pick an openrouter:… model while signed in, " +
+        "Switch the model picker to a saved BYOK provider (e.g. google:… / openrouter:…) while signed in, " +
         "or wait for the daily reset / upgrade Workers Paid. Details: " +
         desc
       );

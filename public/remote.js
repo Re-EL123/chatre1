@@ -343,6 +343,15 @@
     );
   }
 
+  async function getUnderstanding(threadId) {
+    return request(
+      "/api/threads?id=" +
+        encodeURIComponent(threadId) +
+        "&action=understanding",
+      { method: "GET" },
+    );
+  }
+
   async function updateThread(threadId, patch) {
     return request("/api/threads?id=" + encodeURIComponent(threadId), {
       method: "PATCH",
@@ -848,6 +857,7 @@
     listThreads,
     getThread,
     getAudit,
+    getUnderstanding,
     updateThread,
     deleteThread,
     getMessages,
