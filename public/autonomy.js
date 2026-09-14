@@ -118,7 +118,8 @@
     if (flags.xai) return "xai:grok-3-mini";
     if (flags.openai) return "openai:gpt-4o-mini";
     if (flags.anthropic) return "anthropic:claude-3-5-haiku-latest";
-    if (flags.google) return "google:gemini-2.5-flash";
+    if (flags.google) return "google:gemini-3.8-flash";
+    if (flags.cursor) return "cursor:composer-2.5";
     return raw;
   }
 

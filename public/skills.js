@@ -474,7 +474,7 @@
       found.add("computer");
     }
     if (
-      /\b(byok|api key|openrouter|anthropic|openai|gemini|bring your own)\b/.test(
+      /\b(byok|api key|openrouter|anthropic|openai|gemini|cursor|bring your own)\b/.test(
         t,
       )
     ) {

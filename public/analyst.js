@@ -254,8 +254,20 @@
       briefing.mode_suggestion = modeInfo;
       if (
         (confidence < window.ChatreUnderstanding.CONFIDENCE_THRESHOLD &&
-          o.confidence != null) ||
-        unknowns.length
+          o.confidence != null &&
+          !(
+            briefing.deliverable_kind === "deliver" ||
+            briefing.task_type === "build" ||
+            briefing.task_type === "document"
+          )) ||
+        (unknowns.length &&
+          !(
+            briefing.goal &&
+            String(briefing.goal).length >= 12 &&
+            (briefing.task_type === "build" ||
+              briefing.task_type === "document" ||
+              briefing.deliverable_kind === "deliver")
+          ))
       ) {
         briefing.needs_clarification = true;
         briefing.clarification_question =
@@ -263,6 +275,8 @@
           (unknowns[0]
             ? "Quick check before I proceed: " + unknowns[0] + "?"
             : "Before I proceed — what should the concrete deliverable be?");
+      } else {
+        briefing.needs_clarification = false;
       }
       briefing.intent_contract =
         window.ChatreUnderstanding.formatIntentContract(briefing);

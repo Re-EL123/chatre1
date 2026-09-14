@@ -10,6 +10,7 @@
   function localProjectSlug(text) {
     const raw = String(text || "project")
       .toLowerCase()
+      .replace(/\/home\/user\/projects\/[^\s`'"\])|,]+/g, " ")
       .replace(
         /\b(design|create|make|build|me|a|an|the|in|with|using|html|css|js|javascript)\b/g,
         " ",
@@ -18,6 +19,25 @@
       .replace(/^-+|-+$/g, "")
       .slice(0, 40);
     return raw || "project";
+  }
+
+  function resolveLocalProjectTarget(text, goal) {
+    const src = String(text || "") + " " + String(goal || "");
+    const m = src.match(
+      /\/home\/user\/projects\/([A-Za-z0-9._-]+)(?:\/([^\s`'"\)\],]+))?/,
+    );
+    if (m) {
+      const slug = m[1];
+      let relativePath = m[2] ? String(m[2]).replace(/\/+$/, "") : null;
+      if (relativePath && !/\.[A-Za-z0-9]+$/.test(relativePath)) relativePath = null;
+      return {
+        slug: slug,
+        relativePath: relativePath,
+        root: "/home/user/projects/" + slug,
+      };
+    }
+    const slug = localProjectSlug(goal || text);
+    return { slug: slug, relativePath: null, root: "/home/user/projects/" + slug };
   }
 
   function extractLocalProjectFiles(text) {
@@ -533,7 +553,7 @@
           const payloadMessages = preamble.concat(trimAgentMessages(messages));
 
           const modelName = String(model || "");
-          if (/^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google):/i.test(modelName)) {
+          if (/^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google|cursor):/i.test(modelName)) {
             throw new Error(
               "BYOK model " +
                 modelName +
@@ -635,8 +655,12 @@
                 (fullAssistantText || "") + "\n" + (text || ""),
               );
               if (salvaged.length && window.ChatreTools && window.ChatreTools.executeTool) {
-                const slug = localProjectSlug(userText || (briefing && briefing.goal));
-                const root = "/home/user/projects/" + slug;
+                const target = resolveLocalProjectTarget(
+                  userText || (briefing && briefing.goal),
+                  briefing && briefing.goal,
+                );
+                const slug = target.slug;
+                const root = target.root;
                 await window.ChatreTools.executeTool(
                   { tool: "create_directory", params: { path: root } },
                   {},
@@ -698,7 +722,7 @@
                 content:
                   "[internal] No workspace files were created yet (nudge " +
                   this._forcedDeliveryNudge +
-                  "). Chat dumps do NOT save files. Immediately call write_file with FULL contents under /home/user/projects/<slug>/index.html (and style.css, script.js). Then list_directory. Never invent Download links.",
+                  "). Chat dumps do NOT save files. Immediately call write_file with FULL contents under /home/user/projects/<slug>/ (only the files asked for). Then list_directory. Never invent Download links.",
               });
               // Do not show lying "Writing files…" essays to the user
               if (

@@ -37,7 +37,7 @@
       opts.forEach((o) => {
         const v = o.value || "";
         const lab = o.textContent || v;
-        if (/^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google|byok):/i.test(v) || /byok/i.test(lab)) {
+        if (/^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google|cursor|byok):/i.test(v) || /byok/i.test(lab)) {
           byok.push("- `" + v + "` — " + lab);
         } else {
           chatre.push("- `" + v + "` — " + lab);
@@ -160,7 +160,7 @@
   }
 
   function isByokModel(model) {
-    return /^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google):/i.test(String(model || ""));
+    return /^(openrouter|aihubmix|zai|groq|deepseek|mistral|xai|anthropic|openai|google|cursor):/i.test(String(model || ""));
   }
 
   function formatChatError(errMsg) {
@@ -1708,8 +1708,25 @@
     const toolCards = {};
 
     try {
-      // Prefer remote Vercel+Firestore agent when configured
-      if (window.ChatreRemote && window.ChatreRemote.enabled()) {
+      // Prefer remote only when the user is signed in (Firebase). Guest / no-auth
+      // must fall through to the local agent so builds can still finish.
+      const signedIn =
+        !!(
+          window.ChatreAuth &&
+          window.ChatreAuth.isSignedIn &&
+          window.ChatreAuth.isSignedIn()
+        );
+      const canRemoteAgent =
+        !!(
+          window.ChatreRemote &&
+          window.ChatreRemote.enabled() &&
+          signedIn &&
+          window.ChatreRemote.hasAuth &&
+          window.ChatreRemote.hasAuth()
+        );
+
+      let ranRemote = false;
+      if (canRemoteAgent) {
         const remoteState = window.__chatreRemote || {};
         let tokenEl = null;
         const handleAgentEvent = (ev) => {
@@ -2339,7 +2356,20 @@
               : null,
           onEvent: handleAgentEvent,
         });
-      } else if (window.ChatreAgent && window.ChatreTools) {
+        ranRemote = true;
+      }
+
+      if (!ranRemote && window.ChatreAgent && window.ChatreTools) {
+        if (
+          window.ChatreRemote &&
+          window.ChatreRemote.enabled() &&
+          !signedIn
+        ) {
+          showStep(
+            "Not signed in — running the local agent so this task can finish. Sign in to sync cloud threads/workspaces.",
+            false,
+          );
+        }
         let tokenEl = null;
         const resumeMsgs = (opts && opts.resumeMessages) || null;
         const initialMessages = resumeMsgs && resumeMsgs.length
@@ -2352,7 +2382,8 @@
         const agentResult = await window.ChatreAgent.run(initialMessages, {
           model: modelSelect.value,
           maxTokens: 3072,
-          skipPlanApproval: shouldSkipPlanApproval(),
+          // Guests cannot sync cloud plans — skip Approve so local builds finish.
+          skipPlanApproval: shouldSkipPlanApproval() || !signedIn,
           callbacks: {
             onSkills: (skills) => {
               if (skills && skills.length) {
