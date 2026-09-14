@@ -2318,9 +2318,14 @@
       }
       #starter-chips {
         display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin: 0 0 0.45rem;
+      }
+      #starter-chips .collapsible-rail-body {
+        display: flex;
         flex-wrap: wrap;
         gap: 0.4rem;
-        margin: 0 0 0.45rem;
       }
       .starter-chip {
         border: 1px solid var(--border-color);
@@ -2339,9 +2344,91 @@
       }
       #artifact-rail {
         display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding: 0.35rem 0 0.55rem;
+      }
+      #artifact-rail .collapsible-rail-body {
+        display: flex;
         gap: 0.5rem;
         overflow-x: auto;
-        padding: 0.35rem 0 0.55rem;
+        padding-bottom: 0.1rem;
+      }
+      .collapsible-rail-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        width: 100%;
+        margin: 0;
+        padding: 0.28rem 0.45rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: rgba(16, 18, 28, 0.85);
+        color: var(--text-light);
+        font: inherit;
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+        text-align: left;
+      }
+      .collapsible-rail-toggle:hover {
+        color: var(--text-color);
+        border-color: #3a3a48;
+      }
+      .collapsible-rail-toggle .collapsible-rail-label {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .collapsible-rail-toggle .collapsible-rail-meta {
+        font-variant-numeric: tabular-nums;
+        opacity: 0.85;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .collapsible-rail-chevron {
+        display: inline-flex;
+        flex-shrink: 0;
+        transition: transform 0.18s ease;
+      }
+      .collapsible-rail.is-collapsed .collapsible-rail-chevron {
+        transform: rotate(-90deg);
+      }
+      .collapsible-rail.is-collapsed .collapsible-rail-body {
+        display: none !important;
+      }
+      #artifact-rail.is-collapsed,
+      #starter-chips.is-collapsed {
+        padding-bottom: 0.15rem;
+      }
+      .artifact-rail-title {
+        flex: 0 0 auto;
+        align-self: center;
+        font-size: 0.72rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--text-light);
+        white-space: nowrap;
+      }
+      .artifact-rail-item {
+        flex: 0 0 auto;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: rgba(20, 22, 34, 0.9);
+        color: var(--text-color);
+        padding: 0.4rem 0.55rem;
+        font: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
+        max-width: 220px;
+        text-align: left;
+      }
+      .artifact-rail-item:hover {
+        border-color: #e8a84c;
+      }
+      .artifact-rail-item code {
+        font-size: 0.75rem;
+        word-break: break-all;
       }
       .artifact-card {
         min-width: 160px;

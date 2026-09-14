@@ -275,8 +275,18 @@
     if (paths.length) {
       var rail = $("artifact-rail");
       if (rail) {
+        var body = rail;
+        if (
+          window.ChatreUIAdv &&
+          typeof window.ChatreUIAdv.ensureArtifactRailBody === "function"
+        ) {
+          body = window.ChatreUIAdv.ensureArtifactRailBody() || rail;
+        } else {
+          body =
+            rail.querySelector(".collapsible-rail-body") || rail;
+        }
         rail.hidden = false;
-        rail.innerHTML =
+        body.innerHTML =
           '<div class="artifact-rail-title">Delivered</div>' +
           paths
             .slice(0, 6)
@@ -290,7 +300,7 @@
               );
             })
             .join("");
-      rail.querySelectorAll(".artifact-rail-item").forEach(function (btn) {
+        body.querySelectorAll(".artifact-rail-item").forEach(function (btn) {
           btn.addEventListener("click", function () {
             var p = btn.getAttribute("data-path");
             if (p && window.ChatrePanels && window.ChatrePanels.openFile) {
@@ -298,6 +308,8 @@
             }
           });
         });
+        var meta = rail.querySelector(".collapsible-rail-meta");
+        if (meta) meta.textContent = String(Math.min(paths.length, 6));
       }
     }
   }

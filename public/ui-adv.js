@@ -20,11 +20,117 @@
     /* no-op */
   }
 
+  function readCollapsed(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      if (v == null) return !!fallback;
+      return v === "1";
+    } catch (e) {
+      return !!fallback;
+    }
+  }
+
+  function writeCollapsed(key, collapsed) {
+    try {
+      localStorage.setItem(key, collapsed ? "1" : "0");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function applyCollapsed(host, collapsed) {
+    if (!host) return;
+    host.classList.toggle("is-collapsed", !!collapsed);
+    const toggle = host.querySelector(".collapsible-rail-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      const tip = collapsed ? "Expand" : "Collapse";
+      toggle.title = tip;
+      toggle.setAttribute("data-tip", tip);
+    }
+  }
+
+  function setCollapsibleMeta(host, text) {
+    if (!host) return;
+    const meta = host.querySelector(".collapsible-rail-meta");
+    if (meta) meta.textContent = text || "";
+  }
+
+  /** Ensure a collapsible head + body shell; returns the body node. */
+  function ensureCollapsibleShell(host, opts) {
+    opts = opts || {};
+    if (!host) return null;
+    let body = null;
+    for (let i = 0; i < host.children.length; i++) {
+      if (host.children[i].classList.contains("collapsible-rail-body")) {
+        body = host.children[i];
+        break;
+      }
+    }
+    if (host.dataset.collapsible === "1" && body) return body;
+
+    const kids = Array.prototype.slice.call(host.childNodes);
+    host.dataset.collapsible = "1";
+    host.classList.add("collapsible-rail");
+
+    const toggle = el("button", "collapsible-rail-toggle");
+    toggle.type = "button";
+    toggle.setAttribute("aria-controls", host.id || "");
+    const chevron = el("span", "collapsible-rail-chevron");
+    chevron.innerHTML =
+      window.ChatreKit && window.ChatreKit.iconHtml
+        ? window.ChatreKit.iconHtml("chevron-down", 14)
+        : "▾";
+    const label = el("span", "collapsible-rail-label");
+    label.textContent = opts.label || "Section";
+    const meta = el("span", "collapsible-rail-meta");
+    toggle.appendChild(chevron);
+    toggle.appendChild(label);
+    toggle.appendChild(meta);
+
+    body = el("div", "collapsible-rail-body");
+    kids.forEach(function (n) {
+      body.appendChild(n);
+    });
+
+    host.textContent = "";
+    host.appendChild(toggle);
+    host.appendChild(body);
+
+    const storageKey = opts.storageKey || "";
+    applyCollapsed(host, storageKey ? readCollapsed(storageKey, false) : false);
+    toggle.addEventListener("click", function () {
+      const next = !host.classList.contains("is-collapsed");
+      applyCollapsed(host, next);
+      if (storageKey) writeCollapsed(storageKey, next);
+    });
+    if (window.ChatreKit) window.ChatreKit.refreshIcons(toggle);
+    return body;
+  }
+
+  function ensureArtifactRailBody() {
+    const rail = $("artifact-rail");
+    if (!rail) return null;
+    const body = ensureCollapsibleShell(rail, {
+      label: "Artifacts",
+      storageKey: "chatre.artifactRailCollapsed",
+    });
+    setCollapsibleMeta(
+      rail,
+      artifactStore.length ? String(artifactStore.length) : "",
+    );
+    return body;
+  }
+
   // ── Starter chips ───────────────────────────────────────────────────
   function initStarterChips() {
     const row = $("starter-chips");
     if (!row) return;
-    row.innerHTML = "";
+    const body = ensureCollapsibleShell(row, {
+      label: "Starters",
+      storageKey: "chatre.starterChipsCollapsed",
+    });
+    body.innerHTML = "";
     const starters = [
       {
         id: "calc",
@@ -76,8 +182,9 @@
         input.focus();
         input.dispatchEvent(new Event("input"));
       });
-      row.appendChild(b);
+      body.appendChild(b);
     });
+    setCollapsibleMeta(row, String(starters.length));
     if (window.ChatreKit) {
       window.ChatreKit.refreshIcons(row);
       window.ChatreKit.bindTips(row);
@@ -426,6 +533,8 @@
   function pushArtifact(item) {
     const rail = $("artifact-rail");
     if (!rail) return;
+    const body = ensureArtifactRailBody();
+    if (!body) return;
     const entry = {
       kind: item.kind || "file",
       title: item.title || item.path || item.kind || "Artifact",
@@ -437,6 +546,7 @@
     artifactStore.unshift(entry);
     if (artifactStore.length > 40) artifactStore.length = 40;
     rail.hidden = false;
+    setCollapsibleMeta(rail, String(artifactStore.length));
     const card = el("div", "artifact-card enter");
     const title = entry.title;
     card.innerHTML =
@@ -488,7 +598,7 @@
       a.download = item.filename || "download";
       actions.appendChild(a);
     }
-    rail.prepend(card);
+    body.prepend(card);
     if (window.ChatreKit) window.ChatreKit.refreshIcons(card);
   }
 
@@ -665,7 +775,12 @@
 
   function showStarterChips() {
     const row = $("starter-chips");
-    if (row) row.hidden = false;
+    if (!row) return;
+    ensureCollapsibleShell(row, {
+      label: "Starters",
+      storageKey: "chatre.starterChipsCollapsed",
+    });
+    row.hidden = false;
   }
 
   function init() {
@@ -700,6 +815,7 @@
     updateBudgetBar: updateBudgetBar,
     pushArtifact: pushArtifact,
     listArtifacts: listArtifacts,
+    ensureArtifactRailBody: ensureArtifactRailBody,
     renderEmptyState: renderEmptyState,
     refreshEmptyState: refreshEmptyState,
     openPlanDrawer: openPlanDrawer,
