@@ -391,6 +391,7 @@
       zai: "Paste Z.ai API key",
       groq: "Paste Groq key (gsk_…)",
       deepseek: "Paste DeepSeek key (sk-…)",
+      modelscope: "Paste ModelScope SDK token",
       mistral: "Paste Mistral API key",
       xai: "Paste xAI key (xai-…)",
       anthropic: "Paste Anthropic key (sk-ant-…)",
