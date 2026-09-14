@@ -3325,17 +3325,35 @@
 
   function resolvePath(path) {
     if (!path) return currentDir;
-    if (path === "~") return "/home/user";
-    if (path.startsWith("~/")) path = "/home/user/" + path.slice(2);
-    if (!path.startsWith("/")) path = currentDir + "/" + path;
-    const pathParts = path.split("/").filter(Boolean);
+    let raw = String(path);
+    if (raw === "~") return "/home/user";
+    if (raw.startsWith("~/")) raw = "/home/user/" + raw.slice(2);
+    // If cwd is /home/user/projects/<slug>, strip leading <slug>/ from relative paths
+    const cwdM = String(currentDir || "").match(/^\/home\/user\/projects\/([^/]+)$/);
+    if (!raw.startsWith("/") && cwdM) {
+      const slug = cwdM[1];
+      const re = new RegExp("^(?:\\.\\/)?(?:\\.?\\/)?" + slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\/");
+      raw = raw.replace(re, "");
+    }
+    if (!raw.startsWith("/")) raw = currentDir + "/" + raw;
+    const pathParts = raw.split("/").filter(Boolean);
     const resolved = [];
     for (const p of pathParts) {
       if (p === ".") continue;
       if (p === "..") resolved.pop();
       else resolved.push(p);
     }
-    return "/" + resolved.join("/") || "/";
+    let abs = "/" + resolved.join("/") || "/";
+    // Collapse /projects/<slug>/<slug>/…
+    for (let i = 0; i < 8; i++) {
+      const next = abs.replace(
+        /^(\/home\/user\/projects\/)([^/]+)\/\2(?=\/|$)/,
+        "$1$2",
+      );
+      if (next === abs) break;
+      abs = next;
+    }
+    return abs;
   }
 
   async function runPyodide(code) {

@@ -1845,7 +1845,31 @@
   function readFileTool(path) {
     const target = resolve(path);
     const entry = fs()[target];
-    if (!entry) return { ok: false, tool: "read_file", error: "No such file: " + path, path: target };
+    if (!entry) {
+      const files = Object.keys(fs())
+        .filter(function (k) {
+          return fs()[k] && fs()[k].type === "file";
+        })
+        .sort()
+        .slice(0, 8);
+      var err = "No such file: " + target;
+      if (files.length) {
+        err +=
+          "\n\nDid you mean one of these?\n" +
+          files.map(function (f) {
+            return "- " + f;
+          }).join("\n") +
+          "\n\nUse inventory/view_tree paths only — do not invent style.css/script.js.";
+      }
+      return {
+        ok: false,
+        tool: "read_file",
+        error: err,
+        path: target,
+        invent_path: true,
+        suggestions: files,
+      };
+    }
     if (entry.type === "dir") return { ok: false, tool: "read_file", error: "Is a directory: " + path };
     return { ok: true, tool: "read_file", path: target, content: entry.content || "" };
   }
