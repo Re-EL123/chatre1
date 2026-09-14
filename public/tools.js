@@ -2368,7 +2368,16 @@
   function collectProjectFileMap(root) {
     var prefix = String(root || "").replace(/\/$/, "");
     var map = {};
-    var store = fs() || {};
+    var store = {};
+    // Prefer the Files panel workspace map (remote agent writes), then local FS.
+    try {
+      if (window.ChatrePanels && window.ChatrePanels.state && window.ChatrePanels.state.files) {
+        Object.assign(store, window.ChatrePanels.state.files);
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    Object.assign(store, fs() || {});
     Object.keys(store).forEach(function (p) {
       var f = store[p];
       if (!f || f.type === "dir") return;
@@ -3613,6 +3622,8 @@
     cleanResponseText,
     isSteerNoise,
     executeTool,
+    previewProject: previewProjectTool,
+    collectProjectFileMap: collectProjectFileMap,
     asOpenAITools: function () {
       return TOOL_DEFINITIONS.map(function (t) {
         const props = {};

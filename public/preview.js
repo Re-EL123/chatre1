@@ -346,6 +346,80 @@
     revokeAll();
   }
 
+  /** Open a workspace project directory in the built-in live preview. */
+  async function openFromWorkspace(pathOrSlug, opts) {
+    opts = opts || {};
+    var root = String(pathOrSlug || "").trim();
+    if (!root) {
+      toast("Pick a project folder under /home/user/projects", "warn");
+      return { ok: false, error: "No project path" };
+    }
+    if (!root.startsWith("/")) {
+      root = "/home/user/projects/" + root.replace(/^\/+/, "");
+    }
+    // Normalize to the project root when given a nested path.
+    var m = root.match(/^(\/home\/user\/projects\/[^/]+)/);
+    if (m && !opts.keepNested) root = m[1];
+
+    if (window.ChatreTools && window.ChatreTools.previewProject) {
+      var result = await window.ChatreTools.previewProject({ path: root });
+      if (result && result.ok === false && (!result.fileCount || result.fileCount === 0)) {
+        toast("No previewable files in " + root, "warn");
+      } else if (result && result.ok === false) {
+        toast(
+          "Preview opened with " +
+            ((result.errors && result.errors.length) || 0) +
+            " issue(s)",
+          "warn",
+        );
+      } else {
+        toast("Live preview · " + root.split("/").pop(), "success");
+      }
+      return result;
+    }
+
+    // Fallback: build a minimal payload from the Files panel map.
+    var store =
+      (window.ChatrePanels &&
+        window.ChatrePanels.state &&
+        window.ChatrePanels.state.files) ||
+      {};
+    var files = {};
+    Object.keys(store).forEach(function (p) {
+      var f = store[p];
+      if (!f || f.type === "dir") return;
+      if (!(p === root || p.indexOf(root + "/") === 0)) return;
+      var rel = p === root ? "" : p.slice(root.length + 1);
+      if (!rel) return;
+      files[rel] = { content: String(f.content || "") };
+    });
+    if (!Object.keys(files).length) {
+      toast("No files under " + root, "warn");
+      return { ok: false, error: "empty" };
+    }
+    var entry = files["index.html"]
+      ? "index.html"
+      : Object.keys(files).find(function (k) {
+          return /\.html?$/i.test(k);
+        }) || Object.keys(files)[0];
+    return open(
+      {
+        preview: {
+          root: root,
+          port: 4173,
+          url: "http://localhost:4173/" + entry,
+          entry: entry,
+          files: files,
+          fileCount: Object.keys(files).length,
+        },
+        errors: [],
+        ok: true,
+        path: root,
+      },
+      { force: true },
+    );
+  }
+
   /** Open the current blob-served preview in a real browser tab. */
   function openExternal() {
     var run =
@@ -446,6 +520,7 @@
     close: close,
     reload: reload,
     openExternal: openExternal,
+    openFromWorkspace: openFromWorkspace,
     isLocalPreviewUrl: isLocalPreviewUrl,
     handleAgentEvent: handleAgentEvent,
     askAgentToFix: askAgentToFix,

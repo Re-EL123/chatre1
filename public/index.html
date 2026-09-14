@@ -1560,6 +1560,28 @@
         border-color: rgba(76, 184, 232, 0.7);
         background: rgba(40, 80, 110, 0.55);
       }
+      .ide-project-chip .ide-project-run,
+      .ide-folder-run {
+        flex-shrink: 0;
+        border: 0;
+        background: transparent;
+        color: #7dffb3;
+        cursor: pointer;
+        padding: 0.1rem 0.28rem;
+        border-radius: 4px;
+        line-height: 1;
+        font-size: 0.75rem;
+      }
+      .ide-project-chip .ide-project-run:hover,
+      .ide-folder-run:hover {
+        background: rgba(125, 255, 179, 0.14);
+      }
+      .ide-folder-toggle {
+        position: relative;
+      }
+      .ide-folder-toggle .ide-folder-run {
+        margin-left: auto;
+      }
       .ide-badge {
         font-size: 0.62rem;
         padding: 0.05rem 0.3rem;
@@ -4507,6 +4529,7 @@
         <h2>Projects</h2>
         <div class="panel-actions">
           <button type="button" class="btn" id="files-refresh">Refresh</button>
+          <button type="button" class="btn" id="files-preview" title="Open active project in live preview">Preview</button>
           <button type="button" class="btn" id="files-export-zip">Export ZIP</button>
         </div>
         <div id="file-drop" class="file-drop" tabindex="0" data-tip="Upload files into the remote workspace">

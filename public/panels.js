@@ -1056,12 +1056,16 @@ function renderFileTree(root, files) {
       projSec.innerHTML = '<div class="ide-section-label">Projects</div>';
       slugs.forEach(function (slug) {
         const p = projects[slug];
-        const row = document.createElement("button");
-        row.type = "button";
+        const row = document.createElement("div");
         row.className =
           "ide-project-chip" +
           (state.activeProject === slug ? " active" : "");
-        row.innerHTML =
+        const main = document.createElement("button");
+        main.type = "button";
+        main.className = "ide-project-main";
+        main.style.cssText =
+          "border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:0.25rem;padding:0;min-width:0;";
+        main.innerHTML =
           (window.ChatreKit
             ? window.ChatreKit.iconHtml("folder-git-2", 13) + " "
             : "") +
@@ -1072,10 +1076,31 @@ function renderFileTree(root, files) {
           (p.fileCount
             ? ' <span class="ide-count">' + p.fileCount + "</span>"
             : "");
-        row.title = "Set active project " + (p.root || slug);
-        row.addEventListener("click", function () {
+        main.title = "Set active project " + (p.root || slug);
+        main.addEventListener("click", function () {
           setActiveProject(slug);
         });
+        const runBtn = document.createElement("button");
+        runBtn.type = "button";
+        runBtn.className = "ide-project-run";
+        runBtn.title = "Run in live preview";
+        runBtn.setAttribute("aria-label", "Run " + slug + " in preview");
+        runBtn.innerHTML = window.ChatreKit
+          ? window.ChatreKit.iconHtml("play", 12)
+          : "▶";
+        runBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          runWorkspacePreview(p.root || "/home/user/projects/" + slug).catch(
+            function (err) {
+              if (window.ChatreKit && window.ChatreKit.toast) {
+                window.ChatreKit.toast(err.message || String(err), "error");
+              }
+            },
+          );
+        });
+        row.appendChild(main);
+        row.appendChild(runBtn);
         row.addEventListener("contextmenu", function (e) {
           e.preventDefault();
           e.stopPropagation();
@@ -1166,6 +1191,24 @@ function renderFileTree(root, files) {
         e.preventDefault();
         setActiveProject(slug);
       });
+      const runBtn = document.createElement("button");
+      runBtn.type = "button";
+      runBtn.className = "ide-folder-run";
+      runBtn.title = "Run in live preview";
+      runBtn.setAttribute("aria-label", "Run " + slug + " in preview");
+      runBtn.innerHTML = window.ChatreKit
+        ? window.ChatreKit.iconHtml("play", 12)
+        : "▶";
+      runBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        runWorkspacePreview(node.path).catch(function (err) {
+          if (window.ChatreKit && window.ChatreKit.toast) {
+            window.ChatreKit.toast(err.message || String(err), "error");
+          }
+        });
+      });
+      toggle.appendChild(runBtn);
     }
     toggle.addEventListener("click", function () {
       state.expanded[key] = !open;
@@ -1648,6 +1691,19 @@ function renderFileTree(root, files) {
     menu.innerHTML = "";
   }
 
+  function previewableProjectPath(path) {
+    const p = String(path || "");
+    const m = p.match(/^(\/home\/user\/projects\/[^/]+)/);
+    return m ? m[1] : null;
+  }
+
+  async function runWorkspacePreview(pathOrSlug) {
+    if (!window.ChatrePreview || !window.ChatrePreview.openFromWorkspace) {
+      throw new Error("Live preview is not available");
+    }
+    return window.ChatrePreview.openFromWorkspace(pathOrSlug);
+  }
+
   function openExplorerMenu(clientX, clientY, target) {
     const menu = ensureExplorerMenu();
     hideExplorerMenu();
@@ -1686,6 +1742,27 @@ function renderFileTree(root, files) {
       const sep = document.createElement("div");
       sep.className = "ctx-sep";
       menu.appendChild(sep);
+    }
+
+    const projectRoot =
+      t.slug
+        ? "/home/user/projects/" + t.slug
+        : previewableProjectPath(t.path);
+
+    if (projectRoot || t.kind === "project" || (t.kind === "dir" && projectRoot)) {
+      addItem("Run in preview", "play", function () {
+        return runWorkspacePreview(projectRoot || t.path || t.slug);
+      });
+      addSep();
+    } else if (
+      t.kind === "file" &&
+      /\.html?$/i.test(t.path || "") &&
+      previewableProjectPath(t.path)
+    ) {
+      addItem("Run project in preview", "play", function () {
+        return runWorkspacePreview(previewableProjectPath(t.path));
+      });
+      addSep();
     }
 
     if (t.kind === "file") {
@@ -1950,6 +2027,45 @@ function renderFileTree(root, files) {
     if (refreshBtn) refreshBtn.addEventListener("click", refreshThreads);
     if (newBtn) newBtn.addEventListener("click", newThread);
     if (filesRefresh) filesRefresh.addEventListener("click", refreshFiles);
+    const filesPreview = $("files-preview");
+    if (filesPreview) {
+      filesPreview.addEventListener("click", function () {
+        const slug = state.activeProject;
+        const path = slug
+          ? "/home/user/projects/" + slug
+          : "/home/user/projects";
+        if (!slug) {
+          const projects =
+            (window.ChatreProjects &&
+              window.ChatreProjects.detectProjects(state.files)) ||
+            state.projects ||
+            {};
+          const keys = Object.keys(projects);
+          if (keys.length === 1) {
+            runWorkspacePreview("/home/user/projects/" + keys[0]).catch(
+              function (err) {
+                if (window.ChatreKit && window.ChatreKit.toast) {
+                  window.ChatreKit.toast(err.message || String(err), "error");
+                }
+              },
+            );
+            return;
+          }
+          if (window.ChatreKit && window.ChatreKit.toast) {
+            window.ChatreKit.toast(
+              "Select a project under /home/user/projects first",
+              "warn",
+            );
+          }
+          return;
+        }
+        runWorkspacePreview(path).catch(function (err) {
+          if (window.ChatreKit && window.ChatreKit.toast) {
+            window.ChatreKit.toast(err.message || String(err), "error");
+          }
+        });
+      });
+    }
     if (zipBtn) zipBtn.addEventListener("click", exportZip);
 
     document.addEventListener("click", function (e) {
