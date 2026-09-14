@@ -183,11 +183,8 @@
         } else if (m.explore || state.mode === "explore") {
           window.ChatreAgents.setActive("explore");
         } else {
-          // Leaving plan/explore must reset for chat/browse/desktop/image/code/agent.
-          var cur = window.ChatreAgents.getActive();
-          if (cur === "plan" || cur === "explore") {
-            window.ChatreAgents.setActive("build");
-          }
+          // chat / agent / code / browse / desktop / image → build
+          window.ChatreAgents.setActive("build");
         }
       }
     }
