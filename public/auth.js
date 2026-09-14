@@ -195,6 +195,9 @@
       state.ready = true;
       state.initError = null;
       notify();
+      if (window.ChatreAgents && window.ChatreAgents.refresh) {
+        window.ChatreAgents.refresh();
+      }
       if (window.ChatrePanels && window.ChatrePanels.refreshAuthStatus) {
         window.ChatrePanels.refreshAuthStatus();
       }

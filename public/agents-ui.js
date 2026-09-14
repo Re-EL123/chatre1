@@ -53,24 +53,37 @@
   }
 
   async function refresh() {
+    var nativeFallback = [
+      { name: "build", description: "Orchestrator — explore/build/verify", native: true },
+      { name: "plan", description: "Plan only — no edits", native: true },
+      { name: "explore", description: "Read-only search", native: true },
+      { name: "general", description: "General subagent slice", native: true },
+      { name: "verify", description: "Preview/debug ownership", native: true },
+    ];
     if (!window.ChatreRemote || !window.ChatreRemote.enabled || !window.ChatreRemote.enabled()) {
-      cache.agents = [
-        { name: "build", description: "Orchestrator — explore/build/verify", native: true },
-        { name: "plan", description: "Plan only — no edits", native: true },
-        { name: "explore", description: "Read-only search", native: true },
-        { name: "general", description: "General subagent slice", native: true },
-        { name: "verify", description: "Preview/debug ownership", native: true },
-      ];
+      cache.agents = nativeFallback;
+      syncUi();
+      return cache.agents;
+    }
+    // Avoid 401 spam before Firebase finishes (or when signed out).
+    var signedIn =
+      window.ChatreAuth &&
+      window.ChatreAuth.isSignedIn &&
+      window.ChatreAuth.isSignedIn();
+    if (!signedIn) {
+      cache.agents = nativeFallback;
       syncUi();
       return cache.agents;
     }
     try {
       var data = await window.ChatreRemote.listAgents();
-      cache.agents = (data && data.agents) || [];
+      cache.agents = (data && data.agents) || nativeFallback;
       cache.loadedAt = Date.now();
       syncUi();
       return cache.agents;
     } catch (e) {
+      if (!cache.agents.length) cache.agents = nativeFallback;
+      syncUi();
       return cache.agents;
     }
   }
