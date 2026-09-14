@@ -1,5 +1,5 @@
 /* Chatre service worker — installable PWA shell cache */
-const CACHE = "chatre-shell-v2";
+const CACHE = "chatre-shell-v3";
 const PRECACHE = [
   "/",
   "/index.html",
@@ -81,7 +81,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: stale-while-revalidate
+  // App scripts/styles: network-first so mode/BYOK wiring updates aren't stuck
+  // behind a stale PWA shell (stale-while-revalidate was serving old chat.js).
+  if (/\.(?:js|css|webmanifest)$/i.test(url.pathname)) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req)),
+    );
+    return;
+  }
+
+  // Other static assets: stale-while-revalidate
   event.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req)
