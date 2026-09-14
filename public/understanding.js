@@ -566,6 +566,48 @@
         reason: 'remote git url',
       };
     }
+
+    // Classifier fill-in when keyword route is inconclusive.
+    try {
+      const hint = softTaskTypeHint(userMessage);
+      const scored = scoreRouter(userMessage);
+      if (
+        scored &&
+        scored.classifier &&
+        scored.classifier.confidence >= 0.8 &&
+        scored.top &&
+        scored.top !== 'mixed'
+      ) {
+        // Prefer soft document/debug hints over a build-biased classifier.
+        let task = scored.top;
+        if (hint === 'document' || hint === 'debug' || hint === 'git' || hint === 'browser') {
+          task = hint;
+        }
+        const kind =
+          scored.classifier.deliverable_kind ||
+          (['question', 'chat', 'research'].indexOf(task) >= 0
+            ? 'answer'
+            : 'deliver');
+        return {
+          skipAnalyst: false,
+          task_type: task,
+          deliverable_kind: kind,
+          suggested_mode:
+            kind === 'answer' || task === 'chat' || task === 'question'
+              ? 'chat'
+              : task === 'browser'
+                ? 'browse'
+                : 'agent',
+          confidence: scored.confidence,
+          files: inferDefaultFiles(userMessage, signals),
+          reason: hint && hint !== scored.top ? 'classifier+soft-hint' : 'understanding-classifier',
+          needs_clarify: !!scored.classifier.needs_clarify,
+        };
+      }
+    } catch (e) {
+      /* optional */
+    }
+
     return {
       skipAnalyst: false,
       task_type: softTaskTypeHint(userMessage) || null,
@@ -1277,7 +1319,7 @@
 
   /**
    * Tiny deterministic router scorer (feature weights — not an LLM).
-   * Use as a second opinion beside preLlmRoute.
+   * Blends with the offline understanding classifier when available.
    */
   function scoreRouter(userMessage) {
     const signals = extractIntentSignals(userMessage);
@@ -1323,12 +1365,21 @@
       }
     });
     const confidence = Math.max(0.35, Math.min(0.95, best));
-    return {
+    const heuristic = {
       top,
       scores,
       confidence: Number(confidence.toFixed(3)),
       signals,
     };
+
+    try {
+      const Classifier = require('./understanding-classifier');
+      const clf = Classifier.predict(userMessage, { signals });
+      if (clf) return Classifier.blendRouter(heuristic, clf);
+    } catch (e) {
+      /* classifier optional */
+    }
+    return heuristic;
   }
 
   function detectCorrectionMessage(text) {
