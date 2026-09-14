@@ -3586,7 +3586,9 @@
       const msg = String(text || "").trim();
       if (!msg) return;
       userInput.value = msg;
-      autoResize();
+      userInput.style.height = "auto";
+      userInput.style.height = Math.min(userInput.scrollHeight, 200) + "px";
+      userInput.dispatchEvent(new Event("input", { bubbles: true }));
       if (typeof sendMessage === "function") {
         sendMessage();
       } else {
