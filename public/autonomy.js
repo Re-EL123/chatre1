@@ -115,6 +115,13 @@
     if (flags.groq) return "groq:openai/gpt-oss-20b";
     if (flags.deepseek) return "deepseek:deepseek-chat";
     if (flags.modelscope) return "modelscope:Qwen/Qwen2.5-Coder-32B-Instruct";
+    if (flags.kilo) return "kilo:kilo-auto/free";
+    if (flags.llm7) return "llm7:fast";
+    if (flags.ollama) return "ollama:gpt-oss:20b";
+    if (flags.ovhcloud) return "ovhcloud:Meta-Llama-3_3-70B-Instruct";
+    if (flags.huggingface) return "huggingface:openai/gpt-oss-120b:fastest";
+    if (flags.dashscope) return "dashscope:qwen-plus";
+    if (flags.cloudflare) return "cloudflare:@cf/meta/llama-3.1-8b-instruct";
     if (flags.mistral) return "mistral:mistral-small-latest";
     if (flags.xai) return "xai:grok-3-mini";
     if (flags.openai) return "openai:gpt-4o-mini";

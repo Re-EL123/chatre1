@@ -41,7 +41,7 @@ const RATE_WINDOW_MS = 60_000;
 const AI_MAX_RETRIES = 3;
 
 const BYOK_MODEL_PREFIX =
-  /^(openrouter|aihubmix|zai|groq|deepseek|modelscope|mistral|xai|anthropic|openai|google|cursor):/i;
+  /^(openrouter|aihubmix|zai|groq|deepseek|modelscope|ollama|kilo|cloudflare|llm7|ovhcloud|huggingface|dashscope|mistral|xai|anthropic|openai|google|cursor):/i;
 
 function formatWorkersAiError(raw: string, status: number): string {
   const text = String(raw || "").trim();
