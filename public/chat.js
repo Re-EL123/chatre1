@@ -816,10 +816,17 @@
     }
 
     // ── Intent-aware routing ─────────────────────────────────────
+    // Keywords only route chat vs agent. Analyst task_type wins once in the loop.
     const intentInfo =
       window.ChatreIntent && window.ChatreIntent.classifyIntent
         ? window.ChatreIntent.classifyIntent(message)
         : null;
+
+    const threadIdForCorr =
+      (window.__chatreRemote && window.__chatreRemote.threadId) || "local";
+    if (window.ChatreUnderstanding && window.ChatreUnderstanding.rememberIfCorrection) {
+      window.ChatreUnderstanding.rememberIfCorrection(message, threadIdForCorr);
+    }
 
     // If the agent asked a clarifying question OR showed tappable option
     // buttons / connector cards last turn, the next message is the user's
@@ -847,13 +854,24 @@
       window.ChatreComposer && window.ChatreComposer.wantsAgentFromMode
         ? window.ChatreComposer.wantsAgentFromMode()
         : agentMode;
+    const howToOnly =
+      window.ChatreUnderstanding &&
+      window.ChatreUnderstanding.isHowToQuestion &&
+      window.ChatreUnderstanding.isHowToQuestion(message);
+    const looksAgentic =
+      window.ChatreAgent && window.ChatreAgent.looksAgentic
+        ? window.ChatreAgent.looksAgentic(message)
+        : false;
+    // Soft mode reasoning: how-to / explain defaults to fast chat unless the
+    // composer mode explicitly wants agent, or the user is resuming.
     const wantsAgent =
-      window.ChatreAgent && window.ChatreTools &&
+      window.ChatreAgent &&
+      window.ChatreTools &&
       (modeWantsAgent ||
         agentMode ||
         resumeBecauseClarification ||
         (intentInfo && intentInfo.suggestsWeb && intentInfo.name !== "chat") ||
-        window.ChatreAgent.looksAgentic(message));
+        (looksAgentic && !howToOnly));
     // Short greetings and knowledge-only questions get a fast plain-chat
     // answer — no agent loop, no tools, no "planning" indicator.
     const fastChat =
@@ -862,6 +880,7 @@
       intentInfo &&
       !resumeBecauseClarification &&
       (intentInfo.name === "chat" ||
+        howToOnly ||
         (intentInfo.name === "question" && !intentInfo.suggestsWeb));
 
     if (wantsAgent && window.ChatreAgent && window.ChatreTools) {
@@ -1890,13 +1909,56 @@
               const b = ev.briefing || {};
               const bits = [];
               if (b.task_type) bits.push(b.task_type);
+              if (b.deliverable_kind) bits.push(b.deliverable_kind);
+              if (b.confidence != null) {
+                bits.push(Math.round(Number(b.confidence) * 100) + "%");
+              }
               if (b.goal) bits.push(b.goal);
               const planText =
-                "Plan: " + (bits.join(" — ") || "ready").slice(0, 160);
+                "Understood: " + (bits.join(" — ") || "ready").slice(0, 160);
               if (timeline && timeline.setPhase) {
                 timeline.setPhase("plan", planText);
               } else {
                 showStep(planText, false);
+              }
+              if (
+                b.intent_contract &&
+                window.ChatreKit &&
+                window.ChatreKit.toast
+              ) {
+                /* contract shown fully on plan card; keep timeline light */
+              }
+              const suggestion =
+                b.mode_suggestion ||
+                (window.ChatreUnderstanding &&
+                  window.ChatreUnderstanding.suggestMode(
+                    b,
+                    window.ChatreComposer && window.ChatreComposer.getMode
+                      ? window.ChatreComposer.getMode()
+                      : "agent",
+                  ));
+              if (
+                suggestion &&
+                suggestion.suggested_mode &&
+                !suggestion.mode_matches &&
+                window.ChatreComposer &&
+                window.ChatreComposer.showModeSuggestion
+              ) {
+                window.ChatreComposer.showModeSuggestion(suggestion);
+              } else if (
+                suggestion &&
+                suggestion.suggested_mode &&
+                !suggestion.mode_matches &&
+                window.ChatreKit &&
+                window.ChatreKit.toast
+              ) {
+                window.ChatreKit.toast(
+                  "Suggested mode: " +
+                    suggestion.suggested_mode +
+                    " — " +
+                    (suggestion.mode_reason || ""),
+                  "info",
+                );
               }
             } else if (ev.type === "todos") {
               showStep(
@@ -2233,10 +2295,32 @@
           signal: activeAbort.signal,
           resume: !!(opts && opts.resumeRemote),
           briefingSeed: (function () {
-            if (!window.__pendingTemplateBriefing) return undefined;
-            const seed = window.__pendingTemplateBriefing;
+            const tid =
+              (window.__chatreRemote && window.__chatreRemote.threadId) ||
+              "local";
+            const corrections =
+              window.ChatreUnderstanding &&
+              window.ChatreUnderstanding.loadCorrections
+                ? window.ChatreUnderstanding.loadCorrections(tid)
+                : [];
+            const seed = window.__pendingTemplateBriefing || {};
             window.__pendingTemplateBriefing = null;
-            return seed;
+            if (
+              !corrections.length &&
+              !seed.goal &&
+              !seed.template_id &&
+              !Object.keys(seed).length
+            ) {
+              return corrections.length
+                ? { user_corrections: corrections }
+                : undefined;
+            }
+            return Object.assign({}, seed, {
+              user_corrections: [].concat(
+                seed.user_corrections || [],
+                corrections,
+              ),
+            });
           })(),
           autonomy:
             window.ChatreAutonomy && window.ChatreAutonomy.get

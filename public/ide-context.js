@@ -1,7 +1,7 @@
 /**
- * Client Layer — editor context gathering for Chatre IDE stack.
- * Feeds active file / tabs / selection into RAG pack + agent/complete calls.
- * API surface stays ≤12: uses workspace?action=context|index and chat mode=complete|edit.
+ * Client Layer (Secret Stack Layer 1) — editor context for Chatre IDE.
+ * Feeds active file / tabs / selection into Layer 2 RAG pack + agent/complete.
+ * API surface stays ≤12: workspace?action=context|index and chat mode=complete|edit.
  */
 (function () {
   "use strict";

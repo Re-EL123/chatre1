@@ -83,33 +83,48 @@
 
     const taskTypeRaw = String(o.task_type || o.taskType || "mixed").toLowerCase();
     const msg = String(userMessage || "").toLowerCase();
-    // Hard overrides — don't let code-mode prefixes or weak LLM classification
-    // turn a PDF/book request into research/build theatre.
+    const howToLead =
+      /^(how\s+(do|to|can|should)|what\s+(is|are|does)|why\s+|explain\b)/i.test(
+        String(userMessage || "").trim(),
+      );
+    const confidence =
+      window.ChatreUnderstanding && window.ChatreUnderstanding.clamp01
+        ? window.ChatreUnderstanding.clamp01(
+            o.confidence != null ? o.confidence : o.understanding_confidence,
+            0.82,
+          )
+        : Number(o.confidence) || 0.82;
+    // Soft overrides only when analyst is weak/mixed — never flip how-to → build.
     let taskType = taskTypeRaw;
-    if (
-      /\bpdf\b/.test(msg) ||
-      /\b(generate|create|make|write)\b.{0,40}\b(book|report|guide|manual|essay)\b/.test(
-        msg,
-      )
-    ) {
-      taskType = "document";
+    if (!howToLead && confidence < 0.75) {
+      if (
+        /\bpdf\b/.test(msg) ||
+        /\b(generate|create|make|write)\b.{0,40}\b(book|report|guide|manual|essay)\b/.test(
+          msg,
+        )
+      ) {
+        taskType = "document";
+      } else if (
+        (/\b(html|css|javascript|\.js\b|canvas|website|web app|landing page)\b/.test(
+          msg,
+        ) &&
+          /\b(create|make|build|design|scaffold|implement|write)\b/.test(msg)) ||
+        /\b(create|make|build|design|scaffold|implement|write)\b.{0,100}\b(game|app|website|page|project|calculator|widget|todo|todos|counter|clock|quiz|form|dashboard|ui)\b/.test(
+          msg,
+        ) ||
+        /\b(calculator|todo\s*app|to-?do list|counter app)\b/.test(msg)
+      ) {
+        taskType = "build";
+      } else if (
+        /^\s*(hi|hello|hey|thanks|thank you)\b/.test(msg) &&
+        msg.length < 40
+      ) {
+        taskType = "chat";
+      }
     } else if (
-      /\b(html|css|javascript|\.js\b|canvas|bubble.?shooter|game in html|website|web app|landing page|react|vue|svelte|frontend|vanilla)\b/.test(
-        msg,
-      ) ||
-      /\b(create|make|build|design|scaffold|implement|write)\b.{0,100}\b(game|app|website|page|project|calculator|widget|todo|todos|counter|clock|quiz|form|dashboard|ui)\b/.test(
-        msg,
-      ) ||
-      /\b(calculator|todo\s*app|to-?do list|counter app|stopwatch|timer app|quiz app)\b/.test(
-        msg,
-      ) ||
-      /\b(implement|refactor|fix|debug|add|write)\b.{0,40}\b(auth|api|endpoint|module|component|function|class|test|bug)\b/.test(
-        msg,
-      ) ||
-      /\b(python|typescript|node\.?js|shell|terminal|script)\b/.test(msg)
+      /^\s*(hi|hello|hey|thanks|thank you)\b/.test(msg) &&
+      msg.length < 40
     ) {
-      taskType = "build";
-    } else if (/^\s*(hi|hello|hey|thanks|thank you)\b/.test(msg) && msg.length < 40) {
       taskType = "chat";
     }
 
@@ -171,12 +186,30 @@
       });
     }
 
-    return {
+    const deliverableKind =
+      String(o.deliverable_kind || o.deliverableKind || "").toLowerCase() ||
+      (window.ChatreUnderstanding &&
+        window.ChatreUnderstanding.classifyDeliverableKind(userMessage, taskType)) ||
+      "mixed";
+    const assumptions =
+      (window.ChatreUnderstanding &&
+        window.ChatreUnderstanding.asStringList(o.assumptions)) ||
+      [];
+    const unknowns =
+      (window.ChatreUnderstanding &&
+        window.ChatreUnderstanding.asStringList(o.unknowns)) ||
+      [];
+
+    let briefing = {
       understanding: String(o.understanding || "").trim(),
       goal:
         String(o.goal || "").trim() ||
         String(userMessage || "").slice(0, 200),
       task_type: taskType,
+      deliverable_kind: deliverableKind,
+      assumptions: assumptions,
+      unknowns: unknowns,
+      confidence: confidence,
       success_criteria: Array.isArray(o.success_criteria)
         ? o.success_criteria.map(String)
         : [],
@@ -199,7 +232,42 @@
         return n > 0 ? n : undefined;
       })(),
       executor_brief: String(o.executor_brief || o.executorBrief || "").trim(),
+      user_corrections:
+        (window.ChatreUnderstanding &&
+          window.ChatreUnderstanding.asStringList(o.user_corrections)) ||
+        [],
     };
+    if (window.ChatreUnderstanding) {
+      if (
+        window.ChatreUnderstanding.isSoftDoneWhen(briefing.done_when)
+      ) {
+        briefing.done_when = "";
+      }
+      const modeInfo = window.ChatreUnderstanding.suggestMode(
+        briefing,
+        window.ChatreComposer && window.ChatreComposer.getMode
+          ? window.ChatreComposer.getMode()
+          : "agent",
+      );
+      briefing.suggested_mode = o.suggested_mode || modeInfo.suggested_mode;
+      briefing.mode_reason = o.mode_reason || modeInfo.mode_reason;
+      briefing.mode_suggestion = modeInfo;
+      if (
+        (confidence < window.ChatreUnderstanding.CONFIDENCE_THRESHOLD &&
+          o.confidence != null) ||
+        unknowns.length
+      ) {
+        briefing.needs_clarification = true;
+        briefing.clarification_question =
+          briefing.clarification_question ||
+          (unknowns[0]
+            ? "Quick check before I proceed: " + unknowns[0] + "?"
+            : "Before I proceed — what should the concrete deliverable be?");
+      }
+      briefing.intent_contract =
+        window.ChatreUnderstanding.formatIntentContract(briefing);
+    }
+    return briefing;
   }
 
   function formatExecutorPrompt(briefing, userMessage) {

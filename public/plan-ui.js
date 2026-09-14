@@ -66,9 +66,22 @@
       ? next.success_criteria.filter(Boolean)
       : [];
     if (goal.length < 4) errors.push("Goal must be a concrete sentence");
-    if (done.length < 4) errors.push("Done when must be observable");
+    if (
+      done.length < 4 ||
+      (window.ChatreUnderstanding &&
+        window.ChatreUnderstanding.isSoftDoneWhen(done))
+    ) {
+      errors.push("Done when must be observable");
+    }
     if (steps.length < 2) errors.push("Checklist needs at least 2 steps");
-    if (files.length < 1) errors.push("List at least one file path to create or edit");
+    if (
+      files.length < 1 &&
+      next.deliverable_kind !== "answer" &&
+      next.task_type !== "chat" &&
+      next.task_type !== "question"
+    ) {
+      errors.push("List at least one file path to create or edit");
+    }
     if (acceptance.length < 1) {
       errors.push("Success criteria need at least one measurable check");
     }
@@ -165,7 +178,9 @@
         b.done_when = b.success_criteria[0];
       }
       if (!(b.success_criteria && b.success_criteria.length)) {
-        b.success_criteria = ["Deliverables exist and match the goal"];
+        b.success_criteria = b.goal
+          ? ["Observable result matches: " + String(b.goal).slice(0, 160)]
+          : [];
       }
     }
 
@@ -227,6 +242,19 @@
           tplOptions +
           "</select></div>"
         : "") +
+      '<div class="plan-field plan-intent-contract">' +
+      '<label class="plan-label">Intent contract</label>' +
+      '<pre class="plan-contract-view"></pre>' +
+      '<p class="plan-hint">Edit the fields below if this misread you — Approve locks this interpretation in.</p>' +
+      "</div>" +
+      '<div class="plan-field plan-assumptions-row">' +
+      '<label class="plan-label">Assumptions (one per line)</label>' +
+      '<textarea class="plan-assumptions" rows="2" placeholder="What was inferred…"></textarea>' +
+      "</div>" +
+      '<div class="plan-field">' +
+      '<label class="plan-label">Still unclear / corrections</label>' +
+      '<textarea class="plan-unknowns" rows="2" placeholder="Anything still wrong or missing…"></textarea>' +
+      "</div>" +
       '<div class="plan-field">' +
       '<label class="plan-label">Goal</label>' +
       '<textarea class="plan-goal-input" rows="2" placeholder="Concrete goal…"></textarea>' +
@@ -239,6 +267,7 @@
       '<label class="plan-label">Understanding</label>' +
       '<textarea class="plan-understanding" rows="2" placeholder="What the agent understood…"></textarea>' +
       "</div>" +
+      '<div class="plan-mode-suggest" hidden></div>' +
       '<div class="plan-field">' +
       '<label class="plan-label">Executor brief</label>' +
       '<textarea class="plan-brief" rows="4" placeholder="How it will execute…"></textarea>' +
@@ -281,13 +310,84 @@
       wrap.querySelector(".plan-criteria").value = (
         next.success_criteria || []
       ).join("\n");
+      const assumptionsEl = wrap.querySelector(".plan-assumptions");
+      if (assumptionsEl) {
+        assumptionsEl.value = (next.assumptions || []).join("\n");
+      }
+      const unknownsEl = wrap.querySelector(".plan-unknowns");
+      if (unknownsEl) {
+        unknownsEl.value = (next.unknowns || next.user_corrections || []).join(
+          "\n",
+        );
+      }
+      const contractEl = wrap.querySelector(".plan-contract-view");
+      if (contractEl) {
+        const contract =
+          next.intent_contract ||
+          (window.ChatreUnderstanding &&
+            window.ChatreUnderstanding.formatIntentContract(next)) ||
+          "";
+        contractEl.textContent = contract;
+      }
+      const modeBox = wrap.querySelector(".plan-mode-suggest");
+      if (modeBox) {
+        const suggestion =
+          next.mode_suggestion ||
+          (window.ChatreUnderstanding &&
+            window.ChatreUnderstanding.suggestMode(
+              next,
+              window.ChatreComposer && window.ChatreComposer.getMode
+                ? window.ChatreComposer.getMode()
+                : "agent",
+            ));
+        if (
+          suggestion &&
+          suggestion.suggested_mode &&
+          !suggestion.mode_matches
+        ) {
+          modeBox.hidden = false;
+          modeBox.innerHTML =
+            '<span class="plan-mode-text">Suggested mode: <strong>' +
+            escapeHtml(suggestion.suggested_mode) +
+            "</strong> — " +
+            escapeHtml(suggestion.mode_reason || "") +
+            '</span> <button type="button" class="btn plan-apply-mode">Use ' +
+            escapeHtml(suggestion.suggested_mode) +
+            "</button>";
+          const applyBtn = modeBox.querySelector(".plan-apply-mode");
+          if (applyBtn) {
+            applyBtn.addEventListener("click", function () {
+              if (window.ChatreComposer && window.ChatreComposer.setMode) {
+                window.ChatreComposer.setMode(suggestion.suggested_mode);
+              }
+              if (window.ChatreKit && window.ChatreKit.toast) {
+                window.ChatreKit.toast(
+                  "Switched to " + suggestion.suggested_mode + " mode",
+                  "success",
+                );
+              }
+              modeBox.hidden = true;
+            });
+          }
+        } else {
+          modeBox.hidden = true;
+          modeBox.innerHTML = "";
+        }
+      }
       const meta = wrap.querySelector(".plan-meta");
       if (meta) {
         const type = next.task_type || "mixed";
+        const kind = next.deliverable_kind || "";
+        const conf =
+          next.confidence != null
+            ? Math.round(Number(next.confidence) * 100) + "%"
+            : "";
         const goal = next.goal ? String(next.goal).slice(0, 140) : "";
         meta.innerHTML =
           '<span class="plan-type">' +
           escapeHtml(type) +
+          (kind ? " · " + escapeHtml(kind) : "") +
+          (conf ? " · " + escapeHtml(conf) : "") +
           "</span>" +
           (goal
             ? '<span class="plan-goal-text">' + escapeHtml(goal) + "</span>"
@@ -437,10 +537,38 @@
           .filter(Boolean);
         let goal = fieldValue(".plan-goal-input");
         let doneWhen = fieldValue(".plan-done-input");
+        const assumptions = fieldValue(".plan-assumptions")
+          .split("\n")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(Boolean);
+        const unknownsOrCorrections = fieldValue(".plan-unknowns")
+          .split("\n")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(Boolean);
         if (!goal) goal = String(b.goal || "Complete the user request").trim();
         if (!doneWhen && criteria.length) doneWhen = criteria[0];
-        if (!doneWhen) doneWhen = "Deliverables exist and match the goal";
-        if (!criteria.length) criteria = [doneWhen];
+        if (
+          !doneWhen ||
+          (window.ChatreUnderstanding &&
+            window.ChatreUnderstanding.isSoftDoneWhen(doneWhen))
+        ) {
+          doneWhen =
+            (criteria[0] &&
+            !(
+              window.ChatreUnderstanding &&
+              window.ChatreUnderstanding.isSoftDoneWhen(criteria[0])
+            )
+              ? criteria[0]
+              : "") ||
+            (goal
+              ? "Observable result matches: " + goal.slice(0, 160)
+              : "");
+        }
+        if (!criteria.length && doneWhen) criteria = [doneWhen];
         if (!files.length) {
           const slug =
             String(b.project_slug || b.task_type || "app")
@@ -460,8 +588,12 @@
             steps.push({
               text:
                 steps.length === 0
-                  ? "Implement the work"
-                  : "Verify and summarize",
+                  ? goal
+                    ? "Implement: " + goal.slice(0, 120)
+                    : "Implement the approved goal"
+                  : doneWhen
+                    ? "Verify: " + String(doneWhen).slice(0, 120)
+                    : "Verify acceptance tests from the intent contract",
               done: false,
             });
             addCheckItem(steps[steps.length - 1].text, false);
@@ -472,6 +604,11 @@
           done_when: doneWhen,
           understanding: fieldValue(".plan-understanding"),
           executor_brief: fieldValue(".plan-brief"),
+          assumptions: assumptions,
+          unknowns: unknownsOrCorrections.filter(function (u) {
+            return !/^(no|i meant|actually|correction)/i.test(u);
+          }),
+          user_corrections: unknownsOrCorrections,
           plan_steps: steps,
           approach: steps.map(function (s) {
             return s.text;
@@ -487,6 +624,22 @@
           success_criteria: criteria,
           acceptance_tests: criteria,
         });
+        if (window.ChatreUnderstanding) {
+          next.deliverable_kind =
+            next.deliverable_kind ||
+            window.ChatreUnderstanding.classifyDeliverableKind(
+              goal,
+              next.task_type,
+            );
+          next.intent_contract =
+            window.ChatreUnderstanding.formatIntentContract(next);
+          const tid =
+            (window.__chatreRemote && window.__chatreRemote.threadId) ||
+            "local";
+          unknownsOrCorrections.forEach(function (c) {
+            window.ChatreUnderstanding.saveCorrection(tid, c);
+          });
+        }
         if (steps.length) {
           next.executor_brief =
             (next.executor_brief ? next.executor_brief + "\n\n" : "") +

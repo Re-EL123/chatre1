@@ -6,9 +6,18 @@
 
   var activeUrls = [];
   var lastRuntimeErrors = [];
+  /** User dismissed the modal — ignore auto-open until Reload / Fix / force. */
+  var userDismissed = false;
+  var openSeq = 0;
 
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function toast(msg, kind) {
+    if (window.ChatreKit && window.ChatreKit.toast) {
+      window.ChatreKit.toast(msg, kind || "info");
+    }
   }
 
   function revokeAll() {
@@ -24,7 +33,10 @@
 
   function ensureModal() {
     var modal = $("live-preview-modal");
-    if (modal) return modal;
+    if (modal) {
+      if (!modal.__chatrePreviewBound) bindModal(modal);
+      return modal;
+    }
     modal = document.createElement("div");
     modal.id = "live-preview-modal";
     modal.className = "live-preview-modal";
@@ -41,25 +53,52 @@
       "    </div>" +
       "  </div>" +
       '  <div class="live-preview-body">' +
-      '    <iframe id="live-preview-frame" title="Live project preview" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"></iframe>' +
+      '    <iframe id="live-preview-frame" title="Live project preview" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>' +
       '    <aside class="live-preview-console" id="live-preview-console" aria-label="Preview console"></aside>' +
       "  </div>" +
       "</div>";
     document.body.appendChild(modal);
-    $("live-preview-close").addEventListener("click", close);
-    $("live-preview-reload").addEventListener("click", function () {
-      if (window.ChatrePreview && window.ChatrePreview._last) {
-        open(window.ChatrePreview._last);
-      }
-    });
-    $("live-preview-fix").addEventListener("click", function () {
-      askAgentToFix();
-    });
-    modal.addEventListener("click", function (e) {
-      if (e.target === modal) close();
-    });
-    window.addEventListener("message", onFrameMessage);
+    bindModal(modal);
     return modal;
+  }
+
+  function bindModal(modal) {
+    if (!modal || modal.__chatrePreviewBound) return;
+    modal.__chatrePreviewBound = true;
+
+    // Event delegation so bar buttons keep working even if DOM is tweaked.
+    modal.addEventListener(
+      "click",
+      function (e) {
+        var t = e.target && e.target.closest ? e.target.closest("button") : null;
+        if (t && modal.contains(t)) {
+          e.preventDefault();
+          e.stopPropagation();
+          var id = t.id || "";
+          if (id === "live-preview-close") {
+            close();
+            return;
+          }
+          if (id === "live-preview-reload") {
+            reload();
+            return;
+          }
+          if (id === "live-preview-fix") {
+            askAgentToFix();
+            return;
+          }
+        }
+        if (e.target === modal) close();
+      },
+      true,
+    );
+
+    window.addEventListener("message", onFrameMessage);
+    window.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var m = $("live-preview-modal");
+      if (m && m.classList.contains("open")) close();
+    });
   }
 
   function onFrameMessage(ev) {
@@ -76,9 +115,7 @@
         [],
       lastRuntimeErrors,
     );
-    if (window.ChatreKit && window.ChatreKit.toast) {
-      window.ChatreKit.toast("Preview runtime error detected", "warn");
-    }
+    toast("Preview runtime error detected", "warn");
   }
 
   function injectProbe(html) {
@@ -167,25 +204,41 @@
       .replace(/>/g, "&gt;");
   }
 
-  function open(payload) {
+  function storeLast(p, preview) {
+    window.ChatrePreview._last = {
+      preview: preview,
+      staticErrors: p.staticErrors || p.errors || preview.errors || [],
+      ok: p.ok !== false,
+      path: p.path || preview.root,
+    };
+  }
+
+  function open(payload, opts) {
+    opts = opts || {};
     var p = payload || {};
     var preview = p.preview || p;
     if (!preview || !preview.files) {
-      if (window.ChatreKit && window.ChatreKit.toast) {
-        window.ChatreKit.toast("Preview has no files", "warn");
-      }
+      toast("Preview has no files", "warn");
       return Promise.resolve({ ok: false, errors: [{ message: "No files" }] });
     }
+
+    storeLast(p, preview);
+
+    if (userDismissed && !opts.force) {
+      return Promise.resolve({
+        ok: (window.ChatrePreview._last.staticErrors || []).length === 0,
+        errors: window.ChatrePreview._last.staticErrors || [],
+        skipped: true,
+        localhost: preview.url,
+        port: preview.port,
+      });
+    }
+    userDismissed = false;
 
     ensureModal();
     revokeAll();
     lastRuntimeErrors = [];
-    window.ChatrePreview._last = {
-      preview: preview,
-      staticErrors: p.errors || preview.errors || [],
-      ok: p.ok !== false,
-      path: p.path || preview.root,
-    };
+    var seq = ++openSeq;
 
     var modal = $("live-preview-modal");
     modal.classList.add("open");
@@ -210,7 +263,7 @@
     var pageUrl = URL.createObjectURL(pageBlob);
     activeUrls.push(pageUrl);
     var frame = $("live-preview-frame");
-    frame.src = pageUrl;
+    if (frame) frame.src = pageUrl;
 
     // Open browser panel as a secondary surface
     if (window.ChatrePanels && window.ChatrePanels.togglePanel) {
@@ -235,6 +288,16 @@
 
     return new Promise(function (resolve) {
       setTimeout(function () {
+        if (seq !== openSeq || userDismissed) {
+          resolve({
+            ok: false,
+            errors: lastRuntimeErrors.slice(),
+            cancelled: true,
+            localhost: preview.url,
+            port: preview.port,
+          });
+          return;
+        }
         var runtime = lastRuntimeErrors.slice();
         var staticErrs = window.ChatrePreview._last.staticErrors || [];
         var all = staticErrs.concat(runtime);
@@ -249,12 +312,28 @@
     });
   }
 
+  function reload() {
+    var last = window.ChatrePreview && window.ChatrePreview._last;
+    if (!last || !last.preview) {
+      toast("Nothing to reload", "warn");
+      return;
+    }
+    userDismissed = false;
+    open(last, { force: true });
+  }
+
   function close() {
+    userDismissed = true;
+    openSeq++;
     var modal = $("live-preview-modal");
     if (modal) modal.classList.remove("open");
     var frame = $("live-preview-frame");
     if (frame) frame.src = "about:blank";
     revokeAll();
+  }
+
+  function isAgentBusy() {
+    return document.body.classList.contains("is-working");
   }
 
   function askAgentToFix() {
@@ -274,9 +353,23 @@
             })
             .join("\n")
         : "- Interactively verify the UI still works.");
+
+    // Close first so the chat / queue feedback is visible.
+    close();
+    // Allow the agent's next preview_project to show again.
+    userDismissed = false;
+
+    if (isAgentBusy() && window.ChatreUI && window.ChatreUI.injectGuidance) {
+      window.ChatreUI.injectGuidance(prompt);
+      toast("Sent fix guidance to the current run", "success");
+      return;
+    }
     if (window.ChatreUI && window.ChatreUI.composeAndSend) {
       window.ChatreUI.composeAndSend(prompt);
+      toast("Asked agent to fix preview issues", "success");
+      return;
     }
+    toast("Chat UI not ready — try again in a moment", "warn");
   }
 
   function handleAgentEvent(ev) {
@@ -310,6 +403,7 @@
   window.ChatrePreview = {
     open: open,
     close: close,
+    reload: reload,
     handleAgentEvent: handleAgentEvent,
     askAgentToFix: askAgentToFix,
     getRuntimeErrors: function () {

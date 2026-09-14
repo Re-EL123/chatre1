@@ -431,9 +431,13 @@
   }
 
   async function getContextPack(workspaceId, body) {
+    const b = Object.assign({ mode: "hybrid" }, body || {});
     return request(
-      "/api/workspace?action=context&id=" + encodeURIComponent(workspaceId),
-      { method: "POST", body: JSON.stringify(body || {}) },
+      "/api/workspace?action=context&id=" +
+        encodeURIComponent(workspaceId) +
+        "&mode=" +
+        encodeURIComponent(b.mode || "hybrid"),
+      { method: "POST", body: JSON.stringify(b) },
     );
   }
 

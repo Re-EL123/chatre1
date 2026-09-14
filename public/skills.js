@@ -333,6 +333,20 @@
         "local/desktop_exec only with approved=true.",
       ],
     },
+    consistent_delivery: {
+      name: "consistent_delivery",
+      title: "Consistent delivery",
+      summary:
+        "Finish without drifting: obey the intent contract, preserve working code, verify before claiming done.",
+      steps: [
+        "Re-read the intent contract (goal, deliverable_kind, done_when, assumptions, user corrections). Do not invent a new brief mid-run.",
+        "Touch only files required for the goal. Prefer patch_file over rewrite. Never delete or replace unrelated working code to \"clean up\".",
+        "Keep structure, naming, and style consistent with what already exists in the project (or the approved plan).",
+        "After each substantive write, re-check acceptance tests / done_when. If preview_project or tests fail, fix the regression — do not declare done.",
+        "If blocked or unsure, ask ONE clarifying question (clarify / ask_user_input) instead of guessing and shipping wrong work.",
+        "Final answer: real paths + what changed + how done_when was proven. No soft claims like \"goal completed\".",
+      ],
+    },
   };
 
   /**
@@ -430,6 +444,14 @@
     }
     if (/\b(debug|error|bug|failing|stack.?trace)\b/.test(t)) {
       found.add("debugging");
+    }
+    if (
+      /\b(consistent|don'?t\s+break|preserve|regression|finish\s+clean|stay\s+on\s+plan|intent\s+contract)\b/.test(
+        t,
+      ) ||
+      /\b(build|implement|fix|refactor|app|website|pdf|document)\b/.test(t)
+    ) {
+      found.add("consistent_delivery");
     }
     if (
       /\b(explore|inspect|search|find files|research)\b/.test(t)
@@ -829,6 +851,23 @@
     }
     if (all.indexOf("tdd") >= 0 && active.indexOf("tdd") < 0) {
       active.push("tdd");
+    }
+    // Always pin consistent_delivery on workspace delivery tasks so the
+    // executor does not drift after a good analysis.
+    var t = String(taskType || "").toLowerCase();
+    var wantsConsistency =
+      ["build", "debug", "document", "git", "run", "mixed"].indexOf(t) >= 0 ||
+      all.indexOf("coding") >= 0 ||
+      all.indexOf("documents") >= 0 ||
+      all.indexOf("debugging") >= 0 ||
+      all.indexOf("consistent_delivery") >= 0;
+    if (
+      wantsConsistency &&
+      active.indexOf("consistent_delivery") < 0 &&
+      active.indexOf("dogfood") < 0 &&
+      active.indexOf("spike") < 0
+    ) {
+      active.push("consistent_delivery");
     }
     return active;
   }

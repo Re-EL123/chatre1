@@ -325,7 +325,21 @@
           briefing.task_type === "document"
             ? "File exists under /home/user/documents from create_pdf or create_document"
             : (briefing.success_criteria && briefing.success_criteria[0]) ||
-              "Goal completed with workspace evidence";
+              (briefing.goal
+                ? "Observable result matches: " +
+                  String(briefing.goal).slice(0, 160)
+                : "");
+        if (
+          window.ChatreUnderstanding &&
+          window.ChatreUnderstanding.isSoftDoneWhen(briefing.done_when)
+        ) {
+          briefing.done_when =
+            (briefing.success_criteria && briefing.success_criteria[0]) ||
+            (briefing.goal
+              ? "Observable result matches: " +
+                String(briefing.goal).slice(0, 160)
+              : "");
+        }
       }
       if (
         detectedAll.length &&

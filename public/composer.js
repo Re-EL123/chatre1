@@ -1537,10 +1537,43 @@
     if (kit()) kit().refreshIcons(document.querySelector(".message-input-wrap"));
   }
 
+  function showModeSuggestion(suggestion) {
+    var s = suggestion || {};
+    if (!s.suggested_mode || s.mode_matches) return;
+    var host = $("composer-run") || $("composer-modes") || document.body;
+    var existing = document.getElementById("mode-suggest-chip");
+    if (existing) existing.remove();
+    var chip = document.createElement("div");
+    chip.id = "mode-suggest-chip";
+    chip.className = "mode-suggest-chip";
+    chip.innerHTML =
+      '<span>Suggested: <strong></strong> — <em></em></span>' +
+      '<button type="button" class="btn mode-suggest-apply">Switch</button>' +
+      '<button type="button" class="btn mode-suggest-dismiss" aria-label="Dismiss">×</button>';
+    chip.querySelector("strong").textContent = s.suggested_mode;
+    chip.querySelector("em").textContent = s.mode_reason || "";
+    chip.querySelector(".mode-suggest-apply").addEventListener("click", function () {
+      setMode(s.suggested_mode);
+      chip.remove();
+      if (kit() && kit().toast) {
+        kit().toast("Switched to " + s.suggested_mode, "success");
+      }
+    });
+    chip.querySelector(".mode-suggest-dismiss").addEventListener("click", function () {
+      chip.remove();
+    });
+    if (host && host.parentNode) {
+      host.parentNode.insertBefore(chip, host);
+    } else {
+      document.body.appendChild(chip);
+    }
+  }
+
   window.ChatreComposer = {
     init: init,
     getMode: getMode,
     setMode: setMode,
+    showModeSuggestion: showModeSuggestion,
     composerFlags: composerFlags,
     prefixFromFlags: prefixFromFlags,
     enrichMessage: enrichMessage,

@@ -1,9 +1,9 @@
 /**
- * Chatre Intent — deterministic, zero-LLM classification of the user's
- * request BEFORE any tool runs. The raw prompt must not directly trigger
- * tools: we first decide WHAT the user wants (a question? a PDF? research?
- * code?) and expose only the tools that fit, so a "what is X" never spawns
- * file writes and a "make me a PDF of X" produces a real downloaded file.
+ * Chatre Intent — deterministic, zero-LLM ROUTING of the user's request
+ * BEFORE any tool runs (chat vs agent, which tool family to expose).
+ * Authoritative task_type / deliverable_kind / confidence come from the
+ * analyst briefing — keyword scores here must not override a high-confidence
+ * analyst classification.
  *
  * Design notes (from agent-routing research):
  *  - Tool EXPOSURE is not agentic intent: greetings/questions get few or no
