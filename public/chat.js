@@ -1196,7 +1196,6 @@
               .replace(/\s+/g, " "),
             messages: chatHistory,
           });
-          if (window.ChatrePanels) window.ChatrePanels.refreshThreads();
         }
       } else {
         console.error(error);
