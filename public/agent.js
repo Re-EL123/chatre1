@@ -1061,29 +1061,31 @@
                 results[results.length - 1].result.error) ||
               "";
             const msg =
-              "Stopping: the same tool call failed " +
-              failedStreak +
-              " times in a row (" +
+              "I ran into an issue: `" +
               failing +
-              "). " +
-              (lastError ? "Last error: " + lastError.slice(0, 220) + ". " : "") +
-              "Summarize what is done and tell the user exactly what to fix next.";
+              "` encountered errors " +
+              failedStreak +
+              " times in a row." +
+              (lastError ? " Last error: " + lastError.slice(0, 220) + "." : "") +
+              "\n\nHow would you like to proceed? You can suggest a different approach, adjust parameters, or provide extra context.";
             callbacks.onStepText && callbacks.onStepText(msg, true);
             fullAssistantText += (fullAssistantText ? "\n\n" : "") + msg;
             callbacks.onDone &&
               callbacks.onDone({
                 response: fullAssistantText,
                 iterations: i + 1,
-                cancelled: true,
+                cancelled: false,
                 stoppedByFailure: true,
+                askedClarification: true,
                 toolsUsed: usedTools,
                 intent: intent && intent.name,
               });
             return {
               response: fullAssistantText,
               iterations: i + 1,
-              cancelled: true,
+              cancelled: false,
               stoppedByFailure: true,
+              askedClarification: true,
               messages,
               toolsUsed: usedTools,
               intent: intent && intent.name,
