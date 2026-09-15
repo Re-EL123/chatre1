@@ -1026,23 +1026,46 @@
       let response;
 
       if (isByokModel(selectedModel)) {
-        if (
-          !window.ChatreRemote ||
-          !window.ChatreRemote.enabled() ||
-          !window.ChatreRemote.hasAuth() ||
-          !window.ChatreRemote.chatStream
+        // Local Worker BYOK proxy: no sign-in needed, no Workers AI quota.
+        // Requires the provider key saved in Settings → BYOK (mirrored locally).
+        const byokProvider = String(selectedModel).split(":")[0].toLowerCase();
+        const localKey =
+          window.ChatreRemote && window.ChatreRemote.localByokKey
+            ? window.ChatreRemote.localByokKey(byokProvider)
+            : null;
+        if (localKey) {
+          const headers = authHeaders();
+          headers["x-chatre-byok-key"] = localKey;
+          response = await fetch("/api/chat", {
+            method: "POST",
+            headers,
+            signal: activeAbort.signal,
+            body: JSON.stringify({
+              messages: chatHistory,
+              stream: true,
+              model: selectedModel,
+              max_tokens: DEFAULT_MAX_TOKENS,
+            }),
+          });
+        } else if (
+          window.ChatreRemote &&
+          window.ChatreRemote.enabled() &&
+          window.ChatreRemote.hasAuth() &&
+          window.ChatreRemote.chatStream
         ) {
+          response = await window.ChatreRemote.chatStream({
+            messages: chatHistory,
+            model: selectedModel,
+            maxTokens: DEFAULT_MAX_TOKENS,
+            stream: true,
+            signal: activeAbort.signal,
+          });
+        } else {
           throw new Error(
-            "OpenRouter / BYOK models need you signed in with CHATRE_API_BASE configured and a key saved under Settings → BYOK. They cannot run on free Workers AI.",
+            "OpenRouter / BYOK models need a key saved under Settings → BYOK. " +
+              "Once saved (in your browser), chat runs through the Worker proxy with no quota limits.",
           );
         }
-        response = await window.ChatreRemote.chatStream({
-          messages: chatHistory,
-          model: selectedModel,
-          maxTokens: DEFAULT_MAX_TOKENS,
-          stream: true,
-          signal: activeAbort.signal,
-        });
       } else {
         response = await fetch("/api/chat", {
           method: "POST",
@@ -1158,6 +1181,22 @@
         if (responseText) {
           chatHistory.push({ role: "assistant", content: responseText });
           trimHistory();
+        }
+        if (
+          window.ChatreRemote &&
+          !window.ChatreRemote.enabled() &&
+          window.ChatreRemote.persistLocalTurn
+        ) {
+          window.ChatreRemote.persistLocalTurn({
+            threadId:
+              (window.__chatreRemote && window.__chatreRemote.threadId) ||
+              "local",
+            title: String(responseText || "New chat")
+              .slice(0, 60)
+              .replace(/\s+/g, " "),
+            messages: chatHistory,
+          });
+          if (window.ChatrePanels) window.ChatrePanels.refreshThreads();
         }
       } else {
         console.error(error);
@@ -2472,6 +2511,20 @@
                 }
               }
               if (ev.proof) showDoneProof(ev.proof, ev.audit);
+              if (
+                window.ChatreRemote &&
+                !window.ChatreRemote.enabled() &&
+                String(ev.threadId || remoteState.threadId || "")
+                  .indexOf("local-") === 0
+              ) {
+                window.ChatreRemote.persistLocalTurn({
+                  threadId: ev.threadId || remoteState.threadId || "local",
+                  title: String(finalText || "New chat")
+                    .slice(0, 60)
+                    .replace(/\s+/g, " "),
+                  messages: chatHistory,
+                });
+              }
               if (window.ChatrePanels) {
                 window.ChatrePanels.refreshThreads();
                 window.ChatrePanels.refreshFiles();

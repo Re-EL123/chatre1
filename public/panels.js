@@ -228,9 +228,160 @@
     }
   }
 
+  function localStore() {
+    return (
+      window.ChatreRemote &&
+      typeof window.ChatreRemote.localThreads === "function"
+    )
+      ? window.ChatreRemote
+      : null;
+  }
+
+  /** Open a signed-out thread straight from the local mirror so the rail
+   *  works standalone (no backend, no key) — same BYOK story for threads. */
+  async function loadLocalThread(localThreadId) {
+    const store = localStore();
+    if (!store) return;
+    const messages = store.localThreadMessages(localThreadId);
+    const all = store.localThreads();
+    let thr = null;
+    all.forEach(function (t) {
+      if (t.id === localThreadId) thr = t;
+    });
+    remoteState().threadId = localThreadId;
+    remoteState().workspaceId = null;
+    state.workspaceId = null;
+    state.threadId = localThreadId;
+    state.threadTitle =
+      (thr && (thr.title || thr.name)) ||
+      (messages[0] &&
+        messages[0].content &&
+        String(messages[0].content).slice(0, 45)) ||
+      "Untitled";
+    setResumeAvailable(false);
+    if (window.ChatreUI && window.ChatreUI.resetChat) {
+      window.ChatreUI.resetChat(messages || []);
+    }
+    if (window.ChatreComposer && window.ChatreComposer.onThreadChange) {
+      window.ChatreComposer.onThreadChange();
+    }
+    await refreshThreads();
+    await refreshFiles();
+  }
+
+  async function renameLocalThread(thr) {
+    const store = localStore();
+    if (!store) return;
+    const next = window.prompt("Rename thread", (thr && thr.title) || "Untitled");
+    if (next == null) return;
+    const title = String(next).trim();
+    if (!title) return;
+    await store.upsertLocalThread(
+      {
+        id: thr.id,
+        title: title.slice(0, 120),
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+    );
+    await refreshThreads();
+  }
+
+  async function deleteLocalThread(thr) {
+    const store = localStore();
+    if (!store) return;
+    if (
+      !window.confirm('Delete thread "' + (thr.title || "Untitled") + '"?')
+    ) {
+      return;
+    }
+    store.deleteLocalThread(thr.id);
+    if (String(remoteState().threadId) === String(thr.id)) {
+      remoteState().threadId = null;
+      remoteState().workspaceId = null;
+      state.workspaceId = null;
+      state.threadId = null;
+      setResumeAvailable(false);
+      if (window.ChatreUI && window.ChatreUI.resetChat) {
+        window.ChatreUI.resetChat([]);
+      }
+    }
+    await refreshThreads();
+    await refreshFiles();
+  }
+
+  /** Create a fresh local thread record for a signed-out first turn so the
+   *  active thread survives reloads. Returns the upserted {id,title}. */
+  async function newLocalThread() {
+    const store = localStore();
+    if (!store) return null;
+    const first = store.upsertLocalThread(
+      {
+        title: "New chat",
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+    );
+    return first || null;
+  }
+
   async function refreshThreads() {
     const list = $("thread-list");
-    if (!list || !remote() || !remote().enabled()) return;
+    if (!list) return;
+    // Signed-out / standalone: list straight from the local mirror so the
+    // rail works without a backend or key — same BYOK story for threads.
+    if (!remote() || !remote().enabled()) {
+      const store = localStore();
+      if (!store) return;
+      state.threads = store.localThreads();
+      list.innerHTML = "";
+      if (!state.threads.length) {
+        list.innerHTML = '<p class="panel-empty">No saved threads yet.</p>';
+        return;
+      }
+      const active = remoteState().threadId;
+      state.threads.forEach(function (thr) {
+        const wrap = document.createElement("div");
+        wrap.className =
+          "thread-item" + (thr.id === active ? " active" : "");
+        wrap.innerHTML =
+          '<button type="button" class="thread-open">' +
+          "<strong>" +
+          escapeHtml(thr.title || "Untitled") +
+          "</strong>" +
+          '<span class="thread-status done">Done</span>' +
+          "<span>" +
+          escapeHtml((thr.updatedAt || "").slice(0, 19).replace("T", " ")) +
+          "</span></button>" +
+          '<div class="thread-actions">' +
+          '<button type="button" class="thread-rename" data-tip="Rename" title="Rename">' +
+          (window.ChatreKit
+            ? window.ChatreKit.iconHtml("pencil", 14)
+            : "✎") +
+          "</button>" +
+          '<button type="button" class="thread-delete" data-tip="Delete" title="Delete">' +
+          (window.ChatreKit ? window.ChatreKit.iconHtml("trash-2", 14) : "×") +
+          "</button>" +
+          "</div>";
+        wrap.querySelector(".thread-open").addEventListener("click", function () {
+          loadLocalThread(thr.id);
+        });
+        wrap.querySelector(".thread-rename").addEventListener("click", function (e) {
+          e.stopPropagation();
+          renameLocalThread(thr);
+        });
+        wrap.querySelector(".thread-delete").addEventListener("click", function (e) {
+          e.stopPropagation();
+          deleteLocalThread(thr);
+        });
+        list.appendChild(wrap);
+      });
+      if (window.ChatreKit) {
+        window.ChatreKit.refreshIcons(list);
+        window.ChatreKit.bindTips(list);
+      }
+      return;
+    }
     try {
       const data = await remote().listThreads();
       state.threads = data.threads || [];
@@ -345,6 +496,16 @@
   }
 
   async function loadThread(threadId) {
+    // Signed-out: open straight from the local mirror so the rail works
+    // standalone (no backend, no key) — same BYOK story for threads.
+    if (
+      !remote() ||
+      !remote().enabled() ||
+      String(threadId || "").indexOf("local-") === 0
+    ) {
+      await loadLocalThread(threadId);
+      return;
+    }
     if (!remote()) return;
     const data = await remote().getMessages(threadId);
     const thr = await remote().getThread(threadId);

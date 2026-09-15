@@ -185,6 +185,143 @@
     });
   }
 
+  /** Read provider keys mirrored into localStorage by Settings → BYOK. */
+  function localByokKeys() {
+    try {
+      return JSON.parse(localStorage.getItem("chatre_byok_keys") || "{}");
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function localByokKey(provider) {
+    const p = String(provider || "").toLowerCase();
+    const all = localByokKeys();
+    return (all && all[p]) || null;
+  }
+
+  /** Export the exposed-byok object (used by tools/chat to build the model list). */
+  function getByokFlags() {
+    const all = localByokKeys();
+    const out = {};
+    Object.keys(all).forEach(function (p) {
+      out[p] = !!all[p];
+    });
+    return out;
+  }
+
+  /* ---- Local thread mirror (signed-out / standalone persistence) ---- */
+
+  var LOCAL_THREADS_KEY = "chatre_local_threads";
+  var LOCAL_THREAD_PREFIX = "chatre_local_thread_";
+
+  function localThreads() {
+    try {
+      const raw = localStorage.getItem(LOCAL_THREADS_KEY);
+      const arr = raw ? JSON.parse(raw) : null;
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveLocalThreads(list) {
+    try {
+      localStorage.setItem(
+        LOCAL_THREADS_KEY,
+        JSON.stringify(Array.isArray(list) ? list : []),
+      );
+    } catch (e) {}
+  }
+
+  /** Collision-safe unique local thread id. */
+  function nextLocalThreadId() {
+    const ids = localThreads().map(function (t) {
+      return t.id;
+    });
+    let n = 1;
+    let id = "local-" + n;
+    while (ids.indexOf(id) >= 0) {
+      n += 1;
+      id = "local-" + n;
+    }
+    return id;
+  }
+
+  /** Message bodies for a local thread (chatre_local_thread_<id>). */
+  function localThreadMessages(id) {
+    try {
+      const raw = localStorage.getItem(LOCAL_THREAD_PREFIX + id);
+      const arr = raw ? JSON.parse(raw) : null;
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveLocalThreadMessages(id, messages) {
+    try {
+      localStorage.setItem(
+        LOCAL_THREAD_PREFIX + String(id || ""),
+        JSON.stringify(Array.isArray(messages) ? messages : []),
+      );
+    } catch (e) {}
+  }
+
+  /** Upsert a thread record in the local index and refresh the rail on change. */
+  function upsertLocalThread(patch, flushMessages) {
+    const next = Object.assign({}, patch || {});
+    const list = localThreads();
+    const i = list.findIndex(function (t) {
+      return t.id === next.id;
+    });
+    if (i >= 0) {
+      list[i] = Object.assign({}, list[i], next, { id: next.id });
+    } else {
+      list.unshift(Object.assign({ id: nextLocalThreadId() }, next));
+    }
+    saveLocalThreads(list);
+    if (flushMessages && next.id) {
+      saveLocalThreadMessages(next.id, flushMessages);
+    }
+    if (
+      window.ChatrePanels &&
+      typeof window.ChatrePanels.refreshThreads === "function"
+    ) {
+      window.ChatrePanels.refreshThreads();
+    }
+    return list[0] || next;
+  }
+
+  function deleteLocalThread(id) {
+    saveLocalThreads(
+      localThreads().filter(function (t) {
+        return t.id !== id;
+      }),
+    );
+    try {
+      localStorage.removeItem(LOCAL_THREAD_PREFIX + String(id || ""));
+    } catch (e) {}
+    if (
+      window.ChatrePanels &&
+      typeof window.ChatrePanels.refreshThreads === "function"
+    ) {
+      window.ChatrePanels.refreshThreads();
+    }
+  }
+
+  function persistLocalTurn({ threadId, title, messages }) {
+    const upsert = upsertLocalThread(
+      {
+        id: threadId || "local",
+        title: String(title || "Untitled").slice(0, 120),
+        updatedAt: new Date().toISOString(),
+      },
+      messages,
+    );
+    return upsert;
+  }
+
   async function listConnectors() {
     return request("/api/me?action=connectors", { method: "GET" });
   }
@@ -359,11 +496,12 @@
     });
   }
 
-  async function deleteThread(threadId) {
+          async function deleteThread(threadId) {
     return request("/api/threads?id=" + encodeURIComponent(threadId), {
       method: "DELETE",
     });
   }
+
 
   async function getMessages(threadId) {
     return request(
@@ -840,6 +978,9 @@
     saveByok,
     deleteByok,
     testByok,
+    localByokKeys,
+    localByokKey,
+    getByokFlags,
     listConnectors,
     saveConnector,
     deleteConnector,
@@ -856,11 +997,18 @@
     createThread,
     listThreads,
     getThread,
-    getAudit,
+      getAudit,
     getUnderstanding,
     updateThread,
     deleteThread,
     getMessages,
+    /* signed-out local thread mirror (same shape as remote threads) */
+    localThreads,
+    nextLocalThreadId,
+    localThreadMessages,
+    upsertLocalThread,
+    deleteLocalThread,
+    persistLocalTurn,
     getWorkspace,
     getRepo,
     getDiagnostics,

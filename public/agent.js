@@ -92,6 +92,27 @@
     "list_mcp_tools",
   ]);
 
+  // Hard cap on the model's visible tool surface for build-like work.
+  // Everything else stays callable only via explicit intent / mode, so the
+  // executor never has more than 12 API functions to choose from at once.
+  // execute_command covers git/http via the shell; apply_patch covers
+  // multi-file edits, so follow-up fix work stays within the cap.
+  const CORE_TOOLS = [
+    "plan",
+    "ask_user_input",
+    "read_file",
+    "write_file",
+    "apply_patch",
+    "find_files",
+    "search_code",
+    "view_tree",
+    "execute_command",
+    "run_tests",
+    "preview_project",
+    "use_skill",
+  ];
+  const CORE_TOOL_SET = new Set(CORE_TOOLS);
+
   // Tools that change the workspace → trigger the post-write verification gate.
   const MUTATING_TOOLS = new Set([
     "write_file",
@@ -489,7 +510,10 @@
             briefing.task_type,
           ) !== -1)
       ) {
-        enabledList = null; // unrestricted for build-like work
+        // The 12-tool core surface — the model picks from exactly these.
+        // cwd-scoped file tools + execute_command + verification tools are
+        // enough to build, edit, and follow-up-fix any workspace.
+        enabledList = CORE_TOOLS;
       } else if (intent && intent.tools && intent.tools.length) {
         enabledList = intent.tools;
       } else if (
@@ -553,18 +577,30 @@
           const payloadMessages = preamble.concat(trimAgentMessages(messages));
 
           const modelName = String(model || "");
-          if (/^(openrouter|aihubmix|zai|groq|deepseek|modelscope|ollama|kilo|cloudflare|llm7|ovhcloud|huggingface|dashscope|mistral|xai|anthropic|openai|google|cursor):/i.test(modelName)) {
-            throw new Error(
-              "BYOK model " +
-                modelName +
-                " cannot run on the local Worker. Sign in so the remote agent API can use your OpenRouter key.",
-            );
+          let byokKey = null;
+          const byokMatch = /^([a-z0-9_-]+):/i.exec(modelName);
+          if (byokMatch) {
+            const byokProvider = byokMatch[1].toLowerCase();
+            byokKey =
+              window.ChatreRemote && window.ChatreRemote.localByokKey
+                ? window.ChatreRemote.localByokKey(byokProvider)
+                : null;
+            if (!byokKey) {
+              throw new Error(
+                "BYOK model " +
+                  modelName +
+                  " needs a key saved in Settings → BYOK (saved in your browser). " +
+                  "The Worker then proxies it with no quota limits.",
+              );
+            }
           }
 
           let text = "";
+          const headers = window.ChatreCore.authHeaders();
+          if (byokKey) headers["x-chatre-byok-key"] = byokKey;
           const response = await fetch("/api/chat", {
             method: "POST",
-            headers: window.ChatreCore.authHeaders(),
+            headers,
             signal,
             body: JSON.stringify({
               messages: payloadMessages,
@@ -1003,6 +1039,57 @@
 
           if (cancelled) break;
 
+          // Consecutive tool failure stop: if the same failure mode repeats
+          // 3 turns in a row, bail instead of burning the run in a loop.
+          let failedStreak = 0;
+          for (const r of results) {
+            const res = r && r.result;
+            const failed =
+              res &&
+              (res.ok === false ||
+                res.error ||
+                res.invalid ||
+                res.needs_approval);
+            if (failed) failedStreak += 1;
+            else failedStreak = 0;
+          }
+          if (failedStreak >= 3 && i < this.maxIterations - 1) {
+            const failing = (results[0] && results[0].tool) || "tool";
+            const lastError =
+              (results[results.length - 1] &&
+                results[results.length - 1].result &&
+                results[results.length - 1].result.error) ||
+              "";
+            const msg =
+              "Stopping: the same tool call failed " +
+              failedStreak +
+              " times in a row (" +
+              failing +
+              "). " +
+              (lastError ? "Last error: " + lastError.slice(0, 220) + ". " : "") +
+              "Summarize what is done and tell the user exactly what to fix next.";
+            callbacks.onStepText && callbacks.onStepText(msg, true);
+            fullAssistantText += (fullAssistantText ? "\n\n" : "") + msg;
+            callbacks.onDone &&
+              callbacks.onDone({
+                response: fullAssistantText,
+                iterations: i + 1,
+                cancelled: true,
+                stoppedByFailure: true,
+                toolsUsed: usedTools,
+                intent: intent && intent.name,
+              });
+            return {
+              response: fullAssistantText,
+              iterations: i + 1,
+              cancelled: true,
+              stoppedByFailure: true,
+              messages,
+              toolsUsed: usedTools,
+              intent: intent && intent.name,
+            };
+          }
+
           // Terminal elicitation/connector tools: stop the loop so the
           // UI can render tappable option buttons or connector cards.
           const specialResult = results.find(function (r) {
@@ -1045,10 +1132,18 @@
         }
 
         if (!cancelled) {
-          const msg =
+          const wrote = window.ChatreTools && window.ChatreTools.workspaceSummary
+            ? window.ChatreTools.workspaceSummary()
+            : null;
+          const stepsNote =
             "Reached the maximum agent step limit (" +
             this.maxIterations +
-            "). Tell me what to continue with.";
+            "). " +
+            (wrote
+              ? "Files on disk: " + wrote.strings.slice(0, 6).join(", ") + "."
+              : "Some work may remain on disk.") +
+            " Ask me to continue and I'll pick up where I left off.";
+          const msg = stepsNote;
           callbacks.onStepText && callbacks.onStepText(msg, true);
           fullAssistantText += (fullAssistantText ? "\n\n" : "") + msg;
           callbacks.onDone &&
@@ -1056,12 +1151,14 @@
               response: fullAssistantText,
               iterations: this.maxIterations,
               cancelled: false,
+              stepsExhausted: true,
               toolsUsed: usedTools,
             });
           return {
             response: fullAssistantText,
             iterations: this.maxIterations,
             cancelled: false,
+            stepsExhausted: true,
             messages,
             toolsUsed: usedTools,
           };

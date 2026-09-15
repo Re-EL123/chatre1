@@ -7,6 +7,7 @@ import { Env, ChatMessage, ChatRequestBody } from "./types";
 import { handleBrowserRequest } from "./browser";
 import { AGENT_SYSTEM_PROMPT } from "./agent-prompt";
 import { ANALYST_SYSTEM_PROMPT } from "./analyst-prompt";
+import { handleByokChat, byokProviderOf } from "./byok";
 
 const CRITIC_SYSTEM_PROMPT = `You are Chatre's critic. Decide if the executor finished the user's request.
 Output ONLY JSON: {"pass":true|false,"score":0-100,"gaps":["..."],"fix_brief":"..."}.
@@ -138,7 +139,7 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, x-chatre-key",
+    "Content-Type, Authorization, x-chatre-key, x-chatre-byok-key",
 };
 
 /** Per-isolate sliding window (best-effort; use AI Gateway for production caps). */
@@ -382,19 +383,6 @@ async function handleChatRequest(
 
     const body = (await request.json()) as ChatRequestBody;
 
-    if (body.model && BYOK_MODEL_PREFIX.test(String(body.model))) {
-      return jsonResponse(
-        {
-          error:
-            "Model " +
-            body.model +
-            " is a BYOK provider model. It must run through the Chatre API (sign in + Settings → BYOK). " +
-            "This Worker only serves Cloudflare Workers AI models and will not fall back to them for BYOK selections.",
-        },
-        400,
-      );
-    }
-
     const mode =
       body.mode === "analyst" ||
       body.mode === "agent" ||
@@ -441,6 +429,44 @@ async function handleChatRequest(
             ? 3072
             : DEFAULT_MAX_TOKENS),
     );
+
+    // ── BYOK routing: proxy directly to the external provider with the
+    // key the browser sends in the x-chatre-byok-key header. Works without
+    // the Chatre API being signed in, and without Workers AI quota.
+    const byokProvider = body.model ? byokProviderOf(body.model) : null;
+    if (byokProvider) {
+      const apiKey = request.headers.get("x-chatre-byok-key") || "";
+      if (!apiKey) {
+        return jsonResponse(
+          {
+            error:
+              "Model " +
+              body.model +
+              " is a BYOK provider model. Add its key in Settings → BYOK " +
+              "(saved in your browser) and the Worker will proxy it for you. " +
+              "No Cloudflare Workers AI quota is needed.",
+          },
+          400,
+        );
+      }
+      const byokResponse = await handleByokChat({
+        provider: byokProvider,
+        apiKey,
+        modelId: String(body.model),
+        messages,
+        stream: body.stream !== false,
+        maxTokens,
+      });
+      const headers = new Headers(byokResponse.headers);
+      for (const [key, value] of Object.entries(CORS_HEADERS)) {
+        headers.set(key, value);
+      }
+      headers.set("Cache-Control", "no-cache");
+      return new Response(byokResponse.body, {
+        status: byokResponse.status,
+        headers,
+      });
+    }
 
     console.log(
       JSON.stringify({

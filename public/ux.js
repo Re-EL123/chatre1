@@ -384,6 +384,19 @@
     }
   }
 
+  var BYOK_LOCAL_KEY = "chatre_byok_keys";
+
+  function mirrorByokLocal(provider, key) {
+    try {
+      var all = JSON.parse(localStorage.getItem(BYOK_LOCAL_KEY) || "{}");
+      if (key) all[provider] = key;
+      else delete all[provider];
+      localStorage.setItem(BYOK_LOCAL_KEY, JSON.stringify(all));
+    } catch (e) {
+      /* storage unavailable — remote path still works */
+    }
+  }
+
   function initByokUi() {
     var byokPlaceholders = {
       openrouter: "Paste OpenRouter key (sk-or-v1-…)",
@@ -428,6 +441,7 @@
         window.ChatreRemote
           .saveByok(provider, key)
           .then(function () {
+            mirrorByokLocal(provider, key);
             if ($("byok-key")) $("byok-key").value = "";
             return window.ChatreAuth.refreshProfile();
           })
@@ -460,6 +474,7 @@
         window.ChatreRemote
           .deleteByok(provider)
           .then(function () {
+            mirrorByokLocal(provider, null);
             return window.ChatreAuth.refreshProfile();
           })
           .then(function () {
