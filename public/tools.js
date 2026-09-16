@@ -2971,9 +2971,42 @@
     return { ok: true, ops: ops };
   }
 
-  function applyHunkLocal(content, hunk) {
+  function resolveHunkAnchor(op, hunk) {
+    const SI = window.ChatreSymbolIndex;
+    if (!SI || !SI.buildIndex || !SI.resolve || !op || !op.path || !hunk) return null;
+    const hint = String((hunk && (hunk.contextHint || hunk.symbol)) || "");
+    const m = /([A-Za-z_$][\w$]*)/.exec(hint);
+    if (!m) return null;
+    const symbol = m[1];
+    const path = String(op.path);
+    const src = fs()[resolve(path)];
+    const content = src && src.content;
+    if (content == null) return null;
+    const index = SI.buildIndex([{ path: path, content: String(content) }]);
+    const resolved = SI.resolve(symbol, index);
+    const matches = (resolved && resolved.matches) || [];
+    if (!matches.length) return null;
+    const match = matches[0];
+    return { file: match.file, line: match.line, symbol: symbol };
+  }
+
+  function applyHunkLocal(content, hunk, anchor) {
     const src = String(content == null ? "" : content);
     const hunkLines = Array.isArray(hunk) ? hunk : (hunk && hunk.lines) || [];
+    // anchor = { file, line } resolved from the symbol index (the analyst's
+    // symbols emit at analyst.js:361). When present, the oldBlock search is
+    // STARTED at anchor.line's byte offset so a duplicated old string lands on
+    // the indexed instance — never the first-occurrence float.
+    let anchorOffset = -1;
+    if (anchor && typeof anchor.line === "number" && anchor.line >= 1) {
+      let off = 0;
+      for (let n = 1; n < anchor.line && off <= src.length; n++) {
+        const nl = src.indexOf("\n", off);
+        if (nl < 0) break;
+        off = nl + 1;
+      }
+      anchorOffset = off;
+    }
     const contextHint =
       !Array.isArray(hunk) && hunk && hunk.contextHint
         ? String(hunk.contextHint)
@@ -3015,9 +3048,10 @@
         content: src + (src.endsWith("\n") || !src ? "" : "\n") + ins,
       };
     }
-    let idx = src.indexOf(oldBlock);
+    let idx =
+      anchorOffset >= 0 ? src.indexOf(oldBlock, anchorOffset) : src.indexOf(oldBlock);
     if (idx < 0 && contextHint) {
-      const hp = src.indexOf(contextHint);
+      const hp = src.indexOf(contextHint, anchorOffset >= 0 ? anchorOffset : 0);
       if (hp >= 0) {
         const w0 = Math.max(0, hp - 500);
         const w1 = Math.min(src.length, hp + 2000);
@@ -3108,7 +3142,11 @@
         let content = String(fileSys[path].content || "");
         let failed = null;
         for (let h = 0; h < (op.hunks || []).length; h++) {
-          const r = applyHunkLocal(content, op.hunks[h]);
+          const r = applyHunkLocal(
+            content,
+            op.hunks[h],
+            resolveHunkAnchor(op, op.hunks[h])
+          );
           if (!r.ok) {
             failed = r.error;
             break;
