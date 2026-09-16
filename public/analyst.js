@@ -357,6 +357,17 @@
       approach: Array.isArray(o.approach) ? o.approach.map(String) : [],
       plan_steps: planSteps,
       files,
+      symbols: window.ChatreSymbolIndex && Array.isArray(files)
+        ? (function(){
+            try {
+              return window.ChatreSymbolIndex.buildIndex(
+                files
+                  .filter(function (f) { return f && f.path; })
+                  .map(function (f) { return { path: f.path, content: f.content || '' }; })
+              );
+            } catch (e) { return { __error: String(e && e.message || e) }; }
+          })()
+        : undefined,
       todos,
       tools_priority: toolsPriority,
       do_not: doNot,
