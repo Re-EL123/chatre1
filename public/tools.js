@@ -32,6 +32,8 @@
     { name: "execute_command", desc: "Run a shell command (prefer cwd/workdir over cd &&). For git/npm/build — NOT for cat/grep/find/echo file ops (use read_file/write_file/find_files/search_code). Oversized output spills to /home/user/tmp/.", params: { cmd: "string", command: "string?", cwd: "string?", workdir: "string?", mode: "string?", timeoutMs: "number?" } },
     { name: "read_file", desc: "Read a file (optional start_line/end_line for large files)", params: { path: "string", start_line: "number?", end_line: "number?", offset: "number?", limit: "number?" } },
     { name: "view_file_outline", desc: "Structural outline with line numbers (no full body)", params: { path: "string", max: "number?" } },
+    { name: "resolve_symbol", desc: "Resolve a symbol to path:line via AST/import graph (remote)", params: { symbol: "string", path: "string?" } },
+    { name: "view_import_graph", desc: "Import/importer neighborhood for a file (remote)", params: { path: "string", depth: "number?", direction: "string?" } },
     { name: "write_file", desc: "Create or overwrite a file", params: { path: "string", content: "string" } },
     { name: "append_file", desc: "Append content to a file", params: { path: "string", content: "string" } },
     { name: "list_directory", desc: "List a directory's contents", params: { path: "string" } },
@@ -815,6 +817,15 @@
 
       case "view_file_outline":
         return viewFileOutlineTool(p.path || p.file, p);
+
+      case "resolve_symbol":
+      case "view_import_graph":
+        return {
+          ok: false,
+          tool: tool,
+          error:
+            "resolve_symbol / view_import_graph run on the remote agent (AST + import graph). Use a signed-in remote session.",
+        };
 
       case "write_file":
         return writeFileTool(p.path || p.file, p.content, common);

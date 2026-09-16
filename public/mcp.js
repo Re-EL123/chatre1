@@ -122,6 +122,16 @@
       tools: [],
     };
     saveConnections(conn);
+    // Mirror to API so remote agent tools can call_mcp
+    try {
+      if (window.ChatreRemote && typeof window.ChatreRemote.connectMcp === "function") {
+        window.ChatreRemote.connectMcp({
+          uuid: uuid,
+          endpoint: reg.endpoint,
+          name: reg.name,
+        }).catch(function () { /* offline / unsigned */ });
+      }
+    } catch { /* ignore */ }
     return conn[uuid];
   }
 
@@ -129,6 +139,11 @@
     const conn = loadConnections();
     delete conn[uuid];
     saveConnections(conn);
+    try {
+      if (window.ChatreRemote && typeof window.ChatreRemote.disconnectMcp === "function") {
+        window.ChatreRemote.disconnectMcp(uuid).catch(function () {});
+      }
+    } catch { /* ignore */ }
   }
 
   function listConnected() {

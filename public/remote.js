@@ -326,6 +326,36 @@
     return request("/api/me?action=connectors", { method: "GET" });
   }
 
+  async function listMcp() {
+    return request("/api/me?action=mcp", { method: "GET" });
+  }
+
+  async function connectMcp(payload) {
+    return request("/api/me?action=mcp", {
+      method: "POST",
+      body: JSON.stringify(Object.assign({ action: "connect" }, payload || {})),
+    });
+  }
+
+  async function disconnectMcp(uuid) {
+    return request(
+      "/api/me?action=mcp&uuid=" + encodeURIComponent(uuid || ""),
+      { method: "DELETE" },
+    );
+  }
+
+  async function callMcpRemote(server, tool, args) {
+    return request("/api/me?action=mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "call",
+        server: server,
+        tool: tool,
+        arguments: args || {},
+      }),
+    });
+  }
+
   async function saveConnector(provider, token, meta) {
     return request("/api/me?action=connectors", {
       method: "PUT",
@@ -985,6 +1015,10 @@
     saveConnector,
     deleteConnector,
     testConnector,
+    listMcp,
+    connectMcp,
+    disconnectMcp,
+    callMcpRemote,
     memoryGet,
     memorySet,
     memoryDelete,
