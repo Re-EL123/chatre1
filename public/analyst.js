@@ -357,17 +357,6 @@
       approach: Array.isArray(o.approach) ? o.approach.map(String) : [],
       plan_steps: planSteps,
       files,
-      symbols: window.ChatreSymbolIndex && Array.isArray(files)
-        ? (function(){
-            try {
-              return window.ChatreSymbolIndex.buildIndex(
-                files
-                  .filter(function (f) { return f && f.path; })
-                  .map(function (f) { return { path: f.path, content: f.content || '' }; })
-              );
-            } catch (e) { return { __error: String(e && e.message || e) }; }
-          })()
-        : undefined,
       todos,
       tools_priority: toolsPriority,
       do_not: doNot,
@@ -576,6 +565,27 @@
         '\nCurrent composer mode (soft preference, do not hallucinate a switch): ' +
         String(ex.composerMode) +
         '\n';
+    }
+    if (ex.activeProject) {
+      prompt +=
+        '\nActive workspace project (prefer editing this; do not ask where files should live): /home/user/projects/' +
+        String(ex.activeProject) +
+        '\n';
+    }
+    if (ex.priorBriefing && (ex.priorBriefing.goal || ex.priorBriefing.understanding)) {
+      prompt +=
+        '\nPrior delivery contract from this thread (treat short follow-ups as continuations of THIS):\n' +
+        JSON.stringify(
+          {
+            goal: ex.priorBriefing.goal || ex.priorBriefing.understanding,
+            task_type: ex.priorBriefing.task_type,
+            deliverable_kind: ex.priorBriefing.deliverable_kind,
+            files: (ex.priorBriefing.files || []).slice(0, 6),
+          },
+          null,
+          0,
+        ) +
+        '\nIf the user message is incremental (fix/style/fields/continue/design typo), set task_type=build|debug, deliverable_kind=deliver, needs_clarification=false.\n';
     }
     if (historySnippet) {
       prompt +=

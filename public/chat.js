@@ -2736,22 +2736,30 @@
                 : [];
             const seed = window.__pendingTemplateBriefing || {};
             window.__pendingTemplateBriefing = null;
-            if (
-              !corrections.length &&
-              !seed.goal &&
-              !seed.template_id &&
-              !Object.keys(seed).length
-            ) {
-              return corrections.length
-                ? { user_corrections: corrections }
-                : undefined;
-            }
-            return Object.assign({}, seed, {
+            const lastU =
+              window.__lastUnderstanding ||
+              window.__lastUnderstandingBriefing ||
+              null;
+            const out = Object.assign({}, seed, {
               user_corrections: [].concat(
                 seed.user_corrections || [],
                 corrections,
               ),
             });
+            if (lastU) {
+              out.__lastUnderstanding =
+                lastU.briefing || lastU.record || lastU;
+            }
+            if (
+              !out.user_corrections.length &&
+              !out.goal &&
+              !out.template_id &&
+              !out.__lastUnderstanding &&
+              !Object.keys(seed).length
+            ) {
+              return undefined;
+            }
+            return out;
           })(),
           autonomy:
             window.ChatreAutonomy && window.ChatreAutonomy.get
