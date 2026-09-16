@@ -29,8 +29,11 @@ export interface Env {
 }
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool" | string;
+  content: string | unknown;
+  name?: string;
+  tool_call_id?: string;
+  tool_calls?: unknown[];
 }
 
 export interface ChatRequestBody {

@@ -221,6 +221,101 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+function flattenMessageContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content == null) return "";
+  if (Array.isArray(content)) {
+    return content
+      .map((p) => {
+        if (typeof p === "string") return p;
+        if (!p || typeof p !== "object") return "";
+        const o = p as Record<string, unknown>;
+        if (typeof o.text === "string") return o.text;
+        if (o.type === "text" && typeof o.text === "string") return o.text;
+        if (typeof o.content === "string") return o.content;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  try {
+    return JSON.stringify(content);
+  } catch {
+    return String(content);
+  }
+}
+
+/**
+ * Workers AI only accepts { role, content: string }. Convert OpenAI tool
+ * history into plain text so env.AI.run does not reject the request.
+ */
+function toWorkersAiMessages(
+  messages: ChatMessage[],
+): Array<{ role: "system" | "user" | "assistant"; content: string }> {
+  const out: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }> = [];
+  for (const m of messages || []) {
+    if (!m) continue;
+    const role = String(m.role || "user");
+    const text = flattenMessageContent(m.content);
+    if (role === "tool") {
+      out.push({
+        role: "user",
+        content:
+          "[Tool result" +
+          (m.name ? " " + m.name : "") +
+          (m.tool_call_id ? " #" + m.tool_call_id : "") +
+          "]\n" +
+          text,
+      });
+      continue;
+    }
+    if (role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      const blocks = m.tool_calls
+        .map((tc) => {
+          const call = (tc || {}) as {
+            function?: { name?: string; arguments?: unknown };
+            name?: string;
+          };
+          const fn = call.function || {};
+          let args = fn.arguments;
+          if (typeof args === "string") {
+            try {
+              args = JSON.parse(args);
+            } catch {
+              /* keep */
+            }
+          }
+          return (
+            "```tool\n" +
+            JSON.stringify({
+              tool: fn.name || call.name || "unknown",
+              params: args && typeof args === "object" ? args : {},
+            }) +
+            "\n```"
+          );
+        })
+        .join("\n");
+      out.push({
+        role: "assistant",
+        content: (text ? text + "\n\n" : "") + blocks,
+      });
+      continue;
+    }
+    if (role === "system" || role === "user" || role === "assistant") {
+      out.push({
+        role: role as "system" | "user" | "assistant",
+        content: text,
+      });
+    } else {
+      out.push({ role: "user", content: "[" + role + "] " + text });
+    }
+  }
+  return out;
+}
+
 function trimMessages(messages: ChatMessage[]): ChatMessage[] {
   const system = messages.filter((m) => m.role === "system");
   const rest = messages.filter((m) => m.role !== "system");
@@ -228,12 +323,12 @@ function trimMessages(messages: ChatMessage[]): ChatMessage[] {
     system[0] ??
     ({ role: "system", content: SYSTEM_PROMPT } satisfies ChatMessage);
 
-  let totalTokens = estimateTokens(systemMsg.content);
+  let totalTokens = estimateTokens(flattenMessageContent(systemMsg.content));
   const kept: ChatMessage[] = [];
 
   for (let i = rest.length - 1; i >= 0; i--) {
     const msg = rest[i];
-    const msgTokens = estimateTokens(msg.content) + 4;
+    const msgTokens = estimateTokens(flattenMessageContent(msg.content)) + 4;
     if (totalTokens + msgTokens > MAX_CONTEXT_TOKENS && kept.length > 0) {
       break;
     }
@@ -413,14 +508,11 @@ async function handleChatRequest(
       body.model && ALLOWED_MODELS.has(body.model)
         ? (body.model as ChatModelId)
         : MODEL_ID;
-    const tools =
-      mode === "analyst" || mode === "critic"
-        ? null
-        : Array.isArray(body.tools)
-          ? body.tools
-          : null;
+    // Workers AI models do not reliably support OpenAI native tools.
+    // Prefer the ```tool text protocol from the agent system prompt.
+    const tools = null;
     const wantStream =
-      body.stream !== false && !tools && mode !== "analyst" && mode !== "critic";
+      body.stream !== false && mode !== "analyst" && mode !== "critic";
     const maxTokens = clampMaxTokens(
       body.max_tokens ??
         (mode === "analyst" || mode === "critic"
@@ -429,6 +521,8 @@ async function handleChatRequest(
             ? 3072
             : DEFAULT_MAX_TOKENS),
     );
+
+    const workersMessages = toWorkersAiMessages(messages);
 
     // ── BYOK routing: proxy directly to the external provider with the
     // key the browser sends in the x-chatre-byok-key header. Works without
@@ -453,7 +547,7 @@ async function handleChatRequest(
         provider: byokProvider,
         apiKey,
         modelId: String(body.model),
-        messages,
+        messages: workersMessages,
         stream: body.stream !== false,
         maxTokens,
       });
@@ -475,45 +569,24 @@ async function handleChatRequest(
         stream: wantStream,
         agent: agentMode,
         mode,
-        tools: tools ? tools.length : 0,
-        messageCount: messages.length,
+        tools: 0,
+        messageCount: workersMessages.length,
         maxTokens,
         ip: clientIp(request),
       }),
     );
 
     if (!wantStream) {
-      let runInput: Record<string, unknown> = {
-        messages,
+      const runInput: Record<string, unknown> = {
+        messages: workersMessages,
         max_tokens: maxTokens,
       };
-      if (tools && tools.length) {
-        runInput.tools = tools;
-      }
 
-      let aiResponse = await aiRunWithRetry(() =>
+      const aiResponse = await aiRunWithRetry(() =>
         env.AI.run(modelId as keyof AiModels, runInput as never, {
           returnRawResponse: true,
         }),
       );
-
-      // Some models reject tools — retry without them (but not on 429s;
-      // those are already retried by aiRunWithRetry and are rate-limit errors,
-      // not tool-rejection errors).
-      if (!aiResponse.ok && aiResponse.status !== 429 && tools && tools.length) {
-        console.warn(
-          JSON.stringify({
-            event: "chat_tools_fallback",
-            status: aiResponse.status,
-          }),
-        );
-        runInput = { messages, max_tokens: maxTokens };
-        aiResponse = await aiRunWithRetry(() =>
-          env.AI.run(modelId as keyof AiModels, runInput as never, {
-            returnRawResponse: true,
-          }),
-        );
-      }
 
       if (!aiResponse.ok) {
         const bodyText = await aiResponse.text().catch(() => "");
@@ -552,7 +625,7 @@ async function handleChatRequest(
       env.AI.run(
         modelId as keyof AiModels,
         {
-          messages,
+          messages: workersMessages,
           max_tokens: maxTokens,
           stream: true,
         },
