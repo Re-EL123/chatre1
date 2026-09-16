@@ -838,6 +838,33 @@
   }
 
   async function sendMessageBody(message) {
+  function titleFromTurn(turns) {
+    const ms = Array.isArray(turns) ? turns : [];
+    for (let k = 0; k < ms.length; k++) {
+      const m = ms[k];
+      if (!m || String(m.role) !== "user") continue;
+      const raw = String(m.content || "").replace(/^\s*@[\w.-]+\s*/g, "");
+      const cleaned = raw
+        .replace(/\s+/g, " ")
+        .replace(/^(hi|hello|hey|yo|ok|okay|hi there)[,\s]+/i, "")
+        .trim();
+      if (cleaned) {
+        return String(cleaned).slice(0, 60).replace(/[.,;:!?]+$/, "");
+      }
+      const t = String((m.threadTitle && m.threadTitle.title) || "").trim();
+      if (t) return String(t).slice(0, 60);
+    }
+    for (let k = 0; k < ms.length; k++) {
+      const m = ms[k];
+      if (m && String(m.role) === "assistant") {
+        const t = String(m.content || "").trim().slice(0, 60);
+        if (t) return t;
+      }
+    }
+    return "New chat";
+  }
+
+
     if (
       window.ChatreComposer &&
       window.ChatreComposer.shouldQueueInsteadOfSend &&
@@ -1191,9 +1218,11 @@
             threadId:
               (window.__chatreRemote && window.__chatreRemote.threadId) ||
               "local",
-            title: String(responseText || "New chat")
-              .slice(0, 60)
-              .replace(/\s+/g, " "),
+            title: window.ChatreRemote.titleSeam
+              ? (window.ChatreRemote.titleFromTurn
+                  ? window.ChatreRemote.titleFromTurn(chatHistory)
+                  : "New chat")
+              : titleFromTurn(chatHistory),
             messages: chatHistory,
           });
         }
@@ -2518,9 +2547,7 @@
               ) {
                 window.ChatreRemote.persistLocalTurn({
                   threadId: ev.threadId || remoteState.threadId || "local",
-                  title: String(finalText || "New chat")
-                    .slice(0, 60)
-                    .replace(/\s+/g, " "),
+                  title: titleFromTurn(chatHistory),
                   messages: chatHistory,
                 });
               }
