@@ -75,6 +75,30 @@ function requireKey(key: string | null | undefined): boolean {
   return typeof key === "string" && key.trim().length > 8;
 }
 
+function flattenContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content == null) return "";
+  if (Array.isArray(content)) {
+    return content
+      .map((p) => {
+        if (typeof p === "string") return p;
+        if (!p || typeof p !== "object") return "";
+        const o = p as Record<string, unknown>;
+        if (typeof o.text === "string") return o.text;
+        if (o.type === "text" && typeof o.text === "string") return o.text;
+        if (typeof o.content === "string") return o.content;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  try {
+    return JSON.stringify(content);
+  } catch {
+    return String(content);
+  }
+}
+
 function openaiCompatibleBody(
   provider: string,
   model: string,
@@ -87,7 +111,7 @@ function openaiCompatibleBody(
   // Strip any Worker-injected Chatre system prompt so the external model
   // sees a clean, provider-neutral instruction set.
   const systemText = system
-    .map((m) => m.content)
+    .map((m) => flattenContent(m.content))
     .join("\n\n")
     .replace(/You are Chatre[^\n]*\n/, "")
     .trim();
@@ -95,7 +119,7 @@ function openaiCompatibleBody(
     model,
     messages: rest.map((m) => ({
       role: m.role === "system" ? "system" : m.role,
-      content: m.content,
+      content: flattenContent(m.content),
     })),
     stream,
     max_tokens: maxTokens,

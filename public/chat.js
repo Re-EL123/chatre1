@@ -1565,6 +1565,13 @@
     if (!proof || !chatMessages) return;
     const card = document.createElement("div");
     card.className = "done-proof-card";
+    const light =
+      proof.taskType === "chat" ||
+      proof.taskType === "question" ||
+      (proof.acceptance &&
+        proof.acceptance.results &&
+        proof.acceptance.results[0] &&
+        proof.acceptance.results[0].evidence === "light_chat");
     const acc = proof.acceptance || {};
     const rows = (acc.results || [])
       .slice(0, 8)
@@ -1582,53 +1589,58 @@
         );
       })
       .join("");
-    card.innerHTML =
-      "<strong>Delivery proof</strong>" +
-      "<div class=\"done-proof-meta\">" +
-      (proof.activeProject
-        ? "Project <code>" +
+    const metaBits = [];
+    if (proof.activeProject) {
+      metaBits.push(
+        "Project <code>" +
           String(proof.activeProject).replace(/</g, "&lt;") +
-          "</code> · "
-        : "") +
-      (proof.revision != null ? "r" + proof.revision + " · " : "") +
-      (proof.branch
-        ? "branch <code>" +
+          "</code>",
+      );
+    }
+    if (proof.revision != null) metaBits.push("r" + proof.revision);
+    if (!light && proof.branch) {
+      metaBits.push(
+        "branch <code>" +
           String(proof.branch).replace(/</g, "&lt;") +
           "</code>" +
           (proof.head
             ? " @" + String(proof.head).replace(/</g, "&lt;")
-            : "") +
-          " · "
+            : ""),
+      );
+    }
+    if (!light) {
+      if (proof.testsOk === true) metaBits.push("tests ok");
+      else if (proof.lastTest && proof.lastTest.skipped)
+        metaBits.push("tests skipped");
+      else if (proof.testsOk === false) metaBits.push("tests failed");
+      if (proof.ciOk === true) metaBits.push("CI ok");
+      else if (proof.ciOk === false) metaBits.push("CI pending");
+      if (proof.prUrl) {
+        metaBits.push(
+          '<a href="' +
+            String(proof.prUrl).replace(/"/g, "") +
+            '" target="_blank" rel="noopener">PR' +
+            (proof.prNumber ? " #" + proof.prNumber : "") +
+            "</a>",
+        );
+      }
+      if (proof.previewOk === true) metaBits.push("preview ok");
+      else if (proof.previewOk === false) metaBits.push("preview pending");
+      if (proof.localhost) {
+        metaBits.push(
+          '<a class="preview-run-link" href="' +
+            String(proof.localhost).replace(/"/g, "&quot;") +
+            '" target="_blank" rel="noopener" data-chatre-preview="1">' +
+            String(proof.localhost).replace(/</g, "&lt;") +
+            "</a>",
+        );
+      }
+    }
+    card.innerHTML =
+      "<strong>Delivery proof</strong>" +
+      (metaBits.length
+        ? "<div class=\"done-proof-meta\">" + metaBits.join(" · ") + "</div>"
         : "") +
-      (proof.testsOk
-        ? "tests ok"
-        : proof.lastTest && proof.lastTest.skipped
-          ? "tests skipped"
-          : proof.testsOk === false
-            ? "tests failed"
-            : "tests —") +
-      (proof.ciOk === true
-        ? " · CI ok"
-        : proof.ciOk === false
-          ? " · CI pending"
-          : "") +
-      (proof.prUrl
-        ? ' · <a href="' +
-          String(proof.prUrl).replace(/"/g, "") +
-          '" target="_blank" rel="noopener">PR' +
-          (proof.prNumber ? " #" + proof.prNumber : "") +
-          "</a>"
-        : "") +
-      " · " +
-      (proof.previewOk ? "preview ok" : "preview pending") +
-      (proof.localhost
-        ? ' · <a class="preview-run-link" href="' +
-          String(proof.localhost).replace(/"/g, "&quot;") +
-          '" target="_blank" rel="noopener" data-chatre-preview="1">' +
-          String(proof.localhost).replace(/</g, "&lt;") +
-          "</a>"
-        : "") +
-      "</div>" +
       (rows ? "<ul class=\"done-proof-tests\">" + rows + "</ul>" : "") +
       (audit && audit.summary
         ? "<div class=\"done-proof-audit\">Audit · " +
