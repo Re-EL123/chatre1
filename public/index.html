@@ -1237,6 +1237,61 @@
         min-height: 0;
         overflow: hidden;
       }
+      /* One surface — canvas. Repeat from the top strip.. gone. */
+      .app-shell.canvas-mode .main-column {
+        position: relative;
+      }
+      #chatre-canvas {
+        position: absolute;
+        inset: 0;
+        z-index: 40;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg, #0e1217);
+        border: 1px solid var(--border-weak, #26313c);
+        border-radius: 10px;
+      }
+      #chatre-canvas[hidden] {
+        display: none;
+      }
+      .canvas-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.6rem;
+        border-bottom: 1px solid var(--border-weak, #26313c);
+        font-size: 0.8rem;
+        color: var(--muted, #94a3b8);
+      }
+      .canvas-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 6px;
+        border: 1px solid var(--border, #334155);
+        cursor: pointer;
+        color: var(--muted, #94a3b8);
+      }
+      .canvas-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 1rem;
+      }
+      .canvas-body iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        border-radius: 6px;
+        background: #fff;
+      }
+      .canvas-body.direct iframe {
+        position: absolute;
+        inset: 0;
+        height: 100%;
+      }
 
       .sheet-backdrop {
         display: none;
@@ -4495,7 +4550,7 @@
       <span id="budget-bar-label"></span>
     </div>
 
-    <div class="panel-toggle-bar" hidden aria-hidden="true">
+    <div class="panel-toggle-bar" aria-hidden="true">
       <button type="button" class="btn" id="toggle-threads-bar">Threads</button>
       <button type="button" class="btn" id="toggle-files-bar">Files</button>
       <button type="button" class="btn" id="toggle-browser-bar">Browser</button>
@@ -4528,6 +4583,16 @@
         <div class="panel-actions">
           <button type="button" class="btn" id="threads-new">New</button>
           <button type="button" class="btn" id="threads-refresh">Refresh</button>
+          <button
+            type="button"
+            class="btn"
+            id="threads-canvas"
+            title="Canvas mode — collapse rails, render everything the agent writes into one full-bleed surface"
+            data-tip="Canvas"
+            hidden
+          >
+            Canvas
+          </button>
         </div>
         <div id="thread-list"></div>
       </aside>
@@ -4535,6 +4600,21 @@
       <div class="main-column">
         <div class="chat-container">
           <div class="work-bar" aria-hidden="true"></div>
+          <div
+            id="chatre-canvas"
+            hidden
+            role="region"
+            aria-label="Live canvas — everything the agent draws"
+            tabindex="-1"
+          >
+            <div class="canvas-head">
+              <span id="canvas-close" class="canvas-close" role="button" tabindex="0" aria-label="Exit canvas">
+                <i data-lucide="x" style="width:15px;height:15px" aria-hidden="true"></i>
+              </span>
+              <span class="canvas-title">Canvas</span>
+            </div>
+            <div class="canvas-body" id="canvas-body"></div>
+          </div>
           <div id="artifact-rail" hidden></div>
           <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
           <div class="typing-indicator" id="typing-indicator" aria-hidden="true"></div>

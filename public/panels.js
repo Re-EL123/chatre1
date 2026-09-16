@@ -2187,6 +2187,79 @@ function renderFileTree(root, files) {
 
     if (refreshBtn) refreshBtn.addEventListener("click", refreshThreads);
     if (newBtn) newBtn.addEventListener("click", newThread);
+
+    const canvasBtn = $("threads-canvas");
+    const railShell = document.querySelector(".app-shell");
+    if (canvasBtn) {
+      canvasBtn.addEventListener("click", function () {
+        if (window.ChatreView && window.ChatreView.toggleCanvas)
+          window.ChatreView.toggleCanvas();
+      });
+    }
+
+    if (railShell && !state.canvasBound) {
+      state.canvasBound = true;
+      if (window.ChatreView === undefined || !window.ChatreView.toggleCanvas) {
+        Reflect.defineProperty(window, "ChatreView", {
+          configurable: true,
+          enumerable: true,
+          get: function () {
+            return (
+              {
+                toggleCanvas: function () {
+                  const shell = document.querySelector(".app-shell");
+                  if (!shell) return;
+                  const canvasEl = $("chatre-canvas");
+                  if (!canvasEl) return;
+                  const active = !canvasEl.hidden;
+                  canvasEl.hidden = active ? true : false;
+                  shell.classList.toggle("canvas-mode", !active);
+                  if (window.ChatreUX && window.ChatreUX.setCanvasActive)
+                    window.ChatreUX.setCanvasActive(!active);
+                },
+                openCanvas: function (html) {
+                  const shell = document.querySelector(".app-shell");
+                  const canvasEl = $("chatre-canvas");
+                  if (!canvasEl) return;
+                  const body = $("canvas-body");
+                  if (!body) return;
+                  body.innerHTML = "";
+                  const wrap = document.createElement("div");
+                  wrap.style.position = "fixed";
+                  wrap.style.inset = "0";
+                  wrap.style.padding = "0";
+                  const fr = document.createElement("iframe");
+                  fr.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-modals");
+                  fr.style.border = "0";
+                  wrap.appendChild(fr);
+                  body.appendChild(wrap);
+                  body.classList.add("direct");
+                  const doc = fr.contentDocument || fr.contentWindow.document;
+                  doc.open();
+                  doc.write(html || "");
+                  doc.close();
+                  canvasEl.hidden = false;
+                  if (shell) shell.classList.add("canvas-mode");
+                  if (window.ChatreUX && window.ChatreUX.setCanvasActive)
+                    window.ChatreUX.setCanvasActive(true);
+                },
+                closeCanvas: function () {
+                  const shell = document.querySelector(".app-shell");
+                  const canvasEl = $("chatre-canvas");
+                  if (canvasEl) canvasEl.hidden = true;
+                  if (shell) shell.classList.remove("canvas-mode");
+                  if (window.ChatreUX && window.ChatreUX.setCanvasActive)
+                    window.ChatreUX.setCanvasActive(false);
+                },
+              } || {}
+            );
+          },
+        });
+      }
+      if (window.ChatreUX && window.ChatreUX.setCanvasActive) {
+        window.ChatreUX.setCanvasActive(false);
+      }
+    }
     if (filesRefresh) filesRefresh.addEventListener("click", refreshFiles);
     const filesPreview = $("files-preview");
     if (filesPreview) {
