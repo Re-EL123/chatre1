@@ -30,7 +30,8 @@
     { name: "switch_frame", desc: "Target an iframe and read its elements", params: { tab_id: "string", frame_index: "number", frame_url: "string", frame_selector: "string" } },
     { name: "http_request", desc: "HTTP request to a public URL", params: { url: "string", method: "string", body: "string" } },
     { name: "execute_command", desc: "Run a shell command (prefer cwd/workdir over cd &&). For git/npm/build — NOT for cat/grep/find/echo file ops (use read_file/write_file/find_files/search_code). Oversized output spills to /home/user/tmp/.", params: { cmd: "string", command: "string?", cwd: "string?", workdir: "string?", mode: "string?", timeoutMs: "number?" } },
-    { name: "read_file", desc: "Read a file's contents", params: { path: "string" } },
+    { name: "read_file", desc: "Read a file (optional start_line/end_line for large files)", params: { path: "string", start_line: "number?", end_line: "number?", offset: "number?", limit: "number?" } },
+    { name: "view_file_outline", desc: "Structural outline with line numbers (no full body)", params: { path: "string", max: "number?" } },
     { name: "write_file", desc: "Create or overwrite a file", params: { path: "string", content: "string" } },
     { name: "append_file", desc: "Append content to a file", params: { path: "string", content: "string" } },
     { name: "list_directory", desc: "List a directory's contents", params: { path: "string" } },
@@ -453,6 +454,7 @@
         }
         break;
       case "read_file":
+      case "view_file_outline":
       case "delete_file":
       case "export_document":
         if (!(p.path || p.file)) return fail(tool + " requires path");
@@ -809,7 +811,10 @@
         return await desktopTool(tool, p);
 
       case "read_file":
-        return readFileTool(p.path || p.file);
+        return readFileTool(p.path || p.file, p);
+
+      case "view_file_outline":
+        return viewFileOutlineTool(p.path || p.file, p);
 
       case "write_file":
         return writeFileTool(p.path || p.file, p.content, common);
@@ -1842,7 +1847,8 @@
 
   // ─── File tools ───────────────────────────────────────────────────
 
-  function readFileTool(path) {
+  function readFileTool(path, opts) {
+    opts = opts || {};
     const target = resolve(path);
     const entry = fs()[target];
     if (!entry) {
@@ -1871,7 +1877,86 @@
       };
     }
     if (entry.type === "dir") return { ok: false, tool: "read_file", error: "Is a directory: " + path };
-    return { ok: true, tool: "read_file", path: target, content: entry.content || "" };
+    var full = String(entry.content || "");
+    var lines = full.split("\n");
+    var totalLines = lines.length;
+    var startLine = 1;
+    var endLine = totalLines;
+    var ranged = false;
+    if (
+      opts.start_line != null ||
+      opts.end_line != null ||
+      opts.offset != null ||
+      opts.limit != null
+    ) {
+      ranged = true;
+      if (opts.offset != null) startLine = Math.max(1, Number(opts.offset) + 1);
+      else if (opts.start_line != null) startLine = Math.max(1, Number(opts.start_line) || 1);
+      if (opts.limit != null) endLine = startLine + Math.max(1, Number(opts.limit) || 1) - 1;
+      else if (opts.end_line != null) endLine = Math.max(startLine, Number(opts.end_line) || startLine);
+      endLine = Math.min(totalLines, endLine);
+      startLine = Math.min(startLine, Math.max(1, totalLines));
+    }
+    var HARD_CAP = 400;
+    if (!ranged && totalLines > HARD_CAP) {
+      ranged = true;
+      startLine = 1;
+      endLine = HARD_CAP;
+    }
+    var out = {
+      ok: true,
+      tool: "read_file",
+      path: target,
+      content: ranged ? lines.slice(startLine - 1, endLine).join("\n") : full,
+      total_lines: totalLines,
+    };
+    if (ranged) {
+      out.start_line = startLine;
+      out.end_line = endLine;
+      out.truncated = endLine < totalLines || startLine > 1;
+    }
+    return out;
+  }
+
+  function viewFileOutlineTool(path, opts) {
+    opts = opts || {};
+    const target = resolve(path);
+    const entry = fs()[target];
+    if (!entry || entry.type !== "file") {
+      return { ok: false, tool: "view_file_outline", error: "No such file: " + target, path: target };
+    }
+    var lines = String(entry.content || "").split("\n");
+    var max = Math.min(200, Math.max(20, Number(opts.max) || 80));
+    var items = [];
+    var rules = [
+      { kind: "function", re: /^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][\w]*)/ },
+      { kind: "class", re: /^\s*(?:export\s+)?class\s+([A-Za-z_][\w]*)/ },
+      { kind: "const", re: /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=/ },
+      { kind: "def", re: /^\s*(?:async\s+)?def\s+([A-Za-z_][\w]*)/ },
+      { kind: "type", re: /^\s*(?:export\s+)?(?:type|interface)\s+([A-Za-z_][\w]*)/ },
+      { kind: "heading", re: /^#{1,3}\s+(.+)$/ },
+    ];
+    for (var i = 0; i < lines.length && items.length < max; i++) {
+      for (var r = 0; r < rules.length; r++) {
+        var m = lines[i].match(rules[r].re);
+        if (!m) continue;
+        items.push({
+          kind: rules[r].kind,
+          name: String(m[1] || "").trim().slice(0, 80),
+          line: i + 1,
+          preview: lines[i].trim().slice(0, 120),
+        });
+        break;
+      }
+    }
+    return {
+      ok: true,
+      tool: "view_file_outline",
+      path: target,
+      total_lines: lines.length,
+      count: items.length,
+      outline: items,
+    };
   }
 
   function writeFileTool(path, content, common) {
