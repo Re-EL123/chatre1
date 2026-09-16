@@ -270,7 +270,24 @@
     const meta = $("browser-pane-meta");
     const empty = $("browser-pane-empty");
     if (!pane) return;
-    if (opts.open !== false && window.ChatrePanels && window.ChatrePanels.togglePanel) {
+    // A screenshot must NEVER land while the pane still reads as "hidden".
+    // Whatever the prior run did, the moment we have a dataUrl the browser
+    // preview pane is forced BACK open — unconditionally, not gated on the
+    // caller passing open:true (a run can finish "with the pane collapsed",
+    // especially when it took a nav screenshot near the end of a step).
+    // Without this, dev-tool runs would "finish" hidden behind a collapsed
+    // shell and the user would have to hunt for the app.
+    if (opts.dataUrl) {
+      const shell = document.querySelector(".app-shell");
+      if (shell) shell.classList.remove("hide-browser");
+      if (window.ChatrePanels && window.ChatrePanels.togglePanel) {
+        const shell2 = document.querySelector(".app-shell");
+        if (shell2 && shell2.classList.contains("hide-browser")) {
+          window.ChatrePanels.togglePanel("browser");
+        }
+      }
+    }
+    if (opts.open !== false && window.ChatrePanels && window.CatrePanels.togglePanel) {
       const shell = document.querySelector(".app-shell");
       if (shell && shell.classList.contains("hide-browser")) {
         window.ChatrePanels.togglePanel("browser");
