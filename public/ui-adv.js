@@ -133,34 +133,27 @@
     body.innerHTML = "";
     const starters = [
       {
-        id: "calc",
-        label: "HTML calculator",
-        icon: "calculator",
+        id: "build",
+        label: "Build a small app",
+        icon: "hammer",
         prompt:
           "Build a simple calculator as index.html in /home/user/projects/calculator/",
         mode: "agent",
       },
       {
-        id: "pdf",
-        label: "PDF report",
-        icon: "file-text",
-        prompt:
-          "Create a short PDF report summarizing the current workspace and save it under /home/user/projects/",
-        mode: "agent",
-      },
-      {
-        id: "debug",
-        label: "Debug this",
-        icon: "bug",
-        prompt: "Debug the issue in the active file and fix it with proof.",
-        mode: "code",
-      },
-      {
         id: "explain",
-        label: "Explain code",
+        label: "Explain this file",
         icon: "message-circle",
         prompt: "Explain how the active file works, step by step.",
         mode: "chat",
+      },
+      {
+        id: "plan",
+        label: "Plan a refactor",
+        icon: "map",
+        prompt:
+          "Draft a short plan to refactor the active project for clarity and fewer bugs. Do not write files yet.",
+        mode: "plan",
       },
     ];
     starters.forEach(function (s) {
@@ -392,6 +385,23 @@
     host.appendChild(root);
     const steps = [];
 
+    function markActive(item) {
+      steps.forEach(function (s) {
+        if (s.item) s.item.classList.remove("timeline-active");
+      });
+      if (item) item.classList.add("timeline-active");
+      root.querySelectorAll(".tool-call").forEach(function (t) {
+        t.classList.remove("tool-active");
+      });
+      if (item) {
+        var tool = item.querySelector(".tool-call");
+        if (tool) {
+          tool.classList.add("tool-active", "open");
+          tool.classList.remove("collapsed");
+        }
+      }
+    }
+
     function add(kind, title, detail, opts) {
       opts = opts || {};
       const item = el("div", "timeline-item timeline-" + kind + (opts.open ? " open" : ""));
@@ -415,6 +425,7 @@
       root.appendChild(item);
       steps.push({ item: item, body: body, kind: kind });
       item.classList.add("enter");
+      if (kind === "tool" || opts.open) markActive(item);
       return { item: item, body: body };
     }
 
@@ -423,7 +434,13 @@
       if (window.ChatreMotion) window.ChatreMotion.onPhaseChange(title || kind);
     }
 
-    return { root: root, add: add, setPhase: setPhase, steps: steps };
+    return {
+      root: root,
+      add: add,
+      setPhase: setPhase,
+      steps: steps,
+      markActive: markActive,
+    };
   }
 
   // ── Collapsible tool card ───────────────────────────────────────────
@@ -457,10 +474,15 @@
     });
     if (window.ChatreMotion) window.ChatreMotion.markToolRunning(detail);
     const slot = timeline
-      ? timeline.add("tool", call.tool, detail, { open: false }).body
+      ? timeline.add("tool", call.tool, detail, { open: true }).body
       : null;
     if (slot) {
       slot.appendChild(detail);
+      detail.classList.add("tool-active", "open");
+      detail.classList.remove("collapsed");
+      if (timeline && timeline.markActive && slot.parentElement) {
+        timeline.markActive(slot.parentElement);
+      }
       if (window.ChatreKit) window.ChatreKit.refreshIcons(detail);
       return detail;
     }
@@ -485,6 +507,7 @@
     if (!card) return;
     const status = card.querySelector(".tool-status");
     const resultDiv = card.querySelector(".tool-call-result");
+    card.classList.remove("tool-active");
     if (result && result.ok === false) {
       status.textContent = "error";
       status.className = "tool-status error";
@@ -505,6 +528,10 @@
           ? outText.slice(0, 400) + "\n…(truncated)"
           : outText;
       if (window.ChatreMotion) window.ChatreMotion.markToolDone(card, true);
+      if (document.body.getAttribute("data-density") === "compact") {
+        card.classList.add("collapsed");
+        card.classList.remove("open");
+      }
     }
     if (result && result.path && window.ChatreMotion) {
       window.ChatreMotion.flashPath(result.path);
@@ -632,37 +659,32 @@
       '<div class="empty-icon">' +
       (window.ChatreKit ? window.ChatreKit.iconHtml("sparkles", 28) : "") +
       "</div>" +
-      "<h2>What do you want built?</h2>" +
+      "<h2>What should we do?</h2>" +
       "<p>" +
       (signed
-        ? "Describe a deliverable. Chatre clarifies, plans, then ships files you can open."
-        : "Sign in to sync threads and run the cloud agent — or try a local starter below.") +
+        ? "Pick a job or describe one. Chatre clarifies, then delivers."
+        : "Try a starter below, or sign in to sync threads and use the cloud agent.") +
       "</p>" +
       '<div class="empty-starters" aria-label="Starters"></div>' +
       '<div class="empty-actions"></div>';
     const startersHost = box.querySelector(".empty-starters");
     [
       {
-        label: "HTML calculator",
+        label: "Build a small app",
         prompt:
           "Build a simple calculator as index.html in /home/user/projects/calculator/",
         mode: "agent",
       },
       {
-        label: "PDF report",
-        prompt:
-          "Create a short PDF report summarizing the current workspace and save it under /home/user/projects/",
-        mode: "agent",
-      },
-      {
-        label: "Debug this",
-        prompt: "Debug the issue in the active file and fix it with proof.",
-        mode: "code",
-      },
-      {
-        label: "Explain code",
+        label: "Explain this file",
         prompt: "Explain how the active file works, step by step.",
         mode: "chat",
+      },
+      {
+        label: "Plan a refactor",
+        prompt:
+          "Draft a short plan to refactor the active project for clarity and fewer bugs. Do not write files yet.",
+        mode: "plan",
       },
     ].forEach(function (s) {
       const chip = el("button", "starter-chip");

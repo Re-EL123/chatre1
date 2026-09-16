@@ -75,11 +75,12 @@
       }
 
       .spectrum-strip {
-        height: 4px;
+        height: 2px;
         background: var(--accent);
         background-size: 400% 400%;
         animation: slide 8s ease infinite;
-        border-radius: 2px;
+        border-radius: 1px;
+        flex-shrink: 0;
       }
 
       @keyframes slide {
@@ -2559,11 +2560,41 @@
         border-radius: 8px;
         font-size: 0.82rem;
       }
+      .done-proof-title { display: block; margin-bottom: 0.15rem; }
+      .done-proof-why {
+        margin: 0.25rem 0 0.4rem;
+        color: #d7c49a;
+        font-size: 0.8rem;
+        line-height: 1.4;
+      }
       .done-proof-meta { opacity: 0.85; margin: 0.35rem 0; }
       .done-proof-tests { margin: 0.35rem 0 0.2rem 1rem; }
       .done-proof-tests .pass { color: #7dffb3; }
       .done-proof-tests .fail { color: #f87171; }
       .done-proof-audit, .done-proof-note { opacity: 0.7; margin-top: 0.35rem; font-size: 0.75rem; }
+      .done-proof-card.outcome-delivered {
+        border-color: rgba(90, 200, 140, 0.5);
+        background: rgba(16, 36, 28, 0.72);
+      }
+      .done-proof-card.outcome-partial {
+        border-color: rgba(232, 168, 76, 0.5);
+        background: rgba(42, 32, 12, 0.72);
+      }
+      .done-proof-card.outcome-partial .done-proof-why { color: #e8c48a; }
+      .done-proof-card.outcome-blocked {
+        border-color: rgba(220, 100, 100, 0.55);
+        background: rgba(42, 16, 18, 0.75);
+      }
+      .done-proof-card.outcome-blocked .done-proof-why { color: #f0a8a8; }
+      .done-proof-card.outcome-chat-only {
+        border-color: rgba(76, 184, 232, 0.35);
+      }
+      .done-proof-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.55rem;
+      }
       .pr-card {
         margin: 0.5rem 0;
         padding: 0.55rem 0.7rem;
@@ -3601,7 +3632,10 @@
       }
       .delivery-banner-text { flex: 1; min-width: 12rem; }
       .done-proof-actions {
-        margin-top: 0.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.55rem;
       }
       .done-proof-card.ok {
         border-color: rgba(90, 200, 140, 0.45);
@@ -3609,6 +3643,116 @@
       .done-proof-card.fail {
         border-color: rgba(220, 100, 100, 0.4);
       }
+      .done-proof-card.partial {
+        border-color: rgba(232, 168, 76, 0.45);
+      }
+      .compact-header {
+        text-align: left;
+        margin-bottom: 0.25rem;
+        padding: 0.15rem 0 0.25rem;
+        border-bottom: 1px solid transparent;
+      }
+      .compact-header h1 {
+        font-size: 1.15rem;
+        letter-spacing: 0.04em;
+        margin: 0;
+      }
+      .compact-header .header-tagline { display: none; }
+      .system-status-menu {
+        position: relative;
+        display: inline-flex;
+      }
+      .system-status-menu > summary {
+        list-style: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+      }
+      .system-status-menu > summary::-webkit-details-marker { display: none; }
+      .system-status.ok { border-color: rgba(90, 200, 140, 0.45); color: #b8f0c8; }
+      .system-status.bad { border-color: rgba(220, 100, 100, 0.45); color: #f0a8a8; }
+      .system-status.pending { border-color: rgba(232, 168, 76, 0.4); color: #e8c48a; }
+      .system-status.off { color: var(--text-light); }
+      .system-status-panel {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 40;
+        min-width: 200px;
+        padding: 0.4rem;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: #0c0c14;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+        display: none;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .system-status-menu[open] .system-status-panel { display: flex; }
+      .system-status-item {
+        justify-content: flex-start;
+        width: 100%;
+        font-size: 0.78rem;
+      }
+      .toolbar-status-pills-raw { display: none !important; }
+      .panel-toggle-bar { display: none !important; }
+      .composer-run-actions {
+        display: inline-flex;
+        gap: 0.3rem;
+        margin-left: auto;
+      }
+      .composer-run-actions .btn {
+        min-height: 28px;
+        padding: 0 0.55rem;
+        font-size: 0.72rem;
+      }
+      .composer-safety:not([hidden]) {
+        margin: 0 0 0.35rem;
+        font-size: 0.75rem;
+        color: var(--text-light);
+      }
+      body.awaiting-clarify #send-button.is-clarify-blocked {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+      .clarify-card-options .clarify-opt {
+        min-height: 40px;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.88rem;
+      }
+      .message-input-wrap {
+        max-height: min(42vh, 360px);
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      @media (max-width: 560px) {
+        .message-input-wrap {
+          max-height: min(38vh, 280px);
+        }
+      }
+      body.is-working .tool-call.tool-active {
+        outline: 1px solid rgba(76, 184, 232, 0.35);
+      }
+      body.is-working .timeline-item:not(.timeline-active):not(.open) > .timeline-body {
+        display: none;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      #status-strip[hidden] { display: none !important; }
       .file-tree-item.delivery-highlight,
       .file-row.delivery-highlight {
         outline: 1px solid #4cb8e8;
@@ -4425,14 +4569,13 @@
         </div>
       </div>
     </div>
-    <header>
-      <h1><i data-lucide="zap" style="width:1.1em;height:1.1em;vertical-align:-0.12em" aria-hidden="true"></i> Chatre</h1>
-      <p class="header-tagline">Re-EL AI ChatBot (Maerd Portal)</p>
+    <header class="app-header compact-header">
+      <h1><i data-lucide="zap" style="width:1.05em;height:1.05em;vertical-align:-0.12em" aria-hidden="true"></i> Chatre</h1>
+      <p class="header-tagline" id="header-tagline" hidden>Re-EL AI</p>
     </header>
 
     <div class="toolbar toolbar-slim" id="app-toolbar">
       <div class="toolbar-primary">
-        <label for="model-select" class="api-key-label">Model</label>
         <select id="model-select" class="toolbar-model" aria-label="Model">
           <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">
             Llama 3.3 70B (default)
@@ -4463,14 +4606,19 @@
           </button>
         </div>
 
-        <div class="toolbar-status-pills">
+        <details class="system-status-menu" id="system-status-menu">
+          <summary id="system-status" class="toolbar-pill system-status off" title="System status">Local</summary>
+          <div class="system-status-panel" id="system-status-panel"></div>
+        </details>
+
+        <div class="toolbar-status-pills toolbar-status-pills-raw" hidden aria-hidden="true">
           <button type="button" id="api-status" class="api-status off toolbar-pill" aria-live="polite" title="Connection status">Local</button>
-          <button type="button" id="companion-status" class="api-status off toolbar-pill" title="Desktop companion" aria-live="polite">Desktop off</button>
-          <button type="button" id="stack-status" class="status-chip stack-status toolbar-pill" title="Chatre Secret Stack — click to refresh context index">Stack · idle</button>
+          <button type="button" id="companion-status" class="api-status off toolbar-pill" title="Desktop companion" aria-live="polite" hidden data-idle="1">Desktop off</button>
+          <button type="button" id="stack-status" class="status-chip stack-status toolbar-pill" title="Chatre Secret Stack — click to refresh context index" hidden data-idle="1">Stack · idle</button>
           <button type="button" id="usage-meter" class="toolbar-pill" hidden title="Usage"></button>
         </div>
 
-        <button type="button" class="btn toolbar-icon-btn" id="pwa-install-toolbar" data-tip="Install app" title="Install Chatre">
+        <button type="button" class="btn toolbar-icon-btn" id="pwa-install-toolbar" data-tip="Install app" title="Install Chatre" hidden>
             <i data-lucide="download" style="width:15px;height:15px" aria-hidden="true"></i>
             <span class="ui-label">Install</span>
           </button>
@@ -4511,7 +4659,7 @@
         </button>
 
         <details class="toolbar-more">
-          <summary>More</summary>
+          <summary class="sr-only">More menu</summary>
           <div class="more-menu">
             <button type="button" class="btn" id="onboard-replay" data-onboard-replay>Tour</button>
           </div>
@@ -4544,13 +4692,13 @@
       </div>
     </div>
 
-    <div id="status-strip" aria-live="polite"></div>
+    <div id="status-strip" aria-live="polite" hidden></div>
     <div id="budget-bar" hidden>
       <div id="budget-bar-track"><div id="budget-bar-fill"></div></div>
       <span id="budget-bar-label"></span>
     </div>
 
-    <div class="panel-toggle-bar" aria-hidden="true">
+    <div class="panel-toggle-bar" hidden aria-hidden="true">
       <button type="button" class="btn" id="toggle-threads-bar">Threads</button>
       <button type="button" class="btn" id="toggle-files-bar">Files</button>
       <button type="button" class="btn" id="toggle-browser-bar">Browser</button>

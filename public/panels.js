@@ -52,6 +52,11 @@
     el.className = "api-status toolbar-pill " + kind;
     el.textContent = label;
     el.title = label;
+    el.dataset.kind = kind;
+    el.dataset.label = label;
+    if (window.ChatreToolbar && window.ChatreToolbar.paintSystemChip) {
+      window.ChatreToolbar.paintSystemChip();
+    }
   }
 
   function setCompanionStatus(kind, label) {
@@ -60,6 +65,14 @@
     el.className = "api-status toolbar-pill " + kind;
     el.textContent = label;
     el.title = label;
+    el.dataset.kind = kind;
+    el.dataset.label = label;
+    const idle = /off|idle/i.test(String(label || "")) && kind !== "ok";
+    el.hidden = !!idle;
+    el.setAttribute("data-idle", idle ? "1" : "0");
+    if (window.ChatreToolbar && window.ChatreToolbar.paintSystemChip) {
+      window.ChatreToolbar.paintSystemChip();
+    }
   }
 
   async function refreshCompanionStatus() {
@@ -2511,6 +2524,7 @@ function renderFileTree(root, files) {
     openFilesPanel,
     showFilesPanel,
     highlightPath,
+    openFile,
     setActiveProject,
     updateUsageMeter,
     rememberWrite,

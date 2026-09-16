@@ -191,10 +191,9 @@
   function showQuietAgentError(prefix, errMsg) {
     const formatted = formatChatError(errMsg);
     showStep((prefix || "Error") + ": " + formatted, true);
+    const blob = String(errMsg || "") + " " + formatted;
     if (
-      /neurons|quota exhausted|Workers AI free|daily free allocation/i.test(
-        String(errMsg || "") + " " + formatted,
-      ) &&
+      /neurons|quota exhausted|Workers AI free|daily free allocation/i.test(blob) &&
       window.ChatreDeliveryUI &&
       window.ChatreDeliveryUI.showBanner
     ) {
@@ -205,6 +204,36 @@
         onAction: function () {
           if (window.ChatreUX && window.ChatreUX.openSettings) {
             window.ChatreUX.openSettings();
+          }
+        },
+      });
+    } else if (
+      /prompt.*messages|oneOf|structured.?tool|tool_calls|does not match/i.test(blob) &&
+      window.ChatreDeliveryUI &&
+      window.ChatreDeliveryUI.showBanner
+    ) {
+      window.ChatreDeliveryUI.showBanner({
+        kind: "warn",
+        text: "Model rejected the tool request format. Retry, or switch to a BYOK model.",
+        actionLabel: "Switch model",
+        onAction: function () {
+          if (window.ChatreUX && window.ChatreUX.openSettings) {
+            window.ChatreUX.openSettings();
+          }
+        },
+      });
+    } else if (
+      /companion|desktop.*(off|offline|error)|ECONNREFUSED/i.test(blob) &&
+      window.ChatreDeliveryUI &&
+      window.ChatreDeliveryUI.showBanner
+    ) {
+      window.ChatreDeliveryUI.showBanner({
+        kind: "warn",
+        text: "Desktop companion is offline. Start it to use Desktop mode.",
+        actionLabel: "Copy start cmd",
+        onAction: function () {
+          if (window.ChatreToolbar && window.ChatreToolbar.copyCompanionCmd) {
+            window.ChatreToolbar.copyCompanionCmd();
           }
         },
       });
@@ -1561,10 +1590,9 @@
 
   // ── Agentic mode ──────────────────────────────────────────────────
 
-  function showDoneProof(proof, audit) {
-    if (!proof || !chatMessages) return;
-    const card = document.createElement("div");
-    card.className = "done-proof-card";
+  function classifyProofOutcome(proof) {
+    if (!proof) return "blocked";
+    if (proof.outcomeKind) return String(proof.outcomeKind);
     const light =
       proof.taskType === "chat" ||
       proof.taskType === "question" ||
@@ -1572,15 +1600,85 @@
         proof.acceptance.results &&
         proof.acceptance.results[0] &&
         proof.acceptance.results[0].evidence === "light_chat");
+    if (light) return "chat-only";
+    const stop = String(proof.stopReason || "").toLowerCase();
+    const note = String(proof.rollbackNote || "").toLowerCase();
+    const scaffold =
+      !!proof.scaffoldUsed ||
+      /scaffold/i.test(stop + " " + note) ||
+      ((proof.risks || []).some(function (r) {
+        return /scaffold/i.test(String(r || ""));
+      }));
+    if (
+      !proof.ok ||
+      /consecutive_tool|no_delivery|provider_error|quota|rate_limit/.test(stop)
+    ) {
+      return "blocked";
+    }
+    if (
+      scaffold ||
+      (proof.acceptance && proof.acceptance.ok === false) ||
+      (proof.acceptance && proof.acceptance.failed > 0) ||
+      proof.testsOk === false ||
+      proof.previewOk === false
+    ) {
+      return "partial";
+    }
+    return "delivered";
+  }
+
+  function outcomeHeadline(kind) {
+    if (kind === "delivered") return "Delivered";
+    if (kind === "partial") return "Partial delivery";
+    if (kind === "blocked") return "Blocked — not delivered";
+    if (kind === "chat-only") return "Answered";
+    return "Run finished";
+  }
+
+  function outcomeWhy(proof, kind) {
+    const stop = String((proof && proof.stopReason) || "").trim();
+    if (kind === "chat-only") {
+      return "Chat reply only — no workspace files were written.";
+    }
+    if (kind === "blocked") {
+      if (/quota|rate_limit|neurons/i.test(stop + " " + String(proof.rollbackNote || ""))) {
+        return "Stopped by quota or rate limit. Switch model or retry.";
+      }
+      if (stop) return "Stopped early: " + stop.replace(/_/g, " ") + ".";
+      return "Run stopped without a reliable delivery. Do not treat this as shipped.";
+    }
+    if (kind === "partial") {
+      if (proof && proof.scaffoldUsed) {
+        return "Fallback scaffold was used — review files before treating as done.";
+      }
+      if (proof && proof.acceptance && proof.acceptance.failed > 0) {
+        return "Some acceptance checks failed. Fix gaps or continue the run.";
+      }
+      if (proof && proof.testsOk === false) return "Tests failed or did not pass.";
+      if (proof && proof.previewOk === false) return "Preview not confirmed yet.";
+      return "Something shipped, but delivery is incomplete.";
+    }
+    return String((proof && proof.rollbackNote) || "").trim();
+  }
+
+  function showDoneProof(proof, audit) {
+    if (!proof || !chatMessages) return;
+    const kind = classifyProofOutcome(proof);
+    const card = document.createElement("div");
+    card.className =
+      "done-proof-card outcome-" + kind + (kind === "delivered" || kind === "chat-only" ? " ok" : kind === "blocked" ? " fail" : " partial");
+    card.setAttribute("data-outcome", kind);
+    const light = kind === "chat-only";
     const acc = proof.acceptance || {};
     const rows = (acc.results || [])
       .slice(0, 8)
       .map(function (r) {
+        const showPassMark = !!r.pass;
         return (
           "<li class=\"" +
           (r.pass ? "pass" : "fail") +
           "\">" +
-          (r.pass ? "✓" : "✗") +
+          (showPassMark ? "✓" : "✗") +
           " " +
           String(r.text || "")
             .replace(/&/g, "&amp;")
@@ -1636,8 +1734,14 @@
         );
       }
     }
+    const why = outcomeWhy(proof, kind);
     card.innerHTML =
-      "<strong>Delivery proof</strong>" +
+      "<strong class=\"done-proof-title\">" +
+      escapeHtml(outcomeHeadline(kind)) +
+      "</strong>" +
+      (why
+        ? "<div class=\"done-proof-why\">" + escapeHtml(why) + "</div>"
+        : "") +
       (metaBits.length
         ? "<div class=\"done-proof-meta\">" + metaBits.join(" · ") + "</div>"
         : "") +
@@ -1649,17 +1753,48 @@
           (audit.summary.tools || 0) +
           " tools</div>"
         : "") +
-      "<div class=\"done-proof-note\">" +
-      String(proof.rollbackNote || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;") +
-      "</div>";
+      (kind === "delivered" && proof.rollbackNote
+        ? "<div class=\"done-proof-note\">" +
+          escapeHtml(String(proof.rollbackNote || "")) +
+          "</div>"
+        : "");
     chatMessages.appendChild(card);
-    if (proof && proof.ok) card.classList.add("ok");
-    else if (proof) card.classList.add("fail");
     wirePreviewLinks(card);
     if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.enhanceDoneProofCard) {
-      window.ChatreDeliveryUI.enhanceDoneProofCard(card, proof);
+      window.ChatreDeliveryUI.enhanceDoneProofCard(card, proof, kind);
+    }
+    if (kind === "blocked") {
+      const ban =
+        /quota|rate_limit|neurons/i.test(
+          String(proof.stopReason || "") + " " + String(proof.rollbackNote || ""),
+        )
+          ? {
+              kind: "warn",
+              text: "Delivery blocked by quota or rate limit.",
+              actionLabel: "Switch model",
+              onAction: function () {
+                if (window.ChatreUX && window.ChatreUX.openSettings) {
+                  window.ChatreUX.openSettings();
+                }
+              },
+            }
+          : {
+              kind: "warn",
+              text: why || "Delivery blocked.",
+              actionLabel: "Resume",
+              onAction: function () {
+                const resume = document.getElementById("agent-resume");
+                const send = document.getElementById("send-button");
+                if (resume && !resume.hidden) resume.click();
+                else if (send && send.classList.contains("is-resume")) send.click();
+                else if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+                  window.ChatreUI.composeAndSend("Continue from the last failure and finish delivery.");
+                }
+              },
+            };
+      if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showBanner) {
+        window.ChatreDeliveryUI.showBanner(ban);
+      }
     }
     scrollToBottom();
   }

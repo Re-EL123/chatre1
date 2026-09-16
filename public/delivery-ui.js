@@ -46,6 +46,28 @@
     return node;
   }
 
+  function syncClarifySendState(pending) {
+    window.__pendingClarification = !!pending;
+    document.body.classList.toggle("awaiting-clarify", !!pending);
+    var send = $("send-button");
+    if (!send) return;
+    if (pending) {
+      send.disabled = true;
+      send.textContent = "Answer first";
+      send.setAttribute("data-primary", "clarify");
+      send.classList.add("is-clarify-blocked");
+    } else {
+      send.classList.remove("is-clarify-blocked");
+      if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
+        window.ChatreComposer.paintPrimaryButton();
+      } else {
+        send.disabled = false;
+        send.textContent = "Send";
+        send.setAttribute("data-primary", "send");
+      }
+    }
+  }
+
   // ── Understanding strip ─────────────────────────────────────────────
   function showUnderstanding(briefing, record) {
     var b = briefing || (record && record.briefing) || {};
@@ -126,7 +148,7 @@
       var t = String(text || "").trim();
       if (!t) return;
       clearSlot("clarify");
-      window.__pendingClarification = false;
+      syncClarifySendState(false);
       if (typeof onContinue === "function") {
         onContinue(t);
         return;
@@ -139,7 +161,10 @@
           input.value = t;
           input.dispatchEvent(new Event("input"));
           var send = $("send-button");
-          if (send) send.click();
+          if (send) {
+            send.disabled = false;
+            send.click();
+          }
         }
       }
     }
@@ -162,7 +187,7 @@
         submit(input.value);
       }
     });
-    window.__pendingClarification = true;
+    syncClarifySendState(true);
     setTimeout(function () {
       input.focus();
     }, 30);
@@ -200,6 +225,16 @@
       });
     }
     return setSlot("banner", card);
+  }
+
+  function showInterruptBanner(opts) {
+    var o = opts || {};
+    return showBanner({
+      kind: o.kind || "warn",
+      text: o.text,
+      actionLabel: o.actionLabel,
+      onAction: o.onAction,
+    });
   }
 
   function refreshAuthBanner() {
@@ -243,14 +278,20 @@
   }
 
   // ── Proof → Files ───────────────────────────────────────────────────
-  function handoffProofToFiles(proof) {
-    if (!proof) return;
+  function proofPaths(proof) {
+    if (!proof) return [];
     var paths = Array.isArray(proof.filesTouched)
       ? proof.filesTouched.filter(Boolean)
       : [];
     if (!paths.length && proof.activeProject) {
       paths = ["/home/user/projects/" + proof.activeProject + "/"];
     }
+    return paths;
+  }
+
+  function handoffProofToFiles(proof) {
+    if (!proof) return;
+    var paths = proofPaths(proof);
     if (window.ChatrePanels) {
       if (window.ChatrePanels.showFilesPanel) {
         window.ChatrePanels.showFilesPanel();
@@ -264,13 +305,15 @@
           /* ignore */
         }
       }
-      if (paths[0] && window.ChatrePanels.highlightPath) {
-        try {
-          window.ChatrePanels.highlightPath(paths[0]);
-        } catch (e2) {
-          /* ignore */
+      paths.forEach(function (p) {
+        if (p && window.ChatrePanels.highlightPath) {
+          try {
+            window.ChatrePanels.highlightPath(p);
+          } catch (e2) {
+            /* ignore */
+          }
         }
-      }
+      });
     }
     if (paths.length) {
       var rail = $("artifact-rail");
@@ -282,8 +325,7 @@
         ) {
           body = window.ChatreUIAdv.ensureArtifactRailBody() || rail;
         } else {
-          body =
-            rail.querySelector(".collapsible-rail-body") || rail;
+          body = rail.querySelector(".collapsible-rail-body") || rail;
         }
         rail.hidden = false;
         body.innerHTML =
@@ -314,39 +356,156 @@
     }
   }
 
-  function enhanceDoneProofCard(card, proof) {
+  function enhanceDoneProofCard(card, proof, kind) {
     if (!card || !proof) return;
-    var paths = Array.isArray(proof.filesTouched)
-      ? proof.filesTouched.filter(Boolean)
-      : [];
-    if (!paths.length) return;
+    var outcome =
+      kind ||
+      proof.outcomeKind ||
+      (proof.ok ? "delivered" : "blocked");
+    var paths = proofPaths(proof);
     var actions = document.createElement("div");
     actions.className = "done-proof-actions";
-    actions.innerHTML =
-      '<button type="button" class="btn done-proof-open-files">Open in Files</button>';
-    actions.querySelector(".done-proof-open-files").addEventListener(
-      "click",
-      function () {
+    var buttons = [];
+
+    if (paths.length && outcome !== "chat-only") {
+      buttons.push(
+        '<button type="button" class="btn done-proof-open-files">Open in Files</button>',
+      );
+    }
+    if (outcome === "blocked" || outcome === "partial") {
+      buttons.push(
+        '<button type="button" class="btn done-proof-retry">Retry</button>',
+      );
+      buttons.push(
+        '<button type="button" class="btn done-proof-resume">Resume</button>',
+      );
+    }
+    if (outcome === "blocked") {
+      buttons.push(
+        '<button type="button" class="btn done-proof-switch-model">Switch model</button>',
+      );
+    }
+    if (!buttons.length) return;
+    actions.innerHTML = buttons.join("");
+
+    var openBtn = actions.querySelector(".done-proof-open-files");
+    if (openBtn) {
+      openBtn.addEventListener("click", function () {
         handoffProofToFiles(proof);
-      },
-    );
+      });
+    }
+    var retryBtn = actions.querySelector(".done-proof-retry");
+    if (retryBtn) {
+      retryBtn.addEventListener("click", function () {
+        if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+          window.ChatreUI.composeAndSend(
+            "Retry the last task and finish a complete delivery with proof.",
+          );
+        }
+      });
+    }
+    var resumeBtn = actions.querySelector(".done-proof-resume");
+    if (resumeBtn) {
+      resumeBtn.addEventListener("click", function () {
+        var send = $("send-button");
+        if (send && send.classList.contains("is-resume")) {
+          send.click();
+          return;
+        }
+        if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+          window.ChatreUI.composeAndSend(
+            "Continue from where you stopped and finish delivery.",
+          );
+        }
+      });
+    }
+    var modelBtn = actions.querySelector(".done-proof-switch-model");
+    if (modelBtn) {
+      modelBtn.addEventListener("click", function () {
+        if (window.ChatreUX && window.ChatreUX.openSettings) {
+          window.ChatreUX.openSettings();
+        }
+        setTimeout(function () {
+          var sel = $("model-select");
+          if (sel) sel.focus();
+        }, 80);
+      });
+    }
+
     card.appendChild(actions);
-    if (proof.ok && proof.taskType !== "chat" && proof.taskType !== "question") {
+    if (
+      (outcome === "delivered" || outcome === "partial") &&
+      proof.taskType !== "chat" &&
+      proof.taskType !== "question" &&
+      paths.length
+    ) {
       handoffProofToFiles(proof);
     }
   }
 
   // ── Unified run status (hide legacy strip noise) ────────────────────
-  function syncRunStatus(phaseText) {
+  function ensureRunActions() {
+    var run = $("composer-run");
+    if (!run) return null;
+    var actions = $("composer-run-actions");
+    if (!actions) {
+      actions = document.createElement("div");
+      actions.id = "composer-run-actions";
+      actions.className = "composer-run-actions";
+      actions.innerHTML =
+        '<button type="button" class="btn composer-run-stop" id="composer-run-stop" hidden>Stop</button>' +
+        '<button type="button" class="btn composer-run-resume" id="composer-run-resume" hidden>Resume</button>';
+      run.appendChild(actions);
+      var stop = actions.querySelector("#composer-run-stop");
+      var resume = actions.querySelector("#composer-run-resume");
+      if (stop) {
+        stop.addEventListener("click", function () {
+          var main = $("stop-button");
+          if (main) main.click();
+        });
+      }
+      if (resume) {
+        resume.addEventListener("click", function () {
+          var send = $("send-button");
+          if (send && send.classList.contains("is-resume")) send.click();
+          else if (window.ChatreUI && window.ChatreUI.composeAndSend) {
+            window.ChatreUI.composeAndSend("Resume the interrupted agent run.");
+          }
+        });
+      }
+    }
+    return actions;
+  }
+
+  function syncRunStatus(phaseText, meta) {
     var strip = $("status-strip");
     if (strip) {
       strip.setAttribute("data-unified", "1");
-      // Keep connection chips; collapse duplicate "working" noise via CSS.
+      strip.hidden = true;
     }
+    var budget = $("budget-bar");
+    if (budget) budget.hidden = true;
     var phase = $("composer-busy-phase");
     if (phase && phaseText) phase.textContent = phaseText;
     var run = $("composer-run");
     if (run) run.hidden = false;
+    ensureRunActions();
+    var stop = $("composer-run-stop");
+    var resume = $("composer-run-resume");
+    var busy = document.body.classList.contains("is-working") ||
+      document.body.classList.contains("is-composer-busy");
+    var canResume =
+      window.ChatrePanels &&
+      window.ChatrePanels.state &&
+      window.ChatrePanels.state.canResume;
+    if (stop) stop.hidden = !busy;
+    if (resume) resume.hidden = !(!busy && canResume);
+    if (meta && meta.tool && $("composer-busy-tool")) {
+      $("composer-busy-tool").textContent = "· " + meta.tool;
+    }
+    if (meta && meta.budget && $("composer-run-budget")) {
+      $("composer-run-budget").textContent = meta.budget;
+    }
   }
 
   function hideRunStatus() {
@@ -354,12 +513,15 @@
     if (run && !document.body.classList.contains("is-working")) {
       /* composer.js owns visibility */
     }
+    var stop = $("composer-run-stop");
+    if (stop) stop.hidden = true;
   }
 
   window.ChatreDeliveryUI = {
     showUnderstanding: showUnderstanding,
     showClarify: showClarify,
     showBanner: showBanner,
+    showInterruptBanner: showInterruptBanner,
     refreshAuthBanner: refreshAuthBanner,
     clearSlot: clearSlot,
     handoffProofToFiles: handoffProofToFiles,
@@ -367,15 +529,19 @@
     syncRunStatus: syncRunStatus,
     hideRunStatus: hideRunStatus,
     ensureHost: ensureHost,
+    syncClarifySendState: syncClarifySendState,
+    ensureRunActions: ensureRunActions,
   };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       ensureHost();
+      ensureRunActions();
       refreshAuthBanner();
     });
   } else {
     ensureHost();
+    ensureRunActions();
     refreshAuthBanner();
   }
 })();

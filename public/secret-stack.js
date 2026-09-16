@@ -93,20 +93,27 @@
     if (!el) return;
     var idx = state.lastIndex;
     if (idx && idx.ok) {
+      el.hidden = false;
+      el.setAttribute("data-idle", "0");
       el.textContent =
         "Stack · " +
         (idx.chunkCount || "?") +
         " chunks" +
         (idx.merkleRoot ? " · " + String(idx.merkleRoot).slice(0, 8) : "");
-      el.className = "status-chip stack-status ok";
+      el.className = "status-chip stack-status toolbar-pill ok";
       el.title =
         "Layer 2 index · engine " +
         (idx.engine || "v2") +
         (idx.merkleRoot ? " · merkle " + idx.merkleRoot : "");
     } else {
       el.textContent = "Stack · idle";
-      el.className = "status-chip stack-status";
+      el.className = "status-chip stack-status toolbar-pill";
       el.title = "Chatre Secret Stack — click to refresh index";
+      el.hidden = true;
+      el.setAttribute("data-idle", "1");
+    }
+    if (window.ChatreToolbar && window.ChatreToolbar.paintSystemChip) {
+      window.ChatreToolbar.paintSystemChip();
     }
   }
 

@@ -384,14 +384,19 @@
 
   function updateInstallButtons() {
     var info = detectPlatform();
+    var canShow = !info.standalone && (!!deferredPrompt || info.os === "ios");
     ["pwa-install-toolbar", "pwa-install-btn"].forEach(function (id) {
       var el = $(id);
       if (!el) return;
-      if (info.standalone) {
+      if (info.standalone || (id === "pwa-install-toolbar" && !canShow && !deferredPrompt)) {
         el.hidden = true;
         return;
       }
-      el.hidden = false;
+      if (id === "pwa-install-toolbar") {
+        el.hidden = !canShow;
+      } else {
+        el.hidden = false;
+      }
     });
     renderInstallGuide();
   }

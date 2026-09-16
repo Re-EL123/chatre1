@@ -244,6 +244,88 @@
     if (menu) menu.open = false;
   }
 
+  function paintSystemChip() {
+    var chip = $("system-status");
+    var panel = $("system-status-panel");
+    if (!chip) return;
+    var api = $("api-status");
+    var companion = $("companion-status");
+    var stack = $("stack-status");
+    var usage = $("usage-meter");
+    var apiLabel = (api && (api.dataset.label || api.textContent)) || "Local";
+    var apiKind = (api && (api.dataset.kind || "")) || "";
+    var companionOn =
+      companion &&
+      !companion.hidden &&
+      companion.getAttribute("data-idle") !== "1" &&
+      /ok|on|bridge/i.test(companion.className + " " + companion.textContent);
+    var stackOn =
+      stack &&
+      !stack.hidden &&
+      stack.getAttribute("data-idle") !== "1";
+    var parts = [apiLabel];
+    if (companionOn) parts.push("Desktop");
+    if (stackOn) parts.push("Stack");
+    if (usage && !usage.hidden && usage.textContent) {
+      parts.push(String(usage.textContent).slice(0, 18));
+    }
+    chip.textContent = parts[0];
+    chip.title = parts.join(" · ");
+    chip.className =
+      "toolbar-pill system-status" +
+      (apiKind === "ok"
+        ? " ok"
+        : apiKind === "bad"
+          ? " bad"
+          : apiKind === "pending"
+            ? " pending"
+            : " off");
+    if (panel) {
+      panel.innerHTML = "";
+      [
+        { el: api, label: "API" },
+        { el: companion, label: "Desktop" },
+        { el: stack, label: "Stack" },
+        { el: usage, label: "Usage" },
+      ].forEach(function (row) {
+        if (!row.el || row.el.hidden) return;
+        if (row.el === stack && row.el.getAttribute("data-idle") === "1") return;
+        if (row.el === companion && row.el.getAttribute("data-idle") === "1") return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn system-status-item";
+        btn.textContent =
+          row.label +
+          ": " +
+          (row.el.dataset.label || row.el.textContent || "—");
+        btn.addEventListener("click", function () {
+          row.el.click();
+          var details = $("system-status-menu");
+          if (details) details.open = false;
+        });
+        panel.appendChild(btn);
+      });
+    }
+  }
+
+  function wireSystemChip() {
+    var details = $("system-status-menu");
+    document.addEventListener("click", function (e) {
+      if (!details || !details.open) return;
+      if (!details.contains(e.target)) details.open = false;
+    });
+    paintSystemChip();
+  }
+
+  function observeShell() {
+    var shell = document.querySelector(".app-shell");
+    if (!shell || typeof MutationObserver === "undefined") return;
+    var mo = new MutationObserver(function () {
+      syncPanelButtons();
+    });
+    mo.observe(shell, { attributes: true, attributeFilter: ["class"] });
+  }
+
   function wireOverflow() {
     var btn = $("toolbar-overflow");
     var more = document.querySelector("#app-toolbar .toolbar-more");
@@ -260,32 +342,31 @@
     }
   }
 
-  function observeShell() {
-    var shell = document.querySelector(".app-shell");
-    if (!shell || typeof MutationObserver === "undefined") return;
-    var mo = new MutationObserver(function () {
-      syncPanelButtons();
-    });
-    mo.observe(shell, { attributes: true, attributeFilter: ["class"] });
-  }
-
   function init() {
     wireStatusPills();
     wireAccountMenu();
     wireOverflow();
+    wireSystemChip();
     paintAccount();
     paintModelNote();
+    paintSystemChip();
     syncPanelButtons();
     observeShell();
 
     var model = $("model-select");
     if (model) {
-      model.addEventListener("change", paintModelNote);
+      model.addEventListener("change", function () {
+        paintModelNote();
+        if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.refreshAuthBanner) {
+          window.ChatreDeliveryUI.refreshAuthBanner();
+        }
+      });
     }
 
     if (window.ChatreAuth && window.ChatreAuth.onChange) {
       window.ChatreAuth.onChange(function () {
         paintAccount();
+        paintSystemChip();
       });
     }
 
@@ -314,8 +395,10 @@
     init: init,
     paintAccount: paintAccount,
     paintModelNote: paintModelNote,
+    paintSystemChip: paintSystemChip,
     syncPanelButtons: syncPanelButtons,
     openSettingsFocus: openSettingsFocus,
+    copyCompanionCmd: copyCompanionCmd,
   };
 
   if (document.readyState === "loading") {

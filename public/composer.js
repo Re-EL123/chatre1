@@ -264,6 +264,19 @@
       el.hidden = false;
       el.textContent =
         "Explore mode is read-only — search and read files, no edits.";
+    } else if (m.agent || state.mode === "agent" || state.mode === "code") {
+      el.hidden = false;
+      el.textContent =
+        "Agent will write files and run tools. Prefer Chat for answers only.";
+    } else if (state.mode === "chat") {
+      el.hidden = false;
+      el.textContent = "Chat answers only — will not scaffold or write project files.";
+    } else if (state.mode === "browse") {
+      el.hidden = false;
+      el.textContent = "Browse opens pages with the agent browser tools.";
+    } else if (state.mode === "image") {
+      el.hidden = false;
+      el.textContent = "Image mode generates an image from your prompt.";
     } else {
       el.hidden = true;
       el.textContent = "";
@@ -990,6 +1003,15 @@
   function paintPrimaryButton() {
     var send = $("send-button");
     if (!send) return;
+    if (window.__pendingClarification) {
+      send.disabled = true;
+      send.textContent = "Answer first";
+      send.setAttribute("data-primary", "clarify");
+      send.classList.add("is-clarify-blocked");
+      send.classList.remove("is-queue", "is-resume");
+      return;
+    }
+    send.classList.remove("is-clarify-blocked");
     var busy = document.body.classList.contains("is-working");
     var canResume =
       window.ChatrePanels &&
@@ -1037,6 +1059,9 @@
         if ($("composer-busy-tool")) {
           $("composer-busy-tool").textContent = tool ? "· " + tool : "";
         }
+        if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
+          window.ChatreDeliveryUI.syncRunStatus(phase, { tool: tool });
+        }
       } else if (!state.queue.length) {
         var paused =
           (window.ChatrePanels &&
@@ -1047,6 +1072,9 @@
             window.ChatreUX.state.pauseReason) ||
           !!window.__pendingExecutePlan;
         if (!paused) run.hidden = true;
+        if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.hideRunStatus) {
+          window.ChatreDeliveryUI.hideRunStatus();
+        }
       }
     }
     if (window.ChatreComposerFlow) {
