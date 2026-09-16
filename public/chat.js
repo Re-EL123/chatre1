@@ -2206,6 +2206,11 @@
                 });
               }
             } else if (ev.type === "todos") {
+              window.__pendingTodos = (ev.todos || []).map((todo) => ({
+                id: todo.id,
+                content: todo.content,
+                status: todo.status,
+              }));
               showStep(
                 "Todos:\n" +
                   ((ev.todos || [])
@@ -2640,6 +2645,33 @@
         if (resumeMsgs && resumeMsgs.length && message) {
           initialMessages.push({ role: "user", content: message });
         }
+        // Resume that CARRIES THE PLAN: the todo list the agent wrote last
+        // turn is re-injected (not just the raw chat text) so a continuation
+        // executes its own pending todos instead of replanning from scratch.
+        // Without this, turn 2+ sees only a fresh user message, forgets its
+        // own t3 "write_file" etc., re-explores, and burns its step budget.
+        const pendingTodos = window.__pendingTodos || [];
+        if (resumeMsgs && resumeMsgs.length && pendingTodos.length) {
+          const pendingLine = pendingTodos
+            .map(
+              (t) =>
+                (t.status === "done" ? "- [x] " : "- [ ] ") +
+                t.id +
+                ": " +
+                t.content,
+            )
+            .join("\n");
+          initialMessages.unshift({
+            role: "system",
+            content:
+              "You previously planned this task and left these todos. " +
+              "CONTINUE your existing plan — do not replan from scratch. " +
+              "Pick up the next unfinished todo and execute it with your tools, " +
+              "checking each one off as you finish. Pending todos:\n" +
+              pendingLine,
+          });
+        }
+        window.__pendingTodos = null;
 
         const agentResult = await window.ChatreAgent.run(initialMessages, {
           model: modelSelect.value,
