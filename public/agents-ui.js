@@ -49,9 +49,8 @@
     var m = String(mode || "").toLowerCase();
     if (m === "plan") return "plan";
     if (m === "explore") return "explore";
-    if (m === "browse" || m === "desktop" || m === "code" || m === "agent") {
-      return "build";
-    }
+    if (m === "browse" || m === "research") return "research";
+    if (m === "desktop" || m === "code" || m === "agent") return "build";
     return getActive();
   }
 
