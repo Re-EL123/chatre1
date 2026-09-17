@@ -728,6 +728,7 @@
       } else {
         state.repoHead = (data && data.head) || null;
       }
+      updateIdeStatusBar();
       return data;
     } catch (e) {
       return null;
@@ -773,15 +774,26 @@
       return p !== path;
     });
     saveOpenTabs();
+    if (window.ChatreMonaco && window.ChatreMonaco.closeModel) {
+      window.ChatreMonaco.closeModel(path);
+    }
     if (state.selectedPath === path) {
       state.selectedPath = state.openTabs[0] || null;
       if (state.selectedPath) openFile(state.selectedPath);
       else {
-        const viewer = $("file-viewer");
         const meta = $("file-viewer-path");
-        if (viewer) viewer.textContent = "";
+        const fallback = $("file-viewer-fallback");
         if (meta) meta.textContent = "";
+        if (window.ChatreMonaco) window.ChatreMonaco.clear();
+        if (fallback) {
+          fallback.hidden = false;
+          fallback.className = "vsc-empty-editor";
+          fallback.innerHTML =
+            "<div>Open a file from the Explorer</div>" +
+            "<div><kbd>Ctrl</kbd>+click a path in chat, or pick a tab</div>";
+        }
         renderFileTabs();
+        updateIdeStatusBar();
       }
     } else {
       renderFileTabs();
@@ -934,6 +946,7 @@
     if (Array.isArray(ev.runConfigs)) state.runConfigs = ev.runConfigs;
     const tree = $("file-tree");
     if (tree) renderFileTree(tree, state.files);
+    updateIdeStatusBar();
   }
 
   function renderFileTabs() {
@@ -953,8 +966,14 @@
     tabs.forEach(function (path) {
       const btn = document.createElement("button");
       btn.type = "button";
+      const dirty =
+        window.ChatreMonaco &&
+        window.ChatreMonaco.isDirty &&
+        window.ChatreMonaco.isDirty(path);
       btn.className =
-        "ide-file-tab" + (state.selectedPath === path ? " active" : "");
+        "ide-file-tab" +
+        (state.selectedPath === path ? " active" : "") +
+        (dirty ? " dirty" : "");
       btn.title = path;
       btn.innerHTML =
         '<span class="ide-file-tab-name">' +
@@ -975,17 +994,86 @@
       toolbar.addEventListener("click", function (e) {
         const el = e.target;
         if (!el || !el.getAttribute) return;
+        if (el.getAttribute("data-action") === "save" || el.id === "ide-save-file") {
+          saveActiveFile();
+          return;
+        }
         const mode = el.getAttribute("data-mode");
         if (!mode) return;
         state.viewerMode = mode;
         Array.prototype.forEach.call(
-          toolbar.querySelectorAll(".ide-view-mode"),
+          toolbar.querySelectorAll(".ide-view-mode[data-mode]"),
           function (b) {
             b.classList.toggle("active", b.getAttribute("data-mode") === mode);
           },
         );
         if (state.selectedPath) openFile(state.selectedPath);
       });
+    }
+  }
+
+  function updateIdeStatusBar() {
+    const branch = $("ide-status-branch");
+    const problems = $("ide-status-problems");
+    const lang = $("ide-status-lang");
+    const n = (state.problems && state.problems.length) || 0;
+    if (branch) {
+      branch.textContent = state.repoBranch
+        ? "git:" + state.repoBranch + (state.repoDirty ? "*" : "")
+        : state.activeProject
+          ? state.activeProject
+          : "—";
+    }
+    if (problems) {
+      problems.textContent = n + (n === 1 ? " problem" : " problems");
+    }
+    if (lang) {
+      const path = state.selectedPath || "";
+      const g =
+        (window.ChatreMonaco &&
+          window.ChatreMonaco.guessLanguage &&
+          window.ChatreMonaco.guessLanguage(path)) ||
+        "plaintext";
+      lang.textContent = path ? g : "Plain Text";
+    }
+  }
+
+  async function saveActiveFile() {
+    const path = state.selectedPath;
+    if (!path) return;
+    const r = remote();
+    const wsId = remoteState().workspaceId || state.workspaceId;
+    if (!r || !r.enabled() || !r.putFile || !wsId) {
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast("Connect the API to save files", "error");
+      }
+      return;
+    }
+    const content =
+      (window.ChatreMonaco && window.ChatreMonaco.getValue(path)) ||
+      (state.files[path] && state.files[path].content) ||
+      "";
+    try {
+      await r.putFile(wsId, path, content, "file");
+      state.files[path] = Object.assign({}, state.files[path] || {}, {
+        path: path,
+        type: "file",
+        content: content,
+      });
+      if (window.ChatreMonaco && window.ChatreMonaco.markClean) {
+        window.ChatreMonaco.markClean(path);
+      }
+      renderFileTabs();
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast("Saved " + basename(path), "success");
+      }
+    } catch (e) {
+      if (window.ChatreKit && window.ChatreKit.toast) {
+        window.ChatreKit.toast(
+          "Save failed: " + ((e && e.message) || e),
+          "error",
+        );
+      }
     }
   }
 
@@ -1431,7 +1519,8 @@ function renderFileTree(root, files) {
   function appendFileRow(host, path, name, depth) {
     const row = document.createElement("div");
     row.className =
-      "file-item ide-file" + (state.selectedPath === path ? " active" : "");
+      "file-item ide-file" +
+      (state.selectedPath === path ? " active is-selected" : "");
     row.setAttribute("data-path", path);
     row.style.setProperty("--ide-depth", String(depth));
     const isAgents = /\/AGENTS\.md$/i.test(path);
@@ -1535,11 +1624,12 @@ function renderFileTree(root, files) {
     ensureTab(path);
     renderFileTabs();
     syncActiveFileChip(path);
-    const viewer = $("file-viewer");
+    updateIdeStatusBar();
     const meta = $("file-viewer-path");
-    if (!viewer) return;
-    let f = state.files[path];
+    const fallback = $("file-viewer-fallback");
     if (meta) meta.textContent = path;
+
+    let f = state.files[path];
 
     if (
       (!f || f.contentOmitted || f.content == null) &&
@@ -1559,9 +1649,17 @@ function renderFileTree(root, files) {
       }
     }
 
+    function showFallbackContent(htmlOrText, asHtml, className) {
+      if (window.ChatreMonaco) window.ChatreMonaco.showFallback();
+      if (!fallback) return;
+      fallback.hidden = false;
+      fallback.className = className || "file-viewer-fallback";
+      if (asHtml) fallback.innerHTML = htmlOrText;
+      else fallback.textContent = htmlOrText;
+    }
+
     if (state.viewerMode === "diff") {
-      viewer.className = "file-viewer ide-diff-view";
-      viewer.textContent = "Loading diff…";
+      showFallbackContent("Loading diff…", false, "file-viewer-fallback ide-diff-view");
       const wsId = remoteState().workspaceId || state.workspaceId;
       try {
         let unified = "";
@@ -1578,9 +1676,13 @@ function renderFileTree(root, files) {
           const current = f && f.content != null ? String(f.content) : "";
           unified = makeUnifiedDiff(previous, current, path);
         }
-        viewer.innerHTML = renderDiffHtml(unified || "(empty diff)");
+        showFallbackContent(
+          renderDiffHtml(unified || "(empty diff)"),
+          true,
+          "file-viewer-fallback ide-diff-view",
+        );
       } catch (e) {
-        viewer.textContent = "Diff failed: " + (e.message || e);
+        showFallbackContent("Diff failed: " + (e.message || e), false);
       }
       if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
         window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
@@ -1591,7 +1693,6 @@ function renderFileTree(root, files) {
     const isPdf =
       /\.pdf$/i.test(path) || (f && f.mime === "application/pdf");
     if (isPdf && f && f.content != null) {
-      viewer.className = "file-viewer";
       try {
         const bin = atob(String(f.content).replace(/\s+/g, ""));
         const bytes = new Uint8Array(bin.length);
@@ -1599,18 +1700,22 @@ function renderFileTree(root, files) {
         const url = URL.createObjectURL(
           new Blob([bytes], { type: "application/pdf" }),
         );
-        viewer.innerHTML =
+        showFallbackContent(
           '<iframe title="PDF preview" src="' +
-          url +
-          '" style="width:100%;height:min(70vh,520px);border:0;border-radius:8px;background:#111"></iframe>' +
-          '<p class="panel-empty" style="margin-top:0.5rem">PDF · ' +
-          escapeHtml(path) +
-          ' · <button type="button" class="btn file-dl-inline">Download</button></p>';
-        const btn = viewer.querySelector(".file-dl-inline");
+            url +
+            '" style="width:100%;height:min(70vh,520px);border:0;border-radius:8px;background:#111"></iframe>' +
+            '<p class="panel-empty" style="margin-top:0.5rem">PDF · ' +
+            escapeHtml(path) +
+            ' · <button type="button" class="btn file-dl-inline">Download</button></p>',
+          true,
+        );
+        const btn = fallback && fallback.querySelector(".file-dl-inline");
         if (btn) btn.addEventListener("click", () => downloadFile(path));
       } catch (e) {
-        viewer.textContent =
-          "Could not preview PDF. Use Download. (" + (e.message || e) + ")";
+        showFallbackContent(
+          "Could not preview PDF. Use Download. (" + (e.message || e) + ")",
+          false,
+        );
       }
       if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
         window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
@@ -1619,13 +1724,52 @@ function renderFileTree(root, files) {
     }
 
     const content = f && f.content != null ? String(f.content) : "";
-    if (/\.(md|markdown)$/i.test(path) && window.marked && window.DOMPurify) {
-      viewer.className = "file-viewer file-preview-md";
-      viewer.innerHTML = window.DOMPurify.sanitize(window.marked.parse(content));
+    const isMd = /\.(md|markdown)$/i.test(path);
+    // Markdown: preview in fallback when Diff/preview preferred; Source uses Monaco
+    if (
+      isMd &&
+      state.viewerMode === "preview" &&
+      window.marked &&
+      window.DOMPurify
+    ) {
+      showFallbackContent(
+        window.DOMPurify.sanitize(window.marked.parse(content)),
+        true,
+        "file-viewer-fallback file-preview-md",
+      );
+    } else if (window.ChatreMonaco && window.ChatreMonaco.showFile) {
+      try {
+        await window.ChatreMonaco.showFile(path, content, {
+          forceContent: !window.ChatreMonaco.isDirty(path),
+        });
+        window.ChatreMonaco.focus();
+      } catch (e) {
+        showFallbackContent(content, false);
+      }
+    } else if (isMd && window.marked && window.DOMPurify) {
+      showFallbackContent(
+        window.DOMPurify.sanitize(window.marked.parse(content)),
+        true,
+        "file-viewer-fallback file-preview-md",
+      );
     } else {
-      viewer.className = "file-viewer";
-      viewer.textContent = content;
+      showFallbackContent(content, false);
     }
+
+    // Highlight selected row in explorer
+    document.querySelectorAll(".ide-file.is-selected").forEach(function (n) {
+      n.classList.remove("is-selected");
+    });
+    try {
+      const row = document.querySelector(
+        '.ide-file[data-path="' +
+          String(path).replace(/\\/g, "\\\\").replace(/"/g, '\\"') +
+          '"]',
+      );
+      if (row) row.classList.add("is-selected");
+    } catch (e) {}
+
+    updateIdeStatusBar();
     if (window.ChatreUIAdv && window.ChatreUIAdv.pushArtifact) {
       window.ChatreUIAdv.pushArtifact({ kind: "file", title: path, path: path });
     }
@@ -2079,6 +2223,14 @@ function renderFileTree(root, files) {
       if (window.ChatreProjects) {
         state.projects = window.ChatreProjects.detectProjects(state.files);
       }
+      if (
+        window.ChatreMonaco &&
+        window.ChatreMonaco.updateContent &&
+        f.content != null &&
+        !f.contentOmitted
+      ) {
+        window.ChatreMonaco.updateContent(f.path, f.content);
+      }
       const tree = $("file-tree");
       if (tree) renderFileTree(tree, state.files);
       return;
@@ -2211,6 +2363,73 @@ function renderFileTree(root, files) {
     const toggleFiles = $("toggle-files") || $("toggle-files-bar");
     const toggleBrowser = $("toggle-browser") || $("toggle-browser-bar");
     const backdrop = $("sheet-backdrop");
+
+    if (window.ChatreMonaco) {
+      window.ChatreMonaco.onChange(function () {
+        renderFileTabs();
+      });
+      window.ChatreMonaco.ready().catch(function () {});
+    }
+
+    document.addEventListener("keydown", function (e) {
+      const saveKey =
+        (e.ctrlKey || e.metaKey) &&
+        String(e.key || "").toLowerCase() === "s";
+      if (!saveKey) return;
+      const panel = $("files-panel");
+      if (!panel || panel.offsetParent === null) return;
+      const shell = document.querySelector(".app-shell");
+      if (shell && shell.classList.contains("hide-files")) return;
+      e.preventDefault();
+      saveActiveFile();
+    });
+
+    const activity = document.querySelector("#files-panel .vsc-activity");
+    if (activity && !activity._bound) {
+      activity._bound = true;
+      activity.addEventListener("click", function (e) {
+        const btn = e.target && e.target.closest && e.target.closest("[data-vsc-view]");
+        if (!btn) return;
+        const view = btn.getAttribute("data-vsc-view");
+        Array.prototype.forEach.call(
+          activity.querySelectorAll(".vsc-activity-btn"),
+          function (b) {
+            b.classList.toggle("active", b === btn);
+          },
+        );
+        if (view === "search") {
+          const input = $("chat-input") || $("user-input");
+          if (input) {
+            input.focus();
+            input.value = "/search ";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        } else if (view === "git" || view === "problems") {
+          const tree = $("file-tree");
+          if (tree) {
+            const target =
+              view === "git"
+                ? tree.querySelector(".ide-repo-bar")
+                : tree.querySelector(".ide-problems");
+            if (target) {
+              try {
+                target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              } catch (err) {}
+            }
+          }
+        }
+      });
+    }
+
+    const panelEl = $("files-panel");
+    if (panelEl && window.ResizeObserver) {
+      const ro = new ResizeObserver(function () {
+        if (window.ChatreMonaco) window.ChatreMonaco.layout();
+      });
+      ro.observe(panelEl);
+    }
+
+    updateIdeStatusBar();
 
     if (refreshBtn) refreshBtn.addEventListener("click", refreshThreads);
     if (newBtn) newBtn.addEventListener("click", newThread);
@@ -2497,6 +2716,12 @@ function renderFileTree(root, files) {
       shell.classList.remove("hide-files");
     }
     refreshFiles();
+    setTimeout(function () {
+      if (window.ChatreMonaco) window.ChatreMonaco.layout();
+      if (window.ChatreKit && window.ChatreKit.refreshIcons) {
+        window.ChatreKit.refreshIcons($("files-panel"));
+      }
+    }, 50);
   }
 
   function showFilesPanel() {
@@ -2550,6 +2775,8 @@ function renderFileTree(root, files) {
     syncThreadsToggleUi,
     exportZip,
     exportDirectoryZip,
+    saveActiveFile,
+    updateIdeStatusBar,
     uploadLocalFiles: function (files) {
       if (uploadLocalFilesFn) return uploadLocalFilesFn(files);
       return Promise.reject(new Error("Panels not ready"));

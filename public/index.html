@@ -1229,8 +1229,8 @@
 
       .app-shell {
         display: grid;
-        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(280px, 340px);
-        gap: 0.9rem;
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(460px, 54vw);
+        gap: 0.65rem;
         align-items: stretch;
         width: 100%;
         position: relative;
@@ -1299,22 +1299,25 @@
       }
 
       .app-shell:not(.hide-threads).hide-files.hide-browser {
-        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
       }
       .app-shell:not(.hide-threads).hide-files:not(.hide-browser) {
-        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(260px, 300px);
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(260px, 300px);
       }
       .app-shell.hide-threads:not(.hide-files).hide-browser {
-        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(280px, 340px);
+        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(480px, 58vw);
       }
       .app-shell.hide-threads:not(.hide-files):not(.hide-browser) {
-        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(280px, 320px) minmax(260px, 300px);
+        grid-template-columns: 2.1rem minmax(0, 1fr) minmax(400px, 46vw) minmax(240px, 280px);
       }
       .app-shell.hide-threads.hide-files.hide-browser {
         grid-template-columns: 2.1rem minmax(0, 1fr);
       }
       .app-shell.hide-threads.hide-files:not(.hide-browser) {
         grid-template-columns: 2.1rem minmax(0, 1fr) minmax(260px, 300px);
+      }
+      .app-shell:not(.hide-threads):not(.hide-files):not(.hide-browser) {
+        grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(380px, 42vw) minmax(240px, 280px);
       }
 
       .panel-head {
@@ -1403,14 +1406,303 @@
       }
 
       #file-tree {
-        flex: 0 1 42%;
-        min-height: 6rem;
-        max-height: 48%;
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
         overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-family: "Segoe UI", "DM Sans", system-ui, sans-serif;
+        font-size: 0.8rem;
+      }
+
+      /* ── VS Code workbench (Files panel) ─────────────────────────── */
+      #files-panel.vscode-wb {
+        --vsc-bg: #1e1e1e;
+        --vsc-sidebar: #252526;
+        --vsc-activity: #333333;
+        --vsc-border: #3c3c3c;
+        --vsc-tab: #2d2d2d;
+        --vsc-tab-active: #1e1e1e;
+        --vsc-fg: #cccccc;
+        --vsc-muted: #858585;
+        --vsc-accent: #007acc;
+        --vsc-hover: rgba(255, 255, 255, 0.06);
+        --vsc-select: #094771;
+        padding: 0;
+        gap: 0;
+        border-radius: 10px;
+        border-color: var(--vsc-border);
+        background: var(--vsc-bg);
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 48px minmax(160px, 220px) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) 22px;
+        grid-template-areas:
+          "activity sidebar editor"
+          "status status status";
+      }
+      #files-panel.vscode-wb > h2,
+      #files-panel.vscode-wb > .panel-actions {
+        display: none;
+      }
+      .vsc-activity {
+        grid-area: activity;
+        background: var(--vsc-activity);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.35rem 0;
+        gap: 0.15rem;
+        border-right: 1px solid #252526;
+      }
+      .vsc-activity-btn {
+        width: 42px;
+        height: 42px;
+        border: 0;
+        background: transparent;
+        color: var(--vsc-muted);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-left: 2px solid transparent;
+        border-radius: 0;
+      }
+      .vsc-activity-btn:hover { color: #fff; }
+      .vsc-activity-btn.active {
+        color: #fff;
+        border-left-color: #fff;
+      }
+      .vsc-activity-btn svg { width: 22px; height: 22px; }
+      .vsc-sidebar {
+        grid-area: sidebar;
+        background: var(--vsc-sidebar);
+        border-right: 1px solid var(--vsc-border);
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .vsc-sidebar-title {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.55rem 0.65rem 0.35rem;
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--vsc-fg);
+        font-weight: 600;
+      }
+      .vsc-sidebar-actions {
+        display: inline-flex;
+        gap: 0.15rem;
+      }
+      .vsc-icon-btn {
+        width: 1.55rem;
+        height: 1.55rem;
+        border: 0;
+        background: transparent;
+        color: var(--vsc-fg);
+        opacity: 0.75;
+        cursor: pointer;
+        border-radius: 3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+      }
+      .vsc-icon-btn:hover {
+        opacity: 1;
+        background: var(--vsc-hover);
+      }
+      #files-panel.vscode-wb .file-drop {
+        flex-shrink: 0;
+        margin: 0.25rem 0.45rem;
+        padding: 0.4rem 0.45rem;
+        border-radius: 4px;
+        border-style: dashed;
+        border-color: var(--vsc-border);
+        background: transparent;
+        font-size: 0.7rem;
+        color: var(--vsc-muted);
+      }
+      #files-panel.vscode-wb .file-drop-inner {
+        gap: 0.35rem;
+        flex-direction: row;
+        justify-content: flex-start;
+      }
+      #files-panel.vscode-wb .file-drop-inner i { width: 14px !important; height: 14px !important; }
+      #files-panel.vscode-wb .file-drop-inner span {
+        font-size: 0.68rem;
+        line-height: 1.2;
+      }
+      #files-panel.vscode-wb #file-upload-progress {
+        margin: 0 0.45rem 0.25rem;
+        font-size: 0.68rem;
+        color: var(--vsc-accent);
+      }
+      #files-panel.vscode-wb #file-tree {
+        flex: 1 1 auto;
+        padding: 0 0 0.5rem;
+      }
+      #files-panel.vscode-wb .ide-explorer-head,
+      #files-panel.vscode-wb .ide-repo-bar,
+      #files-panel.vscode-wb .ide-problems {
+        border-color: var(--vsc-border);
+        color: var(--vsc-fg);
+      }
+      #files-panel.vscode-wb .ide-folder-toggle,
+      #files-panel.vscode-wb .ide-file .file-open {
+        border-radius: 0;
+        color: var(--vsc-fg);
+      }
+      #files-panel.vscode-wb .ide-folder-toggle:hover,
+      #files-panel.vscode-wb .ide-file .file-open:hover,
+      #files-panel.vscode-wb .ide-file:hover {
+        background: var(--vsc-hover);
+      }
+      #files-panel.vscode-wb .ide-file.is-selected .file-open,
+      #files-panel.vscode-wb .ide-file.is-selected {
+        background: var(--vsc-select);
+      }
+      .vsc-editor {
+        grid-area: editor;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        background: var(--vsc-bg);
+      }
+      #files-panel.vscode-wb .ide-file-tabs {
+        flex-shrink: 0;
+        margin: 0;
+        padding: 0;
+        gap: 0;
+        border-bottom: 1px solid var(--vsc-border);
+        background: var(--vsc-tab);
+        min-height: 35px;
+      }
+      #files-panel.vscode-wb .ide-file-tab {
+        border: 0;
+        border-right: 1px solid var(--vsc-border);
+        border-radius: 0;
+        background: var(--vsc-tab);
+        color: var(--vsc-muted);
+        max-width: 180px;
+        padding: 0.45rem 0.55rem;
         font-size: 0.78rem;
+        height: 35px;
+      }
+      #files-panel.vscode-wb .ide-file-tab.active {
+        background: var(--vsc-tab-active);
+        color: #fff;
+        box-shadow: inset 0 -1px 0 var(--vsc-accent);
+      }
+      #files-panel.vscode-wb .ide-file-tab.dirty .ide-file-tab-name::after {
+        content: " ●";
+        font-size: 0.65rem;
+        color: #fff;
+      }
+      #files-panel.vscode-wb .ide-viewer-toolbar {
+        flex-shrink: 0;
+        margin: 0;
+        padding: 0.2rem 0.4rem;
+        gap: 0.2rem;
+        border-bottom: 1px solid var(--vsc-border);
+        background: #252526;
+      }
+      #files-panel.vscode-wb .ide-view-mode {
+        border-color: var(--vsc-border);
+        color: var(--vsc-fg);
+        border-radius: 2px;
+      }
+      #files-panel.vscode-wb .ide-view-mode.active {
+        background: rgba(0, 122, 204, 0.28);
+        border-color: var(--vsc-accent);
+      }
+      #files-panel.vscode-wb #file-viewer-path {
+        flex-shrink: 0;
+        padding: 0.2rem 0.65rem;
+        font-size: 0.72rem;
+        color: var(--vsc-muted);
+        border-bottom: 1px solid var(--vsc-border);
+        background: #1e1e1e;
+        word-break: break-all;
+      }
+      #files-panel.vscode-wb #file-viewer {
+        flex: 1 1 auto;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: #1e1e1e;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        white-space: normal;
+      }
+      #monaco-editor {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+      }
+      #monaco-editor[hidden],
+      #file-viewer-fallback[hidden] {
+        display: none !important;
+      }
+      #file-viewer-fallback {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 0.75rem 1rem;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.78rem;
+        white-space: pre-wrap;
+        color: var(--vsc-fg);
+      }
+      #file-viewer-fallback.file-preview-md {
+        font-family: "Segoe UI", "DM Sans", system-ui, sans-serif;
+        white-space: normal;
+      }
+      .vsc-statusbar {
+        grid-area: status;
+        background: var(--vsc-accent);
+        color: #fff;
+        font-size: 0.68rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0 0.65rem;
+        min-height: 22px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .vsc-statusbar span { opacity: 0.95; }
+      .vsc-statusbar .vsc-status-grow { margin-left: auto; opacity: 0.85; }
+      .vsc-empty-editor {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        color: var(--vsc-muted);
+        font-size: 0.85rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      .vsc-empty-editor kbd {
+        font-family: inherit;
+        font-size: 0.72rem;
+        padding: 0.1rem 0.35rem;
+        border: 1px solid var(--vsc-border);
+        border-radius: 3px;
+        background: #2a2a2a;
       }
       .ide-explorer-head {
         display: flex;
@@ -4463,6 +4755,14 @@
         .app-shell.show-browser #browser-panel {
           transform: translateY(0);
         }
+        .app-shell.show-files #files-panel {
+          max-height: min(88vh, 920px);
+          height: min(88vh, 920px);
+        }
+        #files-panel.vscode-wb {
+          grid-template-columns: 40px minmax(120px, 38%) minmax(0, 1fr);
+          border-radius: 14px 14px 0 0;
+        }
         .sheet-backdrop {
           display: none;
           position: fixed;
@@ -4840,31 +5140,65 @@
         </div>
       </div>
 
-      <aside class="side-panel" id="files-panel" aria-label="Files">
-        <h2>Projects</h2>
-        <div class="panel-actions">
-          <button type="button" class="btn" id="files-refresh">Refresh</button>
-          <button type="button" class="btn" id="files-preview" title="Open active project in live preview">Preview</button>
-          <button type="button" class="btn" id="files-export-zip">Export ZIP</button>
-        </div>
-        <div id="file-drop" class="file-drop" tabindex="0" data-tip="Upload files into the remote workspace">
-          <div class="file-drop-inner">
-            <i data-lucide="upload" style="width:22px;height:22px" aria-hidden="true"></i>
-            <span>Drop files here to upload into the workspace</span>
+      <aside class="side-panel vscode-wb" id="files-panel" aria-label="Files">
+        <nav class="vsc-activity" aria-label="IDE activity">
+          <button type="button" class="vsc-activity-btn active" data-vsc-view="explorer" title="Explorer" aria-label="Explorer">
+            <i data-lucide="files" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="vsc-activity-btn" data-vsc-view="search" title="Search in chat" aria-label="Search">
+            <i data-lucide="search" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="vsc-activity-btn" data-vsc-view="git" title="Source Control" aria-label="Source Control">
+            <i data-lucide="git-branch" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="vsc-activity-btn" data-vsc-view="problems" title="Problems" aria-label="Problems">
+            <i data-lucide="alert-circle" aria-hidden="true"></i>
+          </button>
+        </nav>
+        <div class="vsc-sidebar">
+          <div class="vsc-sidebar-title">
+            <span>Explorer</span>
+            <div class="vsc-sidebar-actions">
+              <button type="button" class="vsc-icon-btn" id="files-refresh" title="Refresh Explorer">↻</button>
+              <button type="button" class="vsc-icon-btn" id="files-preview" title="Preview project">▶</button>
+              <button type="button" class="vsc-icon-btn" id="files-export-zip" title="Export ZIP">⬇</button>
+            </div>
           </div>
-          <input type="file" id="file-drop-input" multiple hidden />
+          <div id="file-drop" class="file-drop" tabindex="0" data-tip="Upload files into the remote workspace">
+            <div class="file-drop-inner">
+              <i data-lucide="upload" style="width:22px;height:22px" aria-hidden="true"></i>
+              <span>Drop files to upload</span>
+            </div>
+            <input type="file" id="file-drop-input" multiple hidden />
+          </div>
+          <div id="file-upload-progress" hidden></div>
+          <div id="file-tree" class="ide-explorer"></div>
         </div>
-        <div id="file-upload-progress" hidden></div>
-        <div id="file-tree" class="ide-explorer"></div>
-        <div id="ide-file-tabs" class="ide-file-tabs" hidden></div>
-        <div id="ide-viewer-toolbar" class="ide-viewer-toolbar" hidden>
-          <button type="button" class="ide-view-mode active" data-mode="source">Source</button>
-          <button type="button" class="ide-view-mode" data-mode="diff">Diff</button>
-          <button type="button" class="ide-view-mode" id="ide-context-index" title="Rebuild workspace context index">Index</button>
-          <button type="button" class="ide-view-mode" id="ide-context-complete" title="Inline complete at selection / file end">Complete</button>
+        <div class="vsc-editor">
+          <div id="ide-file-tabs" class="ide-file-tabs" hidden></div>
+          <div id="ide-viewer-toolbar" class="ide-viewer-toolbar" hidden>
+            <button type="button" class="ide-view-mode active" data-mode="source">Source</button>
+            <button type="button" class="ide-view-mode" data-mode="diff">Diff</button>
+            <button type="button" class="ide-view-mode" id="ide-context-index" title="Rebuild workspace context index">Index</button>
+            <button type="button" class="ide-view-mode" id="ide-context-complete" title="Inline complete at selection / file end">Complete</button>
+            <button type="button" class="ide-view-mode" id="ide-save-file" title="Save (Ctrl/Cmd+S)" data-action="save">Save</button>
+          </div>
+          <div id="file-viewer-path"></div>
+          <div id="file-viewer" class="file-viewer">
+            <div id="monaco-editor" hidden></div>
+            <div id="file-viewer-fallback" class="vsc-empty-editor">
+              <div>Open a file from the Explorer</div>
+              <div><kbd>Ctrl</kbd>+click a path in chat, or pick a tab</div>
+            </div>
+          </div>
         </div>
-        <div id="file-viewer-path"></div>
-        <div id="file-viewer" class="file-viewer"></div>
+        <div class="vsc-statusbar" id="ide-statusbar" aria-live="polite">
+          <span id="ide-status-branch">—</span>
+          <span id="ide-status-problems">0 problems</span>
+          <span id="ide-status-lang" class="vsc-status-grow">Plain Text</span>
+          <span id="ide-status-encoding">UTF-8</span>
+          <span id="ide-status-eol">LF</span>
+        </div>
       </aside>
 
       <aside class="side-panel" id="browser-panel" aria-label="Browser">
@@ -5231,6 +5565,7 @@
     <script src="/agent.js"></script>
     <script src="/remote.js"></script>
     <script src="/ide-context.js"></script>
+    <script src="/ide-monaco.js"></script>
     <script src="/panels.js"></script>
     <script src="/symbol-index.js"></script>
     <script src="/chat.js" defer></script>

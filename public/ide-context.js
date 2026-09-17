@@ -36,6 +36,16 @@
   function activeContent() {
     var ps = panels();
     var path = ps && ps.selectedPath;
+    if (
+      path &&
+      window.ChatreMonaco &&
+      window.ChatreMonaco.getValue &&
+      window.ChatreMonaco.currentPath === path
+    ) {
+      try {
+        return window.ChatreMonaco.getValue(path) || "";
+      } catch (e) {}
+    }
     if (!path || !ps.files || !ps.files[path]) return "";
     var f = ps.files[path];
     return f && f.content != null ? String(f.content) : "";
@@ -71,6 +81,17 @@
     viewer.__chatreContextWired = true;
     function sync() {
       try {
+        if (window.ChatreMonaco && window.ChatreMonaco.getSelection) {
+          var msel = window.ChatreMonaco.getSelection();
+          if (msel) {
+            setSelection(
+              msel,
+              null,
+              guessLang((panels() && panels().selectedPath) || ""),
+            );
+            return;
+          }
+        }
         var sel = window.getSelection && window.getSelection();
         if (!sel || sel.isCollapsed || !viewer.contains(sel.anchorNode)) {
           return;
@@ -81,6 +102,7 @@
       } catch (e) {}
     }
     document.addEventListener("selectionchange", sync);
+    viewer.addEventListener("mouseup", sync);
   }
 
   async function ensureIndex(id) {
