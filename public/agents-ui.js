@@ -49,6 +49,9 @@
     var m = String(mode || "").toLowerCase();
     if (m === "plan") return "plan";
     if (m === "explore") return "explore";
+    if (m === "browse" || m === "desktop" || m === "code" || m === "agent") {
+      return "build";
+    }
     return getActive();
   }
 
@@ -181,6 +184,7 @@
   window.ChatreAgents = {
     getActive: getActive,
     setActive: setActive,
+    composerModeToAgent: composerModeToAgent,
     getThoroughness: getThoroughness,
     setThoroughness: setThoroughness,
     composerModeToAgent: composerModeToAgent,

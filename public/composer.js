@@ -178,12 +178,15 @@
         window.ChatreUI.setImageMode(!!m.image || state.mode === "image");
       }
       if (window.ChatreAgents && window.ChatreAgents.setActive) {
-        if (m.plan || state.mode === "plan") {
+        if (window.ChatreAgents.composerModeToAgent) {
+          window.ChatreAgents.setActive(
+            window.ChatreAgents.composerModeToAgent(state.mode),
+          );
+        } else if (m.plan || state.mode === "plan") {
           window.ChatreAgents.setActive("plan");
         } else if (m.explore || state.mode === "explore") {
           window.ChatreAgents.setActive("explore");
         } else {
-          // chat / agent / code / browse / desktop / image → build
           window.ChatreAgents.setActive("build");
         }
       }
@@ -1656,6 +1659,7 @@
     syncRunFromUx: syncRunFromUx,
     paintPrimaryButton: paintPrimaryButton,
     paintApproveChip: paintApproveChip,
+    showApproveChip: paintApproveChip,
     paintChips: paintChips,
     addAttachment: addAttachment,
     removeAttachment: removeAttachment,

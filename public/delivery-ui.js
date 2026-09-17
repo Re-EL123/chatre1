@@ -148,6 +148,9 @@
       var t = String(text || "").trim();
       if (!t) return;
       clearSlot("clarify");
+      // Keep resume flags until sendMessage consumes them.
+      window.__pendingClarification = true;
+      window.__pendingUserInput = { kind: "clarify", text: t };
       syncClarifySendState(false);
       if (typeof onContinue === "function") {
         onContinue(t);

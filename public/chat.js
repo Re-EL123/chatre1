@@ -995,7 +995,7 @@
       window.__pendingUserInput || window.__pendingConnectors;
     if (
       hadPendingChoice ||
-      (window.__pendingClarification && window.__localResumeMessages)
+      window.__pendingClarification
     ) {
       resumeBecauseClarification = true;
       window.__pendingClarification = false;
@@ -1017,20 +1017,23 @@
       window.ChatreUnderstanding &&
       window.ChatreUnderstanding.isHowToQuestion &&
       window.ChatreUnderstanding.isHowToQuestion(message);
-    const looksAgentic =
-      window.ChatreAgent && window.ChatreAgent.looksAgentic
-        ? window.ChatreAgent.looksAgentic(message)
-        : false;
-    // Soft mode reasoning: how-to / explain defaults to fast chat unless the
-    // composer mode explicitly wants agent, or the user is resuming.
+    const composerMode =
+      window.ChatreComposer && window.ChatreComposer.getMode
+        ? window.ChatreComposer.getMode()
+        : "";
+    // Chat mode stays on /api/chat unless the user is resuming a paused agent.
+    // Do not escalate via looksAgentic — that broke the "chat answers only" promise.
     const wantsAgent =
       window.ChatreAgent &&
       window.ChatreTools &&
       (modeWantsAgent ||
         agentMode ||
         resumeBecauseClarification ||
-        (intentInfo && intentInfo.suggestsWeb && intentInfo.name !== "chat") ||
-        (looksAgentic && !howToOnly));
+        (composerMode !== "chat" &&
+          composerMode !== "image" &&
+          intentInfo &&
+          intentInfo.suggestsWeb &&
+          intentInfo.name !== "chat"));
     // Short greetings and knowledge-only questions get a fast plain-chat
     // answer — no agent loop, no tools, no "planning" indicator.
     const fastChat =
@@ -1506,6 +1509,14 @@
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
+      if (window.__pendingClarification) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.ChatreKit && window.ChatreKit.toast) {
+          window.ChatreKit.toast("Answer the clarification card first", "warn");
+        }
+        return;
+      }
       const meta = e.metaKey || e.ctrlKey;
       const enterSends =
         window.ChatreComposer &&
@@ -2280,17 +2291,12 @@
               if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
                 window.ChatreDeliveryUI.syncRunStatus("Understood — preparing");
               }
-              if (
-                b.needs_clarification &&
-                b.clarification_question &&
-                window.ChatreDeliveryUI &&
-                window.ChatreDeliveryUI.showClarify
-              ) {
-                window.ChatreDeliveryUI.showClarify(b.clarification_question, []);
-              }
+              // Do not open clarify here — wait for awaiting_clarify / done.clarification
+              // so Send is not blocked mid-analysis.
               const suggestion =
                 b.mode_suggestion ||
                 (window.ChatreUnderstanding &&
+                  window.ChatreUnderstanding.suggestMode &&
                   window.ChatreUnderstanding.suggestMode(
                     b,
                     window.ChatreComposer && window.ChatreComposer.getMode
@@ -2326,18 +2332,7 @@
                     ).slice(0, 100),
                 );
               }
-              if (
-                rec.clarifyAsked &&
-                rec.briefing &&
-                rec.briefing.clarification_question &&
-                window.ChatreDeliveryUI &&
-                window.ChatreDeliveryUI.showClarify
-              ) {
-                window.ChatreDeliveryUI.showClarify(
-                  rec.briefing.clarification_question,
-                  [],
-                );
-              }
+              // Clarify UI opens on awaiting_clarify / done.clarification only.
               if (
                 rec.briefing &&
                 Array.isArray(rec.briefing.user_corrections) &&
@@ -2562,6 +2557,12 @@
                   "\n\nType the response in the terminal or chat, then **Resume**.",
                 true,
               );
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_shell");
+              }
+              if (window.ChatreComposer && window.ChatreComposer.paintApproveChip) {
+                window.ChatreComposer.paintApproveChip();
+              }
               if (window.ChatreUX) {
                 window.ChatreUX.updateRunCenter({
                   running: true,
@@ -2570,6 +2571,25 @@
                 });
               }
               openTerminalPanel();
+            } else if (ev.type === "plan_handoff") {
+              stopThinking();
+              showStep(
+                "Plan approved — continuing as build" +
+                  (ev.planPath ? " (" + ev.planPath + ")" : "") +
+                  "…",
+                false,
+              );
+              if (window.ChatreUX) {
+                window.ChatreUX.updateRunCenter({
+                  running: true,
+                  pauseReason: "",
+                  step: "Executing approved plan",
+                  phase: "execute",
+                });
+              }
+              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
+                window.ChatreDeliveryUI.syncRunStatus("Executing approved plan");
+              }
             } else if (ev.type === "error") {
               showQuietAgentError("Agent error", ev.error || "unknown");
             } else if (ev.type === "auto_resume") {
@@ -2661,8 +2681,16 @@
               }
             } else if (ev.type === "done") {
               if (window.ChatreUX) window.ChatreUX.endRun();
+              const clarifyingDone = !!(
+                ev.clarification ||
+                (ev.status === "awaiting_clarify")
+              );
               if (window.ChatrePanels) {
-                window.ChatrePanels.setResumeAvailable(false);
+                if (clarifyingDone) {
+                  window.ChatrePanels.setResumeAvailable(true, "awaiting_clarify");
+                } else {
+                  window.ChatrePanels.setResumeAvailable(false);
+                }
               }
               if (ev.usage && window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
@@ -2677,20 +2705,27 @@
               }
               if (ev.response) finalText = ev.response;
               if (
-                ev.clarification &&
+                clarifyingDone &&
                 window.ChatreDeliveryUI &&
                 window.ChatreDeliveryUI.showClarify
               ) {
+                window.__pendingClarification = true;
+                window.__pendingUserInput = {
+                  kind: "clarify",
+                  prompt: ev.response || "Need one detail",
+                };
                 window.ChatreDeliveryUI.showClarify(
                   ev.response || "Need one detail",
                   [],
                 );
-                window.__pendingClarification = true;
                 if (window.ChatreDeliveryUI.syncRunStatus) {
                   window.ChatreDeliveryUI.syncRunStatus("Waiting for your answer");
                 }
+                if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
+                  window.ChatreComposer.paintPrimaryButton();
+                }
               }
-              if (ev.proof) showDoneProof(ev.proof, ev.audit);
+              if (ev.proof && !clarifyingDone) showDoneProof(ev.proof, ev.audit);
               if (
                 window.ChatreRemote &&
                 !window.ChatreRemote.enabled() &&
@@ -2782,7 +2817,20 @@
       }
 
       if (!ranRemote && window.ChatreAgent && window.ChatreTools) {
-        if (
+        const localMode =
+          window.ChatreComposer && window.ChatreComposer.getMode
+            ? window.ChatreComposer.getMode()
+            : "";
+        const localAgent =
+          window.ChatreAgents && window.ChatreAgents.getActive
+            ? window.ChatreAgents.getActive()
+            : "build";
+        if (localMode === "plan" || localMode === "explore" || localAgent === "plan" || localAgent === "explore") {
+          showStep(
+            "Plan/Explore permissions need the cloud agent. Sign in for full harness — continuing with the local build agent for this turn.",
+            false,
+          );
+        } else if (
           window.ChatreRemote &&
           window.ChatreRemote.enabled() &&
           !signedIn
@@ -4277,14 +4325,7 @@
               if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
                 window.ChatreDeliveryUI.syncRunStatus("Understood — preparing");
               }
-              if (
-                b.needs_clarification &&
-                b.clarification_question &&
-                window.ChatreDeliveryUI &&
-                window.ChatreDeliveryUI.showClarify
-              ) {
-                window.ChatreDeliveryUI.showClarify(b.clarification_question, []);
-              }
+              // Clarify opens on awaiting_clarify / done.clarification only.
             } else if (ev.type === "understanding") {
               window.__lastUnderstanding = ev.record || null;
               const rec = ev.record || {};
@@ -4294,18 +4335,7 @@
                   rec,
                 );
               }
-              if (
-                rec.briefing &&
-                rec.briefing.needs_clarification &&
-                rec.briefing.clarification_question &&
-                window.ChatreDeliveryUI &&
-                window.ChatreDeliveryUI.showClarify
-              ) {
-                window.ChatreDeliveryUI.showClarify(
-                  rec.briefing.clarification_question,
-                  [],
-                );
-              }
+              // Clarify opens on awaiting_clarify / done.clarification only.
             } else if (ev.type === "awaiting_plan") {
               stopThinking();
               if (window.ChatrePanels) {
@@ -4485,24 +4515,69 @@
                   window.ChatreUX.pauseRun("Paused — click Resume");
                 }
               }
+            } else if (ev.type === "awaiting_shell") {
+              stopThinking();
+              showStep(
+                (ev.reason || "Shell needs your input.") +
+                  (ev.command ? "\n\nCommand: `" + ev.command + "`" : "") +
+                  "\n\nType the response in the terminal or chat, then **Resume**.",
+                true,
+              );
+              if (window.ChatrePanels) {
+                window.ChatrePanels.setResumeAvailable(true, "awaiting_shell");
+              }
+              if (window.ChatreUX) {
+                window.ChatreUX.pauseRun(ev.reason || "Shell input needed");
+              }
+              openTerminalPanel();
+            } else if (ev.type === "plan_handoff") {
+              stopThinking();
+              showStep(
+                "Plan approved — continuing as build" +
+                  (ev.planPath ? " (" + ev.planPath + ")" : "") +
+                  "…",
+                false,
+              );
             } else if (ev.type === "done") {
               if (window.ChatreUX) window.ChatreUX.endRun();
+              const clarifyingDone = !!(
+                ev.clarification ||
+                ev.status === "awaiting_clarify"
+              );
               if (window.ChatrePanels) {
-                window.ChatrePanels.setResumeAvailable(false);
+                if (clarifyingDone) {
+                  window.ChatrePanels.setResumeAvailable(true, "awaiting_clarify");
+                } else {
+                  window.ChatrePanels.setResumeAvailable(false);
+                }
               }
               if (ev.response && !finalText) {
                 showStep(ev.response, true);
                 chatHistory.push({ role: "assistant", content: ev.response });
                 trimHistory();
               }
-              if (ev.clarification && window.ChatreDeliveryUI && window.ChatreDeliveryUI.showClarify) {
-                window.ChatreDeliveryUI.showClarify(ev.response || "Need one detail", []);
+              if (
+                clarifyingDone &&
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.showClarify
+              ) {
                 window.__pendingClarification = true;
+                window.__pendingUserInput = {
+                  kind: "clarify",
+                  prompt: ev.response || "Need one detail",
+                };
+                window.ChatreDeliveryUI.showClarify(
+                  ev.response || "Need one detail",
+                  [],
+                );
                 if (window.ChatreDeliveryUI.syncRunStatus) {
                   window.ChatreDeliveryUI.syncRunStatus("Waiting for your answer");
                 }
+                if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
+                  window.ChatreComposer.paintPrimaryButton();
+                }
               }
-              if (ev.proof) showDoneProof(ev.proof, ev.audit);
+              if (ev.proof && !clarifyingDone) showDoneProof(ev.proof, ev.audit);
               if (ev.usage && window.ChatrePanels) {
                 window.ChatrePanels.updateUsageMeter({
                   ...ev.usage,

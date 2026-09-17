@@ -414,7 +414,8 @@
             thr.agentRun.status === "awaiting_plan" ||
             thr.agentRun.status === "awaiting_login" ||
             thr.agentRun.status === "awaiting_clarify" ||
-            thr.agentRun.status === "awaiting_approval");
+            thr.agentRun.status === "awaiting_approval" ||
+            thr.agentRun.status === "awaiting_shell");
         const usageHint =
           thr.lastUsage && thr.lastUsage.totalTokensEst
             ? " · ~" + thr.lastUsage.totalTokensEst + " tok"
@@ -437,6 +438,9 @@
         } else if (status === "awaiting_approval") {
           statusClass = "plan";
           statusLabel = "Needs approval";
+        } else if (status === "awaiting_shell") {
+          statusClass = "plan";
+          statusLabel = "Needs shell input";
         } else if (status === "interrupted" || interrupted) {
           statusClass = "interrupted";
           statusLabel = "Interrupted";
@@ -550,12 +554,22 @@
     if (thr && thr.thread && thr.thread.lastUnderstanding) {
       window.__lastUnderstanding = thr.thread.lastUnderstanding;
     }
-    const interrupted =
-      thr &&
-      thr.thread &&
-      thr.thread.agentRun &&
-      thr.thread.agentRun.status === "interrupted";
-    setResumeAvailable(interrupted);
+    const runStatus =
+      thr && thr.thread && thr.thread.agentRun && thr.thread.agentRun.status;
+    const resumable =
+      runStatus === "interrupted" ||
+      runStatus === "awaiting_plan" ||
+      runStatus === "awaiting_login" ||
+      runStatus === "awaiting_clarify" ||
+      runStatus === "awaiting_approval" ||
+      runStatus === "awaiting_shell";
+    setResumeAvailable(!!resumable, resumable ? runStatus : "");
+    if (window.ChatreComposer && window.ChatreComposer.paintApproveChip) {
+      window.ChatreComposer.paintApproveChip();
+    }
+    if (window.ChatreComposer && window.ChatreComposer.paintPrimaryButton) {
+      window.ChatreComposer.paintPrimaryButton();
+    }
     if (window.ChatreUI && window.ChatreUI.resetChat) {
       window.ChatreUI.resetChat(data.messages || []);
     }
