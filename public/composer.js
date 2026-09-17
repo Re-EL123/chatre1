@@ -1050,9 +1050,20 @@
       if (meta === "agent") phase = "Agent running…";
       else if (meta === "image") phase = "Generating image…";
       else if (meta === "plan") phase = "Planning…";
-      else phase = meta || phase;
+      else if (
+        /^(chat|question|agent|image|code|browse|desktop|mixed)$/i.test(meta)
+      ) {
+        phase = "Working…";
+      } else phase = meta || phase;
     } else if (meta && typeof meta === "object") {
       phase = meta.phase || meta.step || "Working…";
+      if (
+        /^(chat|question|agent|image|code|browse|desktop|mixed)$/i.test(
+          String(phase),
+        )
+      ) {
+        phase = "Working…";
+      }
       tool = meta.tool || meta.lastTool || "";
     }
     if (run) {

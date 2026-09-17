@@ -69,16 +69,45 @@
   }
 
   // ── Understanding strip ─────────────────────────────────────────────
+  var _understandingTimer = null;
+  var _lastUnderstandingKey = "";
+
+  function shouldShowUnderstanding(briefing, record) {
+    var b = briefing || (record && record.briefing) || {};
+    var task = String(b.task_type || "").toLowerCase();
+    var kind = String(b.deliverable_kind || "").toLowerCase();
+    var goal = String(b.goal || b.understanding || "").trim();
+    if (!goal) return false;
+    // Light chat / Q&A — strip is noise, not signal.
+    if (task === "chat" || task === "question") return false;
+    if (kind === "answer" || kind === "chat") return false;
+    if (goal.length < 8 && (task === "mixed" || !task)) return false;
+    return true;
+  }
+
   function showUnderstanding(briefing, record) {
     var b = briefing || (record && record.briefing) || {};
+    if (!shouldShowUnderstanding(b, record)) {
+      clearSlot("understanding");
+      return null;
+    }
+    var goal = String(b.goal || b.understanding || "").trim();
+    var task = String(b.task_type || "").trim();
+    var kind = String(b.deliverable_kind || "").trim();
+    var key = task + "|" + kind + "|" + goal.slice(0, 120);
+    // Same understanding already visible — don't rebuild / re-animate.
+    if (key && key === _lastUnderstandingKey) {
+      var existing = document.querySelector(
+        '#delivery-ui-host [data-slot="understanding"]',
+      );
+      if (existing) return existing;
+    }
+    _lastUnderstandingKey = key;
+
     var card = document.createElement("div");
     card.className = "understanding-strip";
-    var goal = String(b.goal || b.understanding || "").trim();
-    var kind = String(b.deliverable_kind || "").trim();
-    var task = String(b.task_type || "").trim();
     var conf =
       b.confidence != null ? Math.round(Number(b.confidence) * 100) + "%" : "";
-    var files = Array.isArray(b.files) ? b.files.filter(Boolean).slice(0, 2) : [];
     var bits = [];
     if (task) bits.push(task);
     if (kind) bits.push(kind);
@@ -87,29 +116,45 @@
       '<div class="understanding-strip-main">' +
       '<span class="understanding-strip-label">Understood</span>' +
       '<span class="understanding-strip-goal">' +
-      escapeHtml(goal || "Ready") +
+      escapeHtml(goal.slice(0, 140)) +
       "</span>" +
       "</div>" +
-      '<div class="understanding-strip-meta">' +
-      escapeHtml(bits.join(" · ")) +
-      (files.length
-        ? " · <code>" + escapeHtml(String(files[0])) + "</code>"
-        : "") +
-      "</div>" +
-      (b.intent_contract
-        ? '<details class="understanding-strip-details"><summary>Intent</summary><pre>' +
-          escapeHtml(b.intent_contract) +
-          "</pre></details>"
+      (bits.length
+        ? '<div class="understanding-strip-meta">' +
+          escapeHtml(bits.join(" · ")) +
+          "</div>"
         : "") +
       '<button type="button" class="understanding-strip-dismiss" aria-label="Dismiss">×</button>';
     card.querySelector(".understanding-strip-dismiss").addEventListener(
       "click",
       function () {
         clearSlot("understanding");
+        _lastUnderstandingKey = "";
+        if (_understandingTimer) {
+          clearTimeout(_understandingTimer);
+          _understandingTimer = null;
+        }
       },
     );
     window.__lastUnderstandingBriefing = b;
-    return setSlot("understanding", card);
+    var node = setSlot("understanding", card);
+    if (_understandingTimer) clearTimeout(_understandingTimer);
+    // Auto-dismiss so the composer doesn't stay filled with chrome.
+    _understandingTimer = setTimeout(function () {
+      clearSlot("understanding");
+      _lastUnderstandingKey = "";
+      _understandingTimer = null;
+    }, 4500);
+    return node;
+  }
+
+  function clearUnderstanding() {
+    if (_understandingTimer) {
+      clearTimeout(_understandingTimer);
+      _understandingTimer = null;
+    }
+    _lastUnderstandingKey = "";
+    clearSlot("understanding");
   }
 
   // ── Clarify card ────────────────────────────────────────────────────
@@ -522,6 +567,7 @@
 
   window.ChatreDeliveryUI = {
     showUnderstanding: showUnderstanding,
+    clearUnderstanding: clearUnderstanding,
     showClarify: showClarify,
     showBanner: showBanner,
     showInterruptBanner: showInterruptBanner,

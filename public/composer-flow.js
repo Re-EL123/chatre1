@@ -57,61 +57,34 @@
     return buildPlanPrompt(text);
   }
 
-  function updateStatusStack( partial) {
+  function updateStatusStack(partial) {
     if (partial) Object.assign(status, partial);
     var host = $("composer-status-stack");
     var run = $("composer-run");
-    if (!host) return;
 
-    var phase = status.phase || (status.running ? "Working…" : "");
+    // Normalize junk phases so we never paint a "chat" pill forever.
+    var rawPhase = String(status.phase || "").trim();
+    if (
+      !rawPhase ||
+      /^(chat|question|agent|image|code|browse|desktop|mixed)$/i.test(rawPhase)
+    ) {
+      rawPhase = status.running ? "Working…" : "";
+      if (status.phase && /^(chat|question|agent|image|code|browse|desktop|mixed)$/i.test(String(status.phase))) {
+        status.phase = rawPhase;
+      }
+    }
+    var phase = rawPhase || (status.running ? "Working…" : "");
     var tool = status.tool || "";
-    var files = status.filesTouched || [];
-    var delivery = status.delivery;
 
-    var bits = [];
-    if (phase) {
-      bits.push(
-        '<span class="composer-status-pill" data-k="phase">' +
-          escapeHtml(String(phase).slice(0, 48)) +
-          "</span>",
-      );
+    // Status stack pills were duplicating the run bar and re-animating on
+    // every SSE tick — keep the host empty/hidden; sync the single run line.
+    if (host) {
+      host.innerHTML = "";
+      host.hidden = true;
     }
-    if (tool) {
-      bits.push(
-        '<span class="composer-status-pill" data-k="tool">' +
-          escapeHtml(String(tool).slice(0, 40)) +
-          "</span>",
-      );
+    if (run && (status.running || phase || tool || status.delivery != null)) {
+      /* run bar visibility owned by composer.setBusyUi / syncRunFromUx */
     }
-    if (files.length) {
-      bits.push(
-        '<span class="composer-status-pill" data-k="files" title="' +
-          escapeHtml(files.slice(-6).join("\n")) +
-          '">' +
-          files.length +
-          " file" +
-          (files.length === 1 ? "" : "s") +
-          "</span>",
-      );
-    }
-    if (delivery === true) {
-      bits.push(
-        '<span class="composer-status-pill ok" data-k="delivery">delivered</span>',
-      );
-    } else if (delivery === false && (status.running || files.length || phase)) {
-      bits.push(
-        '<span class="composer-status-pill warn" data-k="delivery">no delivery</span>',
-      );
-    }
-
-    host.innerHTML = bits.join("");
-    host.hidden = !bits.length;
-    if (run && bits.length) run.hidden = false;
-    if (window.ChatreMotion && bits.length) {
-      window.ChatreMotion.staggerChildren(host, "pill", 35);
-    }
-
-    // Keep legacy phase/tool spans in sync when present
     if ($("composer-busy-phase") && phase) {
       $("composer-busy-phase").textContent = phase;
     }
@@ -276,6 +249,15 @@
       host.innerHTML = "";
       return;
     }
+    var sig = actions
+      .map(function (a) {
+        return a.id + ":" + a.label;
+      })
+      .join("|");
+    if (host.getAttribute("data-sig") === sig && !host.hidden) {
+      return; // already painted — avoid re-animating / flicker
+    }
+    host.setAttribute("data-sig", sig);
     host.hidden = false;
     host.innerHTML = actions
       .map(function (a) {
@@ -293,9 +275,6 @@
       .join("");
     if (window.ChatreKit && window.ChatreKit.refreshIcons) {
       window.ChatreKit.refreshIcons(host);
-    }
-    if (window.ChatreMotion) {
-      window.ChatreMotion.staggerChildren(host, "pill", 45);
     }
   }
 

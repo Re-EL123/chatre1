@@ -538,14 +538,21 @@
       activeAbort = null;
     }
     if (window.ChatreComposer && window.ChatreComposer.setBusyUi) {
-      var busyMeta = mode || "chat";
+      var busyMeta = "Working…";
+      if (mode === "image") busyMeta = "Generating image…";
+      else if (mode === "agent") busyMeta = "Agent running…";
+      else if (mode === "plan") busyMeta = "Planning…";
+      else if (mode === "browse") busyMeta = "Browsing…";
+      else if (mode === "desktop") busyMeta = "Desktop…";
+      else if (mode === "code") busyMeta = "Coding…";
+      else if (mode && mode !== "chat" && mode !== "question") busyMeta = mode;
       if (
         busy &&
         window.ChatreComposerFlow &&
         window.ChatreComposerFlow.isPlanMode &&
         window.ChatreComposerFlow.isPlanMode()
       ) {
-        busyMeta = "plan";
+        busyMeta = "Planning…";
       }
       window.ChatreComposer.setBusyUi(busy, busyMeta);
     }
@@ -1867,6 +1874,12 @@
     if (window.ChatreComposerFlow && window.ChatreComposerFlow.resetStatus) {
       window.ChatreComposerFlow.resetStatus();
     }
+    if (
+      window.ChatreDeliveryUI &&
+      window.ChatreDeliveryUI.clearUnderstanding
+    ) {
+      window.ChatreDeliveryUI.clearUnderstanding();
+    }
     setBusy(true, planModeRun ? "plan" : "agent");
     if (
       window.ChatrePwa &&
@@ -2285,9 +2298,8 @@
               } else {
                 showStep(planText, false);
               }
-              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showUnderstanding) {
-                window.ChatreDeliveryUI.showUnderstanding(b);
-              }
+              // Understanding strip is painted once on the `understanding` event
+              // (avoids duplicate chrome with analysis).
               if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
                 window.ChatreDeliveryUI.syncRunStatus("Understood — preparing");
               }
@@ -2681,6 +2693,12 @@
               }
             } else if (ev.type === "done") {
               if (window.ChatreUX) window.ChatreUX.endRun();
+              if (
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.clearUnderstanding
+              ) {
+                window.ChatreDeliveryUI.clearUnderstanding();
+              }
               const clarifyingDone = !!(
                 ev.clarification ||
                 (ev.status === "awaiting_clarify")
@@ -4319,9 +4337,7 @@
             } else if (ev.type === "analysis") {
               stopThinking();
               const b = ev.briefing || {};
-              if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.showUnderstanding) {
-                window.ChatreDeliveryUI.showUnderstanding(b);
-              }
+              // Understanding strip painted once on `understanding` (not analysis).
               if (window.ChatreDeliveryUI && window.ChatreDeliveryUI.syncRunStatus) {
                 window.ChatreDeliveryUI.syncRunStatus("Understood — preparing");
               }
@@ -4540,6 +4556,12 @@
               );
             } else if (ev.type === "done") {
               if (window.ChatreUX) window.ChatreUX.endRun();
+              if (
+                window.ChatreDeliveryUI &&
+                window.ChatreDeliveryUI.clearUnderstanding
+              ) {
+                window.ChatreDeliveryUI.clearUnderstanding();
+              }
               const clarifyingDone = !!(
                 ev.clarification ||
                 ev.status === "awaiting_clarify"
